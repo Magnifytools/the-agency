@@ -30,6 +30,18 @@ async function pdfErrorMessage(error: unknown): Promise<string> {
   return getErrorMessage(error, "No se pudo generar el PDF")
 }
 
+/** La misma descarga desde un menú (el botón desaparece al elegir): avisa con un toast. */
+export async function downloadPdfWithToast(download: () => Promise<PdfFile | null>) {
+  const id = toast.loading("Generando PDF…")
+  try {
+    const file = await download()
+    if (file) saveFile(file)
+    toast.dismiss(id)
+  } catch (error) {
+    toast.error(await pdfErrorMessage(error), { id })
+  }
+}
+
 /** "Descargar PDF" del resumen: lo mismo que recibe el cliente, en A4. */
 export function DownloadPdfButton({ download, iconOnly = false, ariaLabel, variant = "outline", size = "default", disabled }: Props) {
   const [busy, setBusy] = useState(false)

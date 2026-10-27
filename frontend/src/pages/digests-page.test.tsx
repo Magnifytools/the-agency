@@ -15,6 +15,17 @@ function setup(route = "/digests") {
   const node = () => <QueryClientProvider client={client}><MemoryRouter initialEntries={[route]}><DigestsPage /></MemoryRouter></QueryClientProvider>
   return {...render(node()), node}
 }
+// Las acciones secundarias de cada fila viven en su menú "Más acciones".
+function rowAction(index: number, item: string) {
+  fireEvent.click(screen.getAllByTitle("Más acciones")[index])
+  fireEvent.click(screen.getByRole("menuitem", {name: item}))
+}
+function menuItems(row: HTMLElement) {
+  fireEvent.click(within(row).getByTitle("Más acciones"))
+  const items = screen.getAllByRole("menuitem").map(item => item.textContent)
+  fireEvent.keyDown(document, {key: "Escape"})
+  return items
+}
 beforeEach(() => {vi.resetAllMocks(); localStorage.clear(); mocks.auth = {id: 1, write: true, admin: true}; mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other"}]); mocks.clients.mockResolvedValue([{id: 1, name: "Acme", status: "active", is_internal: false}]); mocks.policy.mockResolvedValue({configured: true, enabled: false, responsible_user_id: 1, responsible_can_prepare: true}); mocks.api.render.mockResolvedValue({rendered: "Rendered"}); mocks.api.generate.mockResolvedValue({...source, id: 30}); mocks.send.mockResolvedValue({status: "pending"})})
 it("explains missing member policy and allows generation after configuration is rechecked", async () => {
   mocks.auth.admin = false
@@ -46,26 +57,24 @@ it("offers deletion only when the server confirms the version can be deleted", a
   const acme = (await screen.findByRole("cell", {name: "Acme"})).closest("tr")!
   const other = screen.getByRole("cell", {name: "Other"}).closest("tr")!
   const free = screen.getByRole("cell", {name: "Free"}).closest("tr")!
-  expect(within(acme).queryByTitle("Eliminar")).not.toBeInTheDocument()
-  expect(within(other).queryByTitle("Eliminar")).not.toBeInTheDocument()
-  expect(within(free).getByTitle("Eliminar")).toBeInTheDocument()
+  expect(menuItems(acme)).not.toContain("Eliminar")
+  expect(menuItems(other)).not.toContain("Eliminar")
+  expect(menuItems(free)).toContain("Eliminar")
 })
 it("names each summary action and explains that generation creates a draft", async () => {
   setup()
   const acme = (await screen.findByRole("cell", {name: "Acme"})).closest("tr")!
   expect(within(acme).getByRole("button", {name: "Editar resumen de Acme, versión #10"})).toBeInTheDocument()
-  expect(within(acme).getByRole("button", {name: "Ver vista previa del resumen de Acme, versión #10"})).toBeInTheDocument()
-  expect(within(acme).getByRole("button", {name: "Copiar para Slack el resumen de Acme, versión #10"})).toBeInTheDocument()
-  expect(within(acme).getByRole("button", {name: "Copiar para email el resumen de Acme, versión #10"})).toBeInTheDocument()
-  expect(within(acme).getByRole("button", {name: "Revisar y compartir en Discord interno el resumen de Acme, versión #10"})).toBeInTheDocument()
+  expect(within(acme).getByRole("button", {name: "Más acciones del resumen de Acme, versión #10"})).toBeInTheDocument()
+  expect(menuItems(acme)).toEqual(["Vista previa", "Descargar PDF", "Copiar para Slack", "Copiar para email (texto)", "Discord interno…", "Eliminar"])
   fireEvent.click(screen.getByRole("button", {name: "Preparar uno"}))
   expect(screen.getByText(/generar no envía ningún mensaje/i)).toBeInTheDocument()
 })
 it("does not offer deletion to a reader even if a stale list says the version is deletable", async () => {
   mocks.auth.write = false
   setup()
-  await screen.findByRole("cell", {name: "Acme"})
-  expect(screen.queryByTitle("Eliminar")).not.toBeInTheDocument()
+  const row = (await screen.findByRole("cell", {name: "Acme"})).closest("tr")!
+  expect(menuItems(row)).not.toContain("Eliminar")
 })
 it("clears an exact incident period when returning to current periods on the same route", async () => {
   setup("/digests?client_id=1&period_start=2026-08-01&period_end=2026-08-31")
@@ -131,9 +140,9 @@ it("late preview A cannot appear under B and only the current format wins", asyn
   mocks.api.render.mockImplementationOnce(() => new Promise(done => {old = done})).mockResolvedValueOnce({rendered: "B current"})
   setup()
   await screen.findByRole("cell", {name: "Acme"})
-  fireEvent.click(screen.getAllByTitle("Vista previa")[0])
+  rowAction(0, "Vista previa")
   fireEvent.keyDown(document, {key: "Escape"})
-  fireEvent.click(screen.getAllByTitle("Vista previa")[1])
+  rowAction(1, "Vista previa")
   await screen.findByText("B current")
   await act(async () => {old({rendered: "A stale"})})
   expect(screen.getByRole("dialog")).toHaveTextContent("Other · Versión #20")
@@ -143,7 +152,7 @@ it("same version reopen has a new epoch, so old success cannot replace the new r
   let old!: (value: unknown) => void
   mocks.api.render.mockImplementationOnce(() => new Promise(done => {old = done})).mockResolvedValueOnce({rendered: "New render"})
   setup(); await screen.findByRole("cell", {name: "Acme"})
-  fireEvent.click(screen.getAllByTitle("Vista previa")[0]); fireEvent.keyDown(document, {key: "Escape"}); fireEvent.click(screen.getAllByTitle("Vista previa")[0])
+  rowAction(0, "Vista previa"); fireEvent.keyDown(document, {key: "Escape"}); rowAction(0, "Vista previa")
   await screen.findByText("New render")
   await act(async () => {old({rendered: "Old render"})})
   expect(screen.queryByText("Old render")).not.toBeInTheDocument()
@@ -153,7 +162,7 @@ it("Discord cannot share stale A content while B is loading or has failed", asyn
   let fail!: (value: unknown) => void
   mocks.api.render.mockImplementationOnce(() => new Promise(done => {old = done})).mockImplementationOnce(() => new Promise((_done, reject) => {fail = reject})).mockResolvedValueOnce({rendered: "B confirmed render"})
   setup(); await screen.findByRole("cell", {name: "Acme"})
-  fireEvent.click(screen.getAllByTitle("Discord (interno)")[0]); await waitFor(() => expect(mocks.api.render).toHaveBeenCalledTimes(1)); fireEvent.keyDown(document, {key: "Escape"}); fireEvent.click(screen.getAllByTitle("Discord (interno)")[1]); await waitFor(() => expect(mocks.api.render).toHaveBeenCalledTimes(2))
+  rowAction(0, "Discord interno…"); await waitFor(() => expect(mocks.api.render).toHaveBeenCalledTimes(1)); fireEvent.keyDown(document, {key: "Escape"}); rowAction(1, "Discord interno…"); await waitFor(() => expect(mocks.api.render).toHaveBeenCalledTimes(2))
   await act(async () => {old({rendered: "A stale"})})
   const share = screen.getByRole("button", {name: "Compartir en Discord interno"})
   expect(share).toBeDisabled(); expect(screen.queryByText("A stale")).not.toBeInTheDocument()
@@ -168,11 +177,11 @@ it("an old session cannot put its render in the new user's dialog", async () => 
   let old!: (value: unknown) => void
   mocks.api.render.mockImplementationOnce(() => new Promise(done => {old = done})).mockResolvedValueOnce({rendered: "New identity"})
   const view = setup(); await screen.findByRole("cell", {name: "Acme"})
-  fireEvent.click(screen.getAllByTitle("Vista previa")[0])
+  rowAction(0, "Vista previa")
   await waitFor(() => expect(mocks.api.render).toHaveBeenCalledTimes(1))
   mocks.auth.id = 2; view.rerender(view.node())
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-  fireEvent.click((await screen.findAllByTitle("Vista previa"))[1])
+  await screen.findAllByTitle("Más acciones"); rowAction(1, "Vista previa")
   await screen.findByText("New identity")
   await act(async () => {old({rendered: "Old identity"})})
   expect(screen.queryByText("Old identity")).not.toBeInTheDocument()
@@ -186,7 +195,7 @@ it("read-only history allows consultation and copying without dead write control
   expect(screen.queryByLabelText("Estado histórico de versión #10")).not.toBeInTheDocument()
   expect(within(screen.getAllByRole("cell", {name: "Acme"})[0].closest("tr")!).getByText("Borrador")).toBeInTheDocument()
   expect(screen.getByText("Abre una versión para consultar su texto y sus fuentes.")).toBeInTheDocument()
-  fireEvent.click(screen.getAllByTitle("Vista previa")[0])
+  rowAction(0, "Vista previa")
   await screen.findByText("Rendered")
   expect(within(screen.getByRole("dialog")).getByRole("button", {name: "Copiar"})).not.toBeDisabled()
 })
@@ -194,7 +203,7 @@ it("format switching ignores late failures from the previous rendering", async (
   let fail!: (value: unknown) => void
   mocks.api.render.mockImplementationOnce(() => new Promise((_done, reject) => {fail = reject})).mockResolvedValueOnce({rendered: "Email current"})
   setup(); await screen.findByRole("cell", {name: "Acme"})
-  fireEvent.click(screen.getAllByTitle("Vista previa")[0])
+  rowAction(0, "Vista previa")
   await waitFor(() => expect(mocks.api.render).toHaveBeenCalledTimes(1))
   fireEvent.click(screen.getByRole("button", {name: "Email"}))
   await screen.findByText("Email current")

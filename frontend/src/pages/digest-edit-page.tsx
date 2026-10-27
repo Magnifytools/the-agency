@@ -24,6 +24,7 @@ import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes"
+import { usePageTitle } from "@/hooks/use-page-title"
 import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type ToneDigestIntent } from "@/lib/digest-generation-recovery"
 
 const sectionLabels: Record<keyof DigestSections, { title: string; color: string }> = {
@@ -99,6 +100,7 @@ export default function DigestEditPage() {
     queryFn: () => digestsApi.get(Number(id)),
     enabled: !!id,
   })
+  usePageTitle(digest?.client_name ? `Resumen de ${digest.client_name}` : null)
   const toneRecovery = useQuery({
     queryKey: ["digest-tone-recovery", userId, pendingToneIntent?.generation_key],
     queryFn: () => digestsApi.recoverGeneration(pendingToneIntent!.generation_key),

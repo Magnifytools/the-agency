@@ -636,7 +636,7 @@ export default function TimesheetPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold uppercase tracking-wide">Horas</h2>
+          <h1 className="text-2xl font-bold uppercase tracking-wide">Horas</h1>
           <p className="text-sm text-muted-foreground mt-1">{PERIOD_OPTIONS.find(o => o.value === period)?.label} · {todaysEntriesQuery.isPending ? "cargando registros…" : todaysEntriesQuery.isError ? "registros de hoy no disponibles" : `${todaysEntries.length} registros hoy`} · {agencyTimezoneLabel()}</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleExportCsv}>

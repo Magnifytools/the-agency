@@ -192,7 +192,7 @@ export default function LeadDetailPage() {
       <div className="flex items-center gap-4">
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-2xl font-bold">{lead.company_name}</h2>
+            <h1 className="text-2xl font-bold">{lead.company_name}</h1>
             <LeadStatusBadge status={lead.status} />
           </div>
           {lead.contact_name && <p className="text-muted-foreground mt-0.5">{lead.contact_name}</p>}

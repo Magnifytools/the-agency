@@ -8,6 +8,7 @@ import { es } from "date-fns/locale"
 import { useAuth } from "@/context/auth-context"
 import { ProjectTaskList } from "@/components/projects/project-task-list"
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom"
+import { usePageTitle } from "@/hooks/use-page-title"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import {
@@ -111,6 +112,7 @@ export default function ProjectDetailPage() {
     queryFn: () => projectsApi.get(projectId),
     enabled: validId,
   })
+  usePageTitle(project?.name)
 
   const { data: tasksData, isLoading: tasksLoading, isError: tasksError, refetch: retryTasks } = useQuery({
     queryKey: taskKeys.project(projectId),

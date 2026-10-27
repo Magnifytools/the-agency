@@ -254,6 +254,8 @@ export interface SearchResults {
   projects: { id: number; name: string; client_name: string | null; status: string }[]
   tasks: { id: number; title: string; client_name: string | null; status: string }[]
   leads: { id: number; company_name: string; contact_name: string | null; status: string }[]
+  digests?: { id: number; client_name: string; period_start: string; period_end: string }[]
+  notes?: { id: number; text: string; status: string }[]
 }
 
 

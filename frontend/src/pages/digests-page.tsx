@@ -3,10 +3,11 @@ import DOMPurify from "dompurify"
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy } from "lucide-react"
+import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy, FileDown } from "lucide-react"
 import { DeliveryReceipts, deliveryToast } from "@/components/delivery-receipts"
 import { useAuth } from "@/context/auth-context"
 import { DigestCohort } from "@/components/digests/digest-cohort"
+import { ActionMenu } from "@/components/ui/action-menu"
 import { DigestMonthlyCycle } from "@/components/digests/digest-monthly-cycle"
 import { reportPolicyApi, reportPolicyKeys } from "@/lib/report-policy-api"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
@@ -15,7 +16,7 @@ import { clearDigestGeneration, httpStatus as httpStatusOf, isConfirmedFailure, 
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { DownloadPdfButton } from "@/components/digests/download-pdf-button"
+import { downloadPdfWithToast } from "@/components/digests/download-pdf-button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
@@ -521,69 +522,19 @@ function DigestList() {
                         >
                           {canWrite ? <Pencil className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Vista previa"
-                          aria-label={`Ver vista previa del resumen de ${digest.client_name}, versión #${digest.id}`}
-                          onClick={() => handlePreview(digest, "slack")}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <DownloadPdfButton
-                          iconOnly
-                          variant="ghost"
-                          size="sm"
-                          ariaLabel={`Descargar PDF del resumen de ${digest.client_name}, versión #${digest.id}`}
-                          download={() => digestsApi.pdf(digest.id)}
+                        <ActionMenu
+                          label={`Más acciones del resumen de ${digest.client_name}, versión #${digest.id}`}
+                          items={[
+                            { label: "Vista previa", icon: <Eye className="w-4 h-4" />, onSelect: () => handlePreview(digest, "slack") },
+                            { label: "Descargar PDF", icon: <FileDown className="w-4 h-4" />, onSelect: () => void downloadPdfWithToast(() => digestsApi.pdf(digest.id)) },
+                            { label: "Copiar para Slack", icon: <ClipboardCopy className="w-4 h-4" />, onSelect: () => handleQuickCopy(digest, "slack") },
+                            { label: "Copiar para email (texto)", icon: <FileText className="w-4 h-4" />, onSelect: () => handleQuickCopy(digest, "email_plain") },
+                            ...(canWrite ? [{ label: "Discord interno…", icon: <MessageCircle className="w-4 h-4" />, onSelect: () => handleDiscordPreview(digest) }] : []),
+                            ...(canWrite && digest.status !== "sent" && digest.can_delete === true
+                              ? [{ label: "Eliminar", icon: <Trash2 className="w-4 h-4" />, destructive: true, disabled: deleteMutation.isPending, onSelect: () => handleDelete(digest) }]
+                              : []),
+                          ]}
                         />
-                        <span className="w-px h-5 bg-border mx-0.5" />
-                        {/* Copiar para pegar en Slack / email */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Copiar Slack"
-                          aria-label={`Copiar para Slack el resumen de ${digest.client_name}, versión #${digest.id}`}
-                          onClick={() => handleQuickCopy(digest, "slack")}
-                        >
-                          <ClipboardCopy className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Copiar Email (texto plano)"
-                          aria-label={`Copiar para email el resumen de ${digest.client_name}, versión #${digest.id}`}
-                          onClick={() => handleQuickCopy(digest, "email_plain")}
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                        </Button>
-                        {canWrite && <><span className="w-px h-5 bg-border mx-0.5" />
-                        {/* Discord (interno) */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Discord (interno)"
-                          aria-label={`Revisar y compartir en Discord interno el resumen de ${digest.client_name}, versión #${digest.id}`}
-                          onClick={() => handleDiscordPreview(digest)}
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                        </Button></>}
-                        {canWrite && digest.status !== "sent" && digest.can_delete === true && (
-                          <>
-                            <span className="w-px h-5 bg-border mx-0.5" />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Eliminar"
-                              aria-label={`Eliminar resumen de ${digest.client_name}, versión #${digest.id}`}
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => handleDelete(digest)}
-                              disabled={deleteMutation.isPending}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </>
-                        )}
                       </div>
                     </TableCell>
                   </TableRow>

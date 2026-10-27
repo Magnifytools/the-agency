@@ -2,6 +2,7 @@ import { formatCivilDate, timeEntryBusinessDate } from "@/lib/dates"
 import { useState } from "react"
 import { useParams, Link, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
+import { usePageTitle } from "@/hooks/use-page-title"
 import { clientsApi, projectsApi, holdedApi, clientStatusApi, engineApi } from "@/lib/api"
 import type { TaskStatus } from "@/lib/types"
 import { isEnabled } from "@/lib/hidden-modules"
@@ -126,6 +127,7 @@ export default function ClientDetailPage() {
     enabled: !!clientId && canReadClient,
   })
   const { data: summary, isLoading } = summaryQuery
+  usePageTitle(summary?.client.name)
 
   const projectsQuery = useQuery({
     queryKey: projectKeys.client(clientId),
@@ -265,7 +267,7 @@ export default function ClientDetailPage() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold uppercase tracking-wide">{client.name}</h2>
+            <h1 className="text-2xl font-bold uppercase tracking-wide">{client.name}</h1>
             {statusBadge(client.status)}
             {client.is_internal && <Badge variant="outline" className="border-purple-500/50 text-purple-400">Interno</Badge>}
             {client.engine_project_id && engineConfig?.engine_frontend_url && (
