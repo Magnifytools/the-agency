@@ -7,3 +7,6 @@ import { configure } from "@testing-library/react"
 // Esperar más no oculta nada: lo que no debe aparecer se comprueba con
 // `queryBy*`, que no espera.
 configure({ asyncUtilTimeout: 5_000 })
+
+// jsdom no implementa scrollIntoView (el panel de tarea lleva la fila a la vista).
+Element.prototype.scrollIntoView ??= () => {}

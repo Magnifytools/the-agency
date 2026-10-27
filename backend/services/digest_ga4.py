@@ -48,6 +48,21 @@ def rows(ga4: dict) -> list[dict]:
     return out
 
 
+def year_ago_line(ga4: dict) -> str | None:
+    """El mismo mes del año anterior: visitas, conversiones y visitas desde IA."""
+    changes = ga4.get("vs_year_ago") or {}
+    if not ga4.get("year_ago"):
+        return None
+    parts = [f"{label} {_change(changes[key], unit='%')[0]}"
+             for key, label in (("sessions_pct", "visitas"), ("key_events_pct", "conversiones"),
+                                ("ai_sessions_pct", "visitas desde IA"))
+             if changes.get(key) is not None]
+    if not parts:
+        return None
+    month = format_month(date.fromisoformat(ga4["year_ago"]["start"]))
+    return f"Respecto a {month}: {', '.join(parts)}."
+
+
 def render_text(ga4: dict, *, bold: str = "") -> list[str]:
     previous_month = _month_of(ga4["previous"]) if ga4.get("previous") else None
     lines = [f"{bold}{title(ga4)}{bold}", headline(ga4)]
@@ -56,6 +71,9 @@ def render_text(ga4: dict, *, bold: str = "") -> list[str]:
         if previous_month:
             detail += f" (en {previous_month}: {row['previous']}; {row['change']})"
         lines.append(f"  - {row['label']}: {detail}")
+    extra = year_ago_line(ga4)
+    if extra:
+        lines.append(extra)
     lines.append("Fuente: Google Analytics 4.")
     return lines
 
@@ -76,6 +94,8 @@ def render_html(ga4: dict, *, esc, dark: str, gray: str, border: str) -> str:
                       f'<td style="{cell}color:{color};font-weight:600;">{esc(row["change"])}</td>')
         body += (f'<tr><td style="padding:8px 0;font-size:14px;color:{dark};border-top:1px solid {border};">'
                  f'{esc(row["label"])}</td>{cells}</tr>')
+    extra = year_ago_line(ga4)
+    extra_html = f'<p style="margin:10px 0 0 0;font-size:13px;color:{gray};">{esc(extra)}</p>' if extra else ""
     return f"""\
     <tr>
       <td style="padding:28px 0 0 0;">
@@ -85,6 +105,7 @@ def render_html(ga4: dict, *, esc, dark: str, gray: str, border: str) -> str:
           <tr><td style="padding:6px 0;font-size:12px;color:{gray};"></td>{head}</tr>
           {body}
         </table>
+        {extra_html}
         <p style="margin:8px 0 0 0;font-size:12px;color:#999999;">Fuente: Google Analytics 4.</p>
       </td>
     </tr>"""

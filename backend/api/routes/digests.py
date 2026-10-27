@@ -59,6 +59,7 @@ from backend.services.digest_generator import (
     DigestProviderError,
     generate_digest_content,
 )
+from backend.services import digest_seo_detail
 from backend.services.digest_pdf import digest_pdf
 from backend.services.digest_periods import (
     canonicalize_digest_content,
@@ -562,7 +563,19 @@ async def get_digest(
     """Get a specific digest by ID."""
     digest = await authorize_digest(db, digest_id, current_user, write=False)
 
-    return _to_response(digest, await _readable_modules(db, current_user))
+    response = _to_response(digest, await _readable_modules(db, current_user))
+    # El editor enseña la foto del mes de Search Console con los totales.
+    seo = await _seo_for_render(db, digest)
+    if response.raw_context is not None and seo is not None:
+        response.raw_context["seo"] = seo
+    return response
+
+
+async def _seo_for_render(db: AsyncSession, digest: WeeklyDigest) -> dict | None:
+    """Bloque SEO para pintar: mientras la versión no ha salido de la app, con
+    la foto del mes recalculada; si ya salió, con la que se guardó."""
+    return await digest_seo_detail.seo_for_render(
+        db, digest, may_compute=not await _has_left_the_app(db, digest))
 
 
 # ---------------------------------------------------------------------------
@@ -808,7 +821,7 @@ async def render_digest(
     if digest.client and hasattr(digest.client, "slack_template"):
         client_template = digest.client.slack_template
 
-    seo = (digest.raw_context or {}).get("seo")
+    seo = await _seo_for_render(db, digest)
     ga4 = (digest.raw_context or {}).get("ga4")
     if format == "slack":
         rendered = render_slack(
@@ -868,9 +881,10 @@ def pdf_response(data: bytes, filename: str, headers: dict[str, str] | None = No
     )
 
 
-async def build_pdf_or_error(digest: WeeklyDigest, client_name: str) -> tuple[bytes, str]:
+async def build_pdf_or_error(digest: WeeklyDigest, client_name: str, *,
+                             seo: dict | None = None) -> tuple[bytes, str]:
     try:
-        return await digest_pdf(digest, client_name)
+        return await digest_pdf(digest, client_name, seo=seo)
     except TimeoutError:
         logger.warning("PDF del resumen %s: tiempo agotado", digest.id)
         raise HTTPException(status_code=504, detail="El PDF ha tardado demasiado. Inténtalo de nuevo.")
@@ -888,7 +902,7 @@ async def digest_pdf_download(
     digest = await authorize_digest(db, digest_id, current_user, write=False)
     pdf_export_limiter.check(current_user.id, max_requests=10, window_seconds=60)
     client_name = digest.client.name if digest.client else ""
-    data, filename = await build_pdf_or_error(digest, client_name)
+    data, filename = await build_pdf_or_error(digest, client_name, seo=await _seo_for_render(db, digest))
     return pdf_response(data, filename)
 
 

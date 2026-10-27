@@ -108,8 +108,46 @@ export interface DigestSeoChanges {
   position_delta: number | null
 }
 
+/** Una búsqueda o página del top del mes (foto de `digest_seo_details`). */
+export interface DigestSeoDetailRow {
+  key: string
+  /** Sólo páginas: ruta legible. */
+  label?: string
+  clicks: number
+  impressions: number
+  position: number | null
+  clicks_pct: number | null
+  position_delta: number | null
+  is_new: boolean
+}
+
+export interface DigestSeoOpportunity {
+  key: string
+  clicks: number
+  impressions: number
+  position: number
+}
+
+export interface DigestSeoBrandSplit {
+  brand: number
+  non_brand: number
+  unclassified: number
+}
+
+/** Foto del mes que se pinta con código bajo los totales (nunca va a la IA). */
+export interface DigestSeoDetail {
+  status: "ok"
+  site_url: string
+  month: { start: string; end: string }
+  previous: { start: string; end: string } | null
+  queries: DigestSeoDetailRow[]
+  pages: DigestSeoDetailRow[]
+  opportunities: DigestSeoOpportunity[]
+  brand: (DigestSeoBrandSplit & { previous: DigestSeoBrandSplit | null; non_brand_pct: number | null; brand_pct: number | null }) | null
+}
+
 export type DigestSeo =
-  | { status: "ok"; site_url: string; month: DigestSeoPeriod; previous: DigestSeoPeriod | null; year_ago: DigestSeoPeriod | null; vs_previous: DigestSeoChanges | null; vs_year_ago: DigestSeoChanges | null }
+  | { status: "ok"; site_url: string; month: DigestSeoPeriod; previous: DigestSeoPeriod | null; year_ago: DigestSeoPeriod | null; vs_previous: DigestSeoChanges | null; vs_year_ago: DigestSeoChanges | null; detail?: DigestSeoDetail }
   | { status: "no_property" | "not_connected" | "not_synced" | "reconnect_required" | "incomplete" | "no_data"; site_url?: string; last_data_date?: string | null; error_code?: string | null }
 
 export interface Digest {

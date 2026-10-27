@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import type { PaginatedResponse, Task } from "@/lib/types"
 import { MyDayView } from "./my-day-view"
+import { businessDateString } from "@/lib/dates"
 
 vi.mock("@/components/timer/timer-button", () => ({
   TimerButton: ({ taskTitle }: { taskTitle?: string }) => <button type="button">Cronómetro de {taskTitle}</button>,
@@ -151,5 +152,42 @@ describe("MyDayView", () => {
     expect(screen.getByRole("button", { name: "Cronómetro de Informe Fit" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Cronómetro de Arrastrada" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Cronómetro de Ya hecha" })).not.toBeInTheDocument()
+  })
+
+  it("mueve una tarea de hoy a mañana y cambia su prioridad sin abrirla", async () => {
+    const today = businessDateString()
+    const onUpdate = vi.fn()
+    const onOpenEdit = vi.fn()
+    const planned = task(4, "Llamar a Fit", { scheduled_date: today })
+    render(<MyDayView planned={page([planned])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={onOpenEdit} onReviewCarryover={vi.fn()} canWrite onUpdate={onUpdate} />)
+
+    await userEvent.click(screen.getByRole("button", { name: /^Mover Llamar a Fit a otro día/ }))
+    expect(screen.getByRole("option", { name: "Quitar de hoy" })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("option", { name: /Mañana/ }))
+    expect(onUpdate).toHaveBeenCalledWith(planned, expect.objectContaining({ data: { scheduled_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) } }))
+    expect(onUpdate.mock.calls[0][1].data.scheduled_date).not.toBe(today)
+
+    await userEvent.click(screen.getByRole("button", { name: "Prioridad de Llamar a Fit: Media" }))
+    await userEvent.click(screen.getByRole("option", { name: "Urgente" }))
+    expect(onUpdate).toHaveBeenLastCalledWith(planned, expect.objectContaining({ data: { priority: "urgent" } }))
+    // Ninguno de los dos abre la tarea.
+    expect(onOpenEdit).not.toHaveBeenCalled()
+  })
+
+  it("sin escritura no ofrece mover ni cambiar la prioridad", () => {
+    render(<MyDayView planned={page([task(4, "Llamar a Fit")])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite={false} onUpdate={vi.fn()} />)
+    expect(screen.queryByRole("button", { name: /Mover Llamar a Fit/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Prioridad de/ })).not.toBeInTheDocument()
+    expect(screen.getByText("Media")).toBeInTheDocument()
+  })
+
+  it("ofrece el asa para arrastrar sólo con escritura y con a dónde mandarlo", () => {
+    const props = { carryover: page([]), unplanned: page([task(5, "Sin día")]), completed: page([]), retired: page([]), onLoadMore: vi.fn(), onStatusChange: vi.fn(), onOpenEdit: vi.fn(), onReviewCarryover: vi.fn() }
+    const { rerender } = render(<MyDayView {...props} planned={page([task(4, "Hoy")])} canWrite onMove={vi.fn()} />)
+    expect(screen.getByRole("button", { name: "Mover Hoy" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Mover Sin día" })).toBeInTheDocument()
+
+    rerender(<MyDayView {...props} planned={page([task(4, "Hoy")])} canWrite={false} onMove={vi.fn()} />)
+    expect(screen.queryByRole("button", { name: "Mover Hoy" })).not.toBeInTheDocument()
   })
 })

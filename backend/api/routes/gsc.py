@@ -19,7 +19,8 @@ from backend.config import settings
 from backend.db import database
 from backend.db.database import get_db
 from backend.db.models import (
-    Client, ClientStatus, Ga4Daily, Ga4LeadDaily, Ga4PropertySync, GscConnection, GscDaily, GscDetailSync,
+    Client, ClientStatus, DigestSeoDetail, Ga4Daily, Ga4LeadDaily, Ga4PropertySync, GscConnection, GscDaily,
+    GscDetailSync,
     GscPageDaily, GscQueryDaily, GscQueryMonthly, GscSiteSync, User,
 )
 from backend.services import gsc_detail_service, gsc_service
@@ -206,6 +207,8 @@ async def _purge_connection_data(db: AsyncSession, connection_id: int) -> dict:
         # Y su historial mensual por consulta (hasta 16 meses).
         await db.execute(delete(GscQueryMonthly).where(GscQueryMonthly.site_url.in_(sites)))
         await db.execute(delete(GscDetailSync).where(GscDetailSync.site_url.in_(sites)))
+        # Y la foto de ese detalle guardada con cada resumen mensual.
+        await db.execute(delete(DigestSeoDetail).where(DigestSeoDetail.site_url.in_(sites)))
     if properties:
         ga4_rows = (await db.execute(delete(Ga4Daily).where(Ga4Daily.property_id.in_(properties)))).rowcount or 0
         # Y sus leads por landing (también los importados de The Engine).

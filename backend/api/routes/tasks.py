@@ -4,7 +4,7 @@ from datetime import date as date_type, datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import and_, select, func, or_
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +42,7 @@ from backend.services.domain_writes import (
 )
 from backend.services.recurrence import summarize_recurrence
 from backend.services.task_notifications import notify_task_comment, task_link
+from backend.services.task_rank import ranks_for_move
 from backend.services.task_draft import (
     TaskDraftError, build_draft_prompt, collect_draft_context, generate_task_draft,
 )
@@ -114,6 +115,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         depends_on=task.depends_on,
         created_by=task.created_by,
         scheduled_date=task.scheduled_date,
+        sort_rank=task.sort_rank,
         waiting_for=task.waiting_for,
         follow_up_date=task.follow_up_date,
         created_at=task.created_at,
@@ -186,6 +188,8 @@ async def list_tasks(
     due_date_to: Optional[str] = Query(None),
     scheduled_date_from: Optional[str] = Query(None),
     scheduled_date_to: Optional[str] = Query(None),
+    unscheduled: Optional[bool] = Query(None),
+    completed_from: Optional[str] = Query(None, description="Completadas desde este día civil (YYYY-MM-DD)"),
     is_recurring: Optional[bool] = Query(None),
     timer_eligible: bool = Query(False),
     timer_scope: Literal["assigned", "assigned_or_created"] = Query("assigned"),
@@ -294,6 +298,15 @@ async def list_tasks(
             base = base.where(Task.scheduled_date <= d)
         except ValueError:
             raise HTTPException(status_code=422, detail="scheduled_date_to must be YYYY-MM-DD")
+    if unscheduled:
+        base = base.where(Task.scheduled_date.is_(None))
+    if completed_from is not None:
+        from datetime import date as date_type
+        try:
+            d = date_type.fromisoformat(completed_from)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="completed_from must be YYYY-MM-DD")
+        base = base.where(Task.completed_at >= civil_day_utc_bounds(d)[0])
 
     # Recurring filter: by default exclude templates from normal views
     if is_recurring is True:
@@ -412,7 +425,7 @@ async def list_task_agenda(
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
     query = (
         base.options(*_TASK_RESPONSE_OPTIONS)
-        .order_by(Task.priority.asc(), Task.due_date.asc().nullslast(), Task.created_at.asc(), Task.id.asc())
+        .order_by(Task.sort_rank.collate("C").asc().nullslast(), Task.priority.asc(), Task.due_date.asc().nullslast(), Task.created_at.asc(), Task.id.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -605,6 +618,64 @@ async def update_task(
     return _task_to_response(task)
 
 
+class TaskMoveBody(BaseModel):
+    """Arrastrar una tarea: la lista donde queda, en el orden que se ve, y lo
+    que cambia con ella (columna del tablero o día de Mi agenda)."""
+    model_config = {"extra": "forbid"}
+    ordered_ids: list[int] = Field(..., min_length=1, max_length=500)
+    status: Optional[TaskStatus] = None
+    scheduled_date: Optional[date_type] = None
+
+
+class TaskMoveResponse(BaseModel):
+    task: TaskResponse
+    # Rangos que han cambiado (el de la tarea y, si hubo que repartir, los demás).
+    ranks: dict[int, str]
+
+
+@router.post("/{task_id}/move", response_model=TaskMoveResponse)
+async def move_task(
+    task_id: int,
+    body: TaskMoveBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("tasks", write=True)),
+):
+    """Orden manual (``sort_rank``) y, si se pide, estado o día, en una sola
+    transacción y una sola entrada del Deshacer. El estado y el día pasan por
+    las mismas validaciones que el ``PUT`` (revisión, espera, retiradas)."""
+    ids = body.ordered_ids
+    if task_id not in ids or len(set(ids)) != len(ids):
+        raise HTTPException(422, "La lista debe incluir la tarea una sola vez")
+    changes = body.model_dump(exclude_unset=True, include={"status", "scheduled_date"})
+    if changes.get("status") == TaskStatus.waiting:
+        raise HTTPException(422, "Pon la tarea en espera desde su ficha indicando respuesta, responsable y fecha de revisión")
+    # Mismo orden de bloqueo que el cambio en bloque (por id).
+    rows = (await db.execute(
+        select(Task.id, Task.sort_rank).where(Task.id.in_(ids)).order_by(Task.id).with_for_update()
+    )).all()
+    if len(rows) != len(ids):
+        raise HTTPException(409, "La lista ha cambiado; recarga y vuelve a intentarlo")
+    ranks = ranks_for_move(ids, task_id, {row.id: row.sort_rank for row in rows})
+    if task_id in ranks:
+        changes["sort_rank"] = ranks[task_id]
+    task = await lock_task_patch(db, task_id, changes)
+    if changes:
+        task = await update_task_write(db, task, changes, actor=current_user)
+    others = [other for other in ranks if other != task_id]
+    if others:
+        # ORM (no UPDATE masivo) para que el reparto entre en el mismo Deshacer.
+        for other in (await db.execute(
+            select(Task).where(Task.id.in_(others)).options(noload("*"))
+            .execution_options(populate_existing=True)
+        )).scalars():
+            other.sort_rank = ranks[other.id]
+    await db.commit()
+    loaded = await _load_task_for_response(db, task_id)
+    if loaded is None:
+        raise HTTPException(404, "Task not found after move")
+    return TaskMoveResponse(task=_task_to_response(loaded), ranks=ranks)
+
+
 @router.post("/{task_id}/carryover-decision", response_model=TaskResponse)
 async def decide_carryover(
     task_id: int,
@@ -691,10 +762,19 @@ async def bulk_update_tasks(
 ):
     if not body.ids or len(body.ids) > 100:
         raise HTTPException(400, "Provide 1-100 task IDs")
-    allowed = {"status", "priority", "assigned_to", "category_id", "due_date", "client_id", "project_id", "phase_id"}
-    updates = {k: v for k, v in body.updates.items() if k in allowed}
-    if not updates:
+    allowed = {
+        "status", "priority", "assigned_to", "category_id", "due_date", "scheduled_date",
+        "client_id", "project_id", "phase_id",
+    }
+    raw_updates = {k: v for k, v in body.updates.items() if k in allowed}
+    if not raw_updates:
         raise HTTPException(400, "No valid fields to update")
+    # Mismos tipos que el PUT de una tarea: las fechas llegan como texto y la
+    # columna las quiere como fecha.
+    try:
+        updates = TaskUpdate.model_validate(raw_updates).model_dump(exclude_unset=True)
+    except ValidationError:
+        raise HTTPException(422, "Valores no válidos para actualizar las tareas")
     if updates.get("status") == TaskStatus.waiting.value:
         raise HTTPException(422, "Pon cada tarea en espera desde su ficha indicando respuesta, responsable y fecha de revisión")
 

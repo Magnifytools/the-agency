@@ -221,6 +221,37 @@ admin_users, admin_settings
   `informe-<cliente>-<AAAA-MM>.pdf`, `Cache-Control: no-store`.
 - Se genera en `asyncio.to_thread` con 20 s de techo (504 si se agota).
 
+## Informe mensual: foto del mes de Search Console
+- **Qué es**: bajo los totales del bloque SEO de un resumen de MES NATURAL, el
+  top 5 de búsquedas y de páginas por clics (con su cambio frente al mes
+  anterior), hasta 5 oportunidades (sin marca, posición media 8–20, ≥ 30
+  impresiones, por impresiones) y clics con marca / sin marca / sin detallar
+  (si el cliente tiene `brand_terms`). Más el interanual completo (las cuatro
+  cifras de Search Console; visitas, conversiones e IA de GA4).
+- **Dónde vive**: tabla `digest_seo_details` (PK `digest_id`, en cascada con el
+  resumen; migración `digest_seo_detail_v1`), NO en `raw_context`: `raw_context`
+  llega entero al generador (también al regenerar por tono). Servicio
+  `services/digest_seo_detail.py` (`build` puro + `for_digest` + `seo_for_render`,
+  que devuelve el bloque SEO con `detail`); lo pinta `digest_seo.py` (texto y
+  HTML) y `digest_pdf.py`; en el editor, `DigestSeoPanel`.
+- **Cuándo se calcula**: al pintar (GET del resumen, vista previa, PDF) mientras
+  la versión NO ha salido de la app (`_has_left_the_app`): se recalcula y se
+  guarda si cambió, así un término de marca nuevo se ve al momento. Cuando ya
+  salió se lee la guardada (lo que se envió); un resumen entregado antes de esto
+  no gana el bloque. La página pública y su PDF sólo leen (`may_compute=False`).
+- **Ventana**: el mes del resumen y el anterior, desde `gsc_query_daily` /
+  `gsc_page_daily` con `seo_control.range_aggregates` (sin caché: un febrero
+  chocaría con la clave de la ventana de 28 días). Sin el detalle del mes
+  entero (`coverage_start`) o sin datos finales hasta su último día → sin foto;
+  sin el mes anterior entero → sin columna de cambio.
+- **Retención**: como el detalle. `gsc_detail_service.prune` borra las de webs
+  sin cliente activo y desconectar con `purge_data` también. Fuera del Deshacer.
+- **IA**: `DigestSeoDetail`/`digest_seo_detail` están en `_FORBIDDEN`.
+  `client_share_links.py` salió de `_ai_paths` porque no llama a la IA (si un
+  día importa `ai_utils`, vuelve a entrar solo).
+- Lo guardan `tests/test_digest_seo_detail.py` y
+  `tests/integration/test_digest_seo_detail_integration.py`.
+
 ## The Engine (congelado)
 - **Congelado el 21 oct 2026** (decisión de David): sigue encendido, pero no se
   trabaja en él y **nada de The Agency depende de él**. Ni el semáforo, ni el
@@ -293,6 +324,58 @@ admin_users, admin_settings
   `prioridad`, `fecha`, `desde`, `hasta`, `q`); la búsqueda se aplica a los
   300 ms. "Revisión rápida" (antes QA) sin emojis. El título de la fila abre
   la tarea. Panel: categoría, fase, dependencia y recurrencia en "Más opciones".
+- **Vistas de Tareas**: Lista · Tablero · Calendario · Semana · Recurrentes. El
+  menú y G+A abren `view=tareas` = la última vista usada (`localStorage`, sólo
+  comodidad; sin él, Lista). Mes (`mes=AAAA-MM`) y semana (`semana=` su lunes)
+  en la URL. Sólo la Lista pagina: Tablero, Calendario y Semana traen hasta 500
+  y avisan si hay más. El Tablero añade "Hecho" (cerradas en los últimos 7 días,
+  `completed_from`, plegada) y la Semana trae aparte "Sin planificar"
+  (`unscheduled`, 100 más recientes). Arrastre con `@dnd-kit` (ratón y táctil)
+  en las tres: estado, fecha límite y día planificado, optimista con vuelta
+  atrás. Soltar en "En espera" abre el panel; "Hecho" pasa a revisión si el
+  proyecto la exige (mismas reglas que el select de estado).
+- **Edición en línea**: en la Lista se cambian sin abrir la tarea prioridad,
+  responsable (sólo personas activas), estimación, planificada, fecha límite y
+  título (lápiz al lado; Enter guarda, Escape no). En Mi agenda, prioridad y
+  "Mover a…" (Hoy, Mañana, El lunes, otro día, quitar). Sin escritura en `tasks`
+  se ven los valores, sin botón. Piezas: `components/ui/popover.tsx`
+  (`@floating-ui/react`: posición, Escape/clic fuera, foco) e `inline-edit.tsx`
+  (`InlineSelect`, `InlineDate`, `InlineMinutes`, `InlineTextInput`); las de
+  tarea en `components/tasks/task-inline-fields.tsx`. Todas guardan con
+  `hooks/use-task-quick-update.ts`: `PUT` parcial optimista en TODAS las listas
+  en caché (lista, agenda infinita, ficha), vuelta atrás si falla y aviso con
+  "Deshacer" que deshace el último cambio de ESA tarea (no el último a secas).
+  Selección en bloque: "Planificar para…" (`scheduled_date` en
+  `PATCH /api/tasks/bulk/update`, que ahora valida con `TaskUpdate`: antes una
+  fecha en texto no se guardaba).
+- **Panel de tarea lateral** (`Dialog variant="side"`): a la derecha a toda
+  altura con la lista visible detrás (pantalla completa en móvil). En la Lista y
+  en Mi agenda pasa a la anterior/siguiente en el orden que se ve (botones y
+  ↑/↓ fuera de los campos; `agendaOrder` en `task-page-utils.ts`); con cambios
+  sin guardar pregunta antes. El título sólo coge el foco al crear.
+- **Orden manual** (`tasks.sort_rank`, migración `task_sort_rank_v1`; NULL = sin
+  orden manual): un único orden por tarea, el mismo en Mi agenda y en cada
+  columna del tablero (lo ordenado va primero; el resto, como antes). Índices
+  fraccionales en base 62 (`services/task_rank.py`, gemelo `lib/task-rank.ts`
+  con los mismos casos de prueba: el front predice al servidor). Al soltar se
+  conservan los rangos que ya están en orden (subsecuencia creciente más larga)
+  y sólo cambian la tarea movida y las que no tenían o rompían el orden. En SQL
+  se ordena con `COLLATE "C"` (la colación de la BD no compara por bytes).
+- **`POST /api/tasks/{id}/move`** (`ordered_ids` = la lista donde queda, en
+  orden, ≤ 500; opcional `status` y `scheduled_date`): rango, estado y día en una
+  transacción, con las validaciones del `PUT` (revisión, retiradas; "En espera"
+  no, 422) y UNA entrada del Deshacer (el reparto va por ORM). Escritura en
+  `tasks`: un miembro sin ella no reordena ni sus tareas (no se usa
+  `allow_assignee_schedule`). Front: `useTaskMove` (optimista con los rangos
+  predichos).
+- **Arrastrar en Mi agenda** (asa ⠿ de cada tarjeta; `components/tasks/agenda-dnd.tsx`):
+  ordenar Planificadas hoy, Arrastre y Sin planificar; llevar a Planificadas hoy
+  desde las otras dos (pone el día de hoy); mientras se arrastra, abajo, la tira
+  "Mañana · jue 29 · …" (5 laborables) planifica para ese día. Lo que tiene la
+  fecha límite vencida o está en espera no se planifica arrastrando
+  (`plannableFrom`): seguiría en Arrastre; se avisa de usar "Revisar". En el
+  tablero, la tarjeta entera se reordena dentro de su columna y entra en otra en
+  el sitio donde se suelta.
 - **Títulos de pestaña**: el layout pone el de la sección (`useSectionTitle`) y
   las fichas lo afinan con `usePageTitle` (cliente, proyecto, resumen).
 - **⌘K** (`search-palette.tsx` + `GET /api/search`): clientes, proyectos,
@@ -490,9 +573,11 @@ admin_users, admin_settings
   clasificar" = total − suma de consultas. (2) Las impresiones por página NO
   suman el total de la propiedad (una búsqueda que enseña dos páginas cuenta en
   las dos): el total sale siempre de `gsc_daily`.
-- **El detalle no va a la IA**: ni resúmenes, ni borradores, ni asesor, ni
-  enlace del cliente, ni MCP. Lo vigila `test_el_detalle_de_search_console_no_llega_a_la_ia`
-  (`tests/test_gsc_detail.py`). Si lo cambias, cambia antes la política.
+- **El detalle no va a la IA**: ni al generador de resúmenes, ni a borradores,
+  ni al asesor, ni al MCP. Sí sale, pintado con código, en el resumen mensual y
+  en el enlace del cliente (ver "Informe mensual: foto del mes"). Lo vigila
+  `test_el_detalle_de_search_console_no_llega_a_la_ia` (`tests/test_gsc_detail.py`).
+  Si lo cambias, cambia antes la política.
 - El PDF ya no es el de The Engine (congelado; el enlace se quitó el 21 oct
   2026): ver "PDF del resumen". Su `report-data` tampoco se usa: traga errores
   como ceros y no pondera la posición.
@@ -1127,6 +1212,26 @@ admin_users, admin_settings
   snapshot llevaría el secreto a `change_logs` y un undo podría resucitar una
   contraseña rotada). Lo guarda `test_accesos_quedan_fuera_del_journal`.
 - **Fuera del MCP**: ver sección MCP.
+- **Códigos 2FA (función de 1Password)**: cada acceso puede guardar la clave del
+  autenticador de la cuenta de fuera (`credentials.totp_encrypted`, migración
+  `credentials_totp_v1`; CHECK `v1:%` como la contraseña). Se acepta suelta
+  (base32) o como enlace `otpauth://totp` (dígitos 6–8, periodo 15–120 s, SHA1/256/512)
+  y se guarda normalizada (`services/totp.py`, RFC 6238 sin dependencias). Nunca
+  vuelve en claro: `POST /api/credentials/{id}/totp` da el código de ahora y el
+  siguiente (para no pedirlo otra vez al caducar), con el mismo límite que ver la
+  contraseña y una fila `totp` en el registro. El listado sólo dice `has_totp`.
+  En el formulario, la clave se puede leer de una captura del QR con el
+  `BarcodeDetector` del navegador (si no lo hay, no se ofrece). No es un 2FA para
+  entrar en The Agency (decisión de David, 27 oct 2026).
+- **Generador** (`lib/password-generator.ts`): en el navegador con
+  `crypto.getRandomValues` y sin sesgo; 16–32 caracteres, uno de cada clase, sin
+  caracteres que se confunden.
+- **Importar** (botón en `/credentials`, `POST /api/credentials/import`): el CSV de
+  1Password, Bitwarden o Chrome se lee en el navegador (`lib/credential-import.ts`);
+  sólo se envían las filas marcadas (≤ 500), con su clave 2FA si la traen. Todo o
+  nada: una fila mal y no se guarda ninguna (el 422 dice cuál). Salen sin marcar
+  las repetidas (mismo nombre y usuario), archivadas o sin contraseña. Cada acceso
+  queda a nombre de quien importa y su `create` dice "Importado de …".
 - **Límite de seguridad**: el cifrado protege la BD y sus copias, no el
   servidor. Quien tenga a la vez la BD y `VAULT_KEY` (Railway) descifra todo.
   Rotar `VAULT_KEY` deja ilegibles los accesos existentes (no hay re-cifrado).

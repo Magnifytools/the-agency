@@ -180,6 +180,7 @@ class TaskResponse(BaseModel):
     depends_on: Optional[int] = None
     created_by: Optional[int] = None
     scheduled_date: Optional[date] = None
+    sort_rank: Optional[str] = None
     waiting_for: Optional[str] = None
     follow_up_date: Optional[date] = None
     is_recurring: bool = False

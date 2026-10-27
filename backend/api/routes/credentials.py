@@ -14,6 +14,9 @@ from backend.db.database import get_db
 from backend.db.models import Client, Credential, CredentialAccessLog, User
 from backend.schemas.credential import (
     CredentialCreate,
+    CredentialImport,
+    CredentialImportResult,
+    CredentialTotpResponse,
     CredentialLogEntry,
     CredentialResponse,
     CredentialRevealRequest,
@@ -32,6 +35,7 @@ _REVEALS_PER_MINUTE = 30
 
 _FIELD_LABELS = {"name": "nombre", "url": "URL", "username": "usuario", "notes": "notas",
                  "client_id": "cliente", "secret": "contraseña"}
+_IMPORT_SOURCES = {"1password": "1Password", "bitwarden": "Bitwarden", "chrome": "Chrome", "csv": "un CSV"}
 
 
 async def _one(db: AsyncSession, user: User, credential: Credential) -> dict:
@@ -77,6 +81,7 @@ async def create_credential(
     credential = Credential(
         name=body.name, url=body.url, username=body.username, notes=body.notes,
         secret_encrypted=svc.encrypt_secret(body.secret.get_secret_value()),
+        totp_encrypted=svc.encrypt_totp(body.totp.get_secret_value() if body.totp else None),
         client_id=body.client_id, created_by=user.id, updated_by=user.id, created_at=now, updated_at=now,
     )
     db.add(credential)
@@ -85,6 +90,48 @@ async def create_credential(
     svc.log(db, credential, user, "create", svc.share_detail(added, []))
     await db.commit()
     return await _one(db, user, credential)
+
+
+@router.post("/import", response_model=CredentialImportResult, status_code=status.HTTP_201_CREATED)
+async def import_credentials(
+    body: CredentialImport,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_module(svc.MODULE, write=True)),
+):
+    """Alta en bloque desde un CSV de 1Password, Bitwarden o Chrome, ya leído en
+    el navegador. Todo o nada: una fila mal y no se guarda ninguna (el mensaje
+    dice cuál). Cada acceso queda a nombre de quien importa y con su "create"."""
+    targets = await svc.validate_share_targets(db, body.shared_user_ids)
+    client_ids = {item.client_id for item in body.items if item.client_id is not None}
+    if client_ids:
+        found = set(await db.scalars(select(Client.id).where(Client.id.in_(client_ids))))
+        if client_ids - found:
+            raise HTTPException(status_code=422, detail="Cliente no encontrado")
+    now = datetime.now(UTC)
+    detail = f"Importado de {_IMPORT_SOURCES[body.source]}"
+    # Primero se comprueban y cifran TODAS; sólo después se añade nada a la sesión.
+    encrypted = []
+    for index, item in enumerate(body.items, start=1):
+        try:
+            encrypted.append((svc.encrypt_secret(item.secret.get_secret_value()),
+                              svc.encrypt_totp(item.totp.get_secret_value() if item.totp else None)))
+        except HTTPException as exc:
+            raise HTTPException(status_code=422, detail=f"Fila {index} («{item.name}»): {exc.detail}") from None
+    created = [
+        Credential(
+            name=item.name, url=item.url, username=item.username, notes=item.notes,
+            secret_encrypted=secret, totp_encrypted=totp_value, client_id=item.client_id,
+            created_by=user.id, updated_by=user.id, created_at=now, updated_at=now,
+        )
+        for item, (secret, totp_value) in zip(body.items, encrypted)
+    ]
+    db.add_all(created)
+    await db.flush()
+    for credential in created:
+        added, _ = await svc.replace_shares(db, credential, targets)
+        svc.log(db, credential, user, "create", " · ".join(filter(None, [detail, svc.share_detail(added, [])])))
+    await db.commit()
+    return {"created": len(created)}
 
 
 @router.patch("/{credential_id}", response_model=CredentialResponse)
@@ -108,6 +155,14 @@ async def update_credential(
     if "secret" in sent and body.secret is not None:
         credential.secret_encrypted = svc.encrypt_secret(body.secret.get_secret_value())
         changed.append(_FIELD_LABELS["secret"])
+    if "totp" in sent:
+        new_totp = svc.encrypt_totp(body.totp.get_secret_value() if body.totp else None)
+        if new_totp is not None:
+            credential.totp_encrypted = new_totp
+            changed.append("código 2FA")
+        elif credential.totp_encrypted is not None:
+            credential.totp_encrypted = None
+            changed.append("código 2FA (quitado)")
     if changed:
         credential.updated_at = datetime.now(UTC)
         credential.updated_by = user.id
@@ -146,6 +201,22 @@ async def reveal_credential(
     secret = await svc.reveal_secret(db, user, credential, body.purpose if body else "reveal")
     response.headers.update(_NO_STORE)
     return {"secret": secret}
+
+
+@router.post("/{credential_id}/totp", response_model=CredentialTotpResponse)
+async def credential_totp(
+    credential_id: int,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_module(svc.MODULE)),
+):
+    """El código 2FA de ahora y el siguiente. Como ver la contraseña: quien lo
+    puede ver, con el mismo límite por minuto y su fila en el registro."""
+    credential_reveal_limiter.check(user.id, _REVEALS_PER_MINUTE, 60)
+    credential = await svc.get_visible(db, user, credential_id)
+    code = await svc.totp_code(db, user, credential)
+    response.headers.update(_NO_STORE)
+    return code
 
 
 @router.get("/{credential_id}/log", response_model=list[CredentialLogEntry])

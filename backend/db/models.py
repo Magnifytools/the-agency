@@ -662,6 +662,8 @@ class Task(TimestampMixin, Base):
     depends_on = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     scheduled_date = Column(Date, nullable=True)
+    # Orden manual (índice fraccional, services/task_rank.py); NULL = sin orden manual.
+    sort_rank = Column(String(64), nullable=True)
     # Fecha en que se marcó como "Avanzada". La barrida nocturna devuelve a
     # in_progress toda tarea advanced con advanced_at anterior a hoy, de modo
     # que un servidor caído a medianoche se recupera solo al arrancar.
@@ -2029,6 +2031,21 @@ class SeoAnnotation(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
+class DigestSeoDetail(Base):
+    """Foto del detalle de Search Console del mes de un resumen mensual: top de
+    consultas y páginas, oportunidades y marca. Se pinta con código en el email,
+    el PDF y el enlace del cliente; nunca va a la IA. Mientras el resumen no ha
+    salido de la app se recalcula al pintarlo; después es lo que se envió.
+    Fuera del Deshacer (dato de máquina) y con la retención del detalle."""
+    __tablename__ = "digest_seo_details"
+    __table_args__ = (Index("ix_digest_seo_details_site_url", "site_url"),)
+
+    digest_id = Column(Integer, ForeignKey("weekly_digests.id", ondelete="CASCADE"), primary_key=True)
+    site_url = Column(String(255), nullable=False)
+    payload = Column(JSONB, nullable=False)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class GscPageDaily(Base):
     """Cifras diarias finales por página de una propiedad (sólo los últimos 120 días).
 
@@ -2105,6 +2122,7 @@ class Credential(Base):
     __tablename__ = "credentials"
     __table_args__ = (
         CheckConstraint("secret_encrypted LIKE 'v1:%'", name="ck_credentials_secret_encrypted"),
+        CheckConstraint("totp_encrypted IS NULL OR totp_encrypted LIKE 'v1:%'", name="ck_credentials_totp_encrypted"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -2112,6 +2130,9 @@ class Credential(Base):
     url = Column(String(500), nullable=True)
     username = Column(String(255), nullable=True)
     secret_encrypted = Column(Text, nullable=False)
+    # Clave del autenticador (2FA) como enlace otpauth:// normalizado, cifrada
+    # igual que la contraseña. Sólo sale convertida en código (`/totp`).
+    totp_encrypted = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     client_id = Column(Integer, ForeignKey("clients.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -2134,7 +2155,7 @@ class CredentialAccessLog(Base):
     __tablename__ = "credential_access_log"
     __table_args__ = (
         CheckConstraint(
-            "action IN ('reveal','copy','create','update','share','delete')",
+            "action IN ('reveal','copy','create','update','share','delete','totp')",
             name="ck_credential_access_log_action",
         ),
     )

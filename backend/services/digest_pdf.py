@@ -328,25 +328,114 @@ def _metrics_block(pdf: FPDF, *, title: str, headline: str, month_label: str,
         pdf.set_font(_FONT, "", 9.5)
         pdf.set_text_color(*_GRAY)
         pdf.multi_cell(0, 4.8, clean_text(extra), align="L", new_x="LMARGIN", new_y="NEXT")
+    if source:
+        _source_line(pdf, source)
+
+
+def _source_line(pdf: FPDF, source: str) -> None:
     pdf.ln(1.5)
     pdf.set_font(_FONT, "", 8.5)
     pdf.set_text_color(*_LIGHT_GRAY)
     pdf.cell(0, 4.5, source, new_x="LMARGIN", new_y="NEXT")
 
 
+def _fit(pdf: FPDF, text: str, width: float) -> str:
+    """Recorta con "..." lo que no cabe en una celda (búsquedas y rutas largas)."""
+    text = clean_text(text)
+    limit = width - 2 * pdf.c_margin
+    if pdf.get_string_width(text) <= limit:
+        return text
+    while text and pdf.get_string_width(text + "...") > limit:
+        text = text[:-1]
+    return text + "..."
+
+
+def _detail_table(pdf: FPDF, *, title: str, note: str | None, head: list[str],
+                  rows: list[list[tuple[str, int | None]]]) -> None:
+    """Tabla del detalle del mes: etiqueta ancha a la izquierda, cifras a la
+    derecha. Cada celda es (texto, signo); un signo no None pinta el cambio."""
+    row_h = 6.5
+    _ensure_space(pdf, 16 + row_h * len(rows))
+    pdf.ln(3)
+    pdf.set_font(_FONT, "B", 10.5)
+    pdf.set_text_color(*_DARK)
+    pdf.multi_cell(0, 5.5, clean_text(title), align="L", new_x="LMARGIN", new_y="NEXT")
+    if note:
+        pdf.set_font(_FONT, "", 8.5)
+        pdf.set_text_color(*_GRAY)
+        pdf.multi_cell(0, 4.2, clean_text(note), align="L", new_x="LMARGIN", new_y="NEXT")
+    num_w = 24.0
+    label_w = pdf.epw - num_w * (len(head) - 1)
+    widths = [label_w] + [num_w] * (len(head) - 1)
+    pdf.set_font(_FONT, "", 8)
+    pdf.set_text_color(*_GRAY)
+    for i, (text, width) in enumerate(zip(head, widths)):
+        pdf.cell(width, 5.5, _fit(pdf, text, width), align="L" if i == 0 else "R")
+    pdf.ln(5.5)
+    for row in rows:
+        y = pdf.get_y()
+        pdf.set_draw_color(*_BORDER)
+        pdf.set_line_width(0.25)
+        pdf.line(_MARGIN_X, y, pdf.w - _MARGIN_X, y)
+        x = _MARGIN_X
+        for i, ((text, sign), width) in enumerate(zip(row, widths)):
+            if sign is not None:
+                _change_cell(pdf, x, y, width, row_h, text, sign)
+            else:
+                pdf.set_xy(x, y)
+                pdf.set_font(_FONT, "B" if i == 1 else "", 9.5)
+                pdf.set_text_color(*(_DARK if i < 2 else _GRAY))
+                pdf.cell(width, row_h, _fit(pdf, text, width), align="L" if i == 0 else "R")
+            x += width
+        pdf.set_xy(_MARGIN_X, y + row_h)
+
+
+def _seo_detail(pdf: FPDF, detail: dict) -> None:
+    compare = bool(detail.get("previous"))
+    change_head = f"Frente a {digest_seo._month_of(detail['previous'])}" if compare else None
+    for title, rows in ((digest_seo.QUERIES_TITLE, digest_seo.detail_rows(detail.get("queries") or [])),
+                        (digest_seo.PAGES_TITLE,
+                         digest_seo.detail_rows(detail.get("pages") or [], label_key="label"))):
+        if rows:
+            _detail_table(
+                pdf, title=title, note=None,
+                head=["", "Clics", "Posición"] + ([change_head] if change_head else []),
+                rows=[[(r["label"], None), (r["clicks"], None), (r["position"], None)]
+                      + ([(r["change"], r["sign"])] if change_head else []) for r in rows])
+    opportunities = digest_seo.opportunity_rows(detail)
+    if opportunities:
+        _detail_table(pdf, title=digest_seo.OPPORTUNITIES_TITLE, note=digest_seo.OPPORTUNITIES_NOTE,
+                      head=["", "Impresiones", "Posición"],
+                      rows=[[(r["label"], None), (r["impressions"], None), (r["position"], None)]
+                            for r in opportunities])
+    brand = digest_seo.brand_rows(detail)
+    if brand:
+        _detail_table(pdf, title=digest_seo.BRAND_TITLE, note=digest_seo.BRAND_NOTE,
+                      head=["", "Clics"] + ([change_head] if change_head else []),
+                      rows=[[(r["label"], None), (r["clicks"], None)]
+                            + ([(r["change"], r["sign"])] if change_head else []) for r in brand])
+
+
 def _seo(pdf: FPDF, seo: dict) -> None:
     previous = digest_seo._month_of(seo["previous"]).capitalize() if seo.get("previous") else None
+    detail = digest_seo.detail_of(seo)
+    source = "Fuente: Google Search Console."
+    # Con la foto del mes, la fuente va al final del bloque, como en el email.
     _metrics_block(pdf, title=digest_seo.title(seo), headline=digest_seo.headline(seo),
                    month_label=digest_seo._month_of(seo["month"]).capitalize(), previous_label=previous,
                    rows=digest_seo.rows(seo), extra=digest_seo.year_ago_line(seo),
-                   source="Fuente: Google Search Console.")
+                   source="" if detail else source)
+    if detail:
+        _seo_detail(pdf, detail)
+        _source_line(pdf, source)
 
 
 def _ga4(pdf: FPDF, ga4: dict) -> None:
     previous = digest_seo._month_of(ga4["previous"]).capitalize() if ga4.get("previous") else None
     _metrics_block(pdf, title=digest_ga4.title(ga4), headline=digest_ga4.headline(ga4),
                    month_label=digest_seo._month_of(ga4["month"]).capitalize(), previous_label=previous,
-                   rows=digest_ga4.rows(ga4), extra=None, source="Fuente: Google Analytics 4.")
+                   rows=digest_ga4.rows(ga4), extra=digest_ga4.year_ago_line(ga4),
+                   source="Fuente: Google Analytics 4.")
 
 
 def _closing(pdf: FPDF, closing: str) -> None:
@@ -431,8 +520,11 @@ def pdf_filename(client_name: str | None, period_start: date | None, period_end:
 PDF_TIMEOUT_SECONDS = 20
 
 
-async def digest_pdf(digest: WeeklyDigest, client_name: str) -> tuple[bytes, str]:
-    """(bytes, nombre de fichero) del resumen guardado. ValueError si no tiene contenido válido."""
+async def digest_pdf(digest: WeeklyDigest, client_name: str, *, seo: dict | None = None) -> tuple[bytes, str]:
+    """(bytes, nombre de fichero) del resumen guardado. ValueError si no tiene contenido válido.
+
+    `seo`: el bloque ya completado con la foto del mes (`digest_seo_detail.seo_for_render`);
+    sin él, sólo los totales guardados en `raw_context`."""
     if not digest.content:
         raise ValueError("El resumen no tiene contenido")
     content = DigestContent(**digest.content)
@@ -441,7 +533,7 @@ async def digest_pdf(digest: WeeklyDigest, client_name: str) -> tuple[bytes, str
         asyncio.to_thread(
             render_pdf, content, client_name=client_name, tone=digest.tone,
             period_start=digest.period_start, period_end=digest.period_end,
-            seo=raw.get("seo"), ga4=raw.get("ga4"),
+            seo=seo if seo is not None else raw.get("seo"), ga4=raw.get("ga4"),
         ),
         timeout=PDF_TIMEOUT_SECONDS,
     )

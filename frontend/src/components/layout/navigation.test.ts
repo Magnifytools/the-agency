@@ -16,7 +16,7 @@ describe("agency areas and permission boundaries", () => {
     expect(areas.map((area) => area.id)).toEqual(["today", "work", "summaries", "settings"])
     expect(areas[0].links).toEqual([{ to: "/incidents", label: "Alertas" }])
     expect(areas.find(area => area.id === "work")?.links[0].to).toBe("/projects")
-    expect(areas.flatMap((area) => area.links).some((link) => ["/users", "/clients", "/tasks?view=all", "/digests"].includes(link.to))).toBe(false)
+    expect(areas.flatMap((area) => area.links).some((link) => ["/users", "/clients", "/tasks?view=tareas", "/digests"].includes(link.to))).toBe(false)
   })
   it("shows website availability under Clientes only with the web module", () => {
     const withWeb = navigationFor((module) => module === "web", false)
@@ -33,7 +33,7 @@ describe("agency areas and permission boundaries", () => {
     expect(activeArea("/tasks", "?view=all")).toBe("work")
     expect(activeArea("/tasks", "?qaFilter=overdue")).toBe("work")
     expect(activeAreaLink("/tasks?view=my_day", "/tasks", "?view=weekly")).toBe(false)
-    expect(activeAreaLink("/tasks?view=all", "/tasks", "?view=weekly")).toBe(true)
+    expect(activeAreaLink("/tasks?view=tareas", "/tasks", "?view=weekly")).toBe(true)
     expect(activeArea("/projects/17", "")).toBe("work")
     expect(activeArea("/digests/19/edit", "")).toBe("summaries")
     expect(activeArea("/users", "")).toBe("settings")

@@ -59,6 +59,7 @@ import type {
   ClientSummary,
   Task,
   TaskCreate,
+  TaskStatus,
   RecurrenceSummary,
   TaskCategory,
   ChecklistItem,
@@ -358,7 +359,7 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; unscheduled?: boolean; completed_from?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
   agenda: (params: { date: string; section: TaskAgendaSection; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks/agenda", { params }).then((r) => r.data),
@@ -380,6 +381,9 @@ export const tasksApi = {
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
   update: (id: number, data: Partial<TaskCreate>) =>
     api.put<Task>(`/tasks/${id}`, data).then((r) => r.data),
+  /** Arrastrar: la lista donde queda (en orden) y, si cambia, estado o día. */
+  move: (id: number, data: { ordered_ids: number[]; status?: TaskStatus; scheduled_date?: string | null }) =>
+    api.post<{ task: Task; ranks: Record<string, string> }>(`/tasks/${id}/move`, data).then((r) => r.data),
   carryoverDecision: (id: number, data: {
     action: "reschedule" | "wait" | "complete" | "retire"
     expected_updated_at: string

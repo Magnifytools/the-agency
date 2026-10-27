@@ -45,4 +45,40 @@ describe("DigestSeoPanel", () => {
     expect(screen.getByRole("status")).toHaveTextContent("28 de septiembre de 2026")
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
   })
+
+  it("shows the full year-on-year line", () => {
+    show({ ...ok, year_ago: { ...ok.month, start: "2025-09-01", end: "2025-09-30" }, vs_year_ago: { clicks_pct: 75, impressions_pct: null, ctr_delta: 0.51, position_delta: -0.4 } })
+
+    const line = screen.getByText(/Respecto a septiembre de 2025/)
+    expect(line).toHaveTextContent("clics +75,0 %, CTR +0,51 p. p., posición media ▼ 0,4.")
+    expect(line).not.toHaveTextContent("impresiones")
+  })
+
+  it("shows the month's snapshot: top searches and pages, opportunities and brand", () => {
+    show({
+      ...ok,
+      detail: {
+        status: "ok",
+        site_url: "https://www.ejemplo.com/",
+        month: { start: "2026-09-01", end: "2026-09-30" },
+        previous: { start: "2026-08-01", end: "2026-08-31" },
+        queries: [
+          { key: "zapatillas running", clicks: 300, impressions: 9000, position: 4, clicks_pct: 50, position_delta: 1, is_new: false },
+          { key: "zapatillas trail", clicks: 40, impressions: 5000, position: 9.5, clicks_pct: null, position_delta: null, is_new: true },
+        ],
+        pages: [{ key: "https://www.ejemplo.com/running/", label: "/running/", clicks: 320, impressions: 9500, position: 4.2, clicks_pct: 52.4, position_delta: 0.9, is_new: false }],
+        opportunities: [{ key: "zapatillas trail", clicks: 40, impressions: 5000, position: 9.5 }],
+        brand: { brand: 252, non_brand: 346, unclassified: 102, previous: { brand: 260, non_brand: 210, unclassified: 50 }, non_brand_pct: 64.8, brand_pct: -3.1 },
+      },
+    })
+
+    expect(screen.getByText("Búsquedas que más visitas trajeron")).toBeInTheDocument()
+    expect(screen.getByText("zapatillas running")).toBeInTheDocument()
+    expect(screen.getByText("nueva")).toBeInTheDocument()
+    expect(screen.getByText("/running/")).toHaveAttribute("title", "https://www.ejemplo.com/running/")
+    expect(screen.getAllByText("Frente a agosto")).toHaveLength(2)
+    expect(screen.getByText(/posición 9,5 · 5.000 impresiones/)).toBeInTheDocument()
+    expect(screen.getByText("Sin detallar por Google")).toBeInTheDocument()
+    expect(screen.getByText("+64,8 %")).toBeInTheDocument()
+  })
 })

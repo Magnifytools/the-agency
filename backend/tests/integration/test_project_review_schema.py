@@ -63,9 +63,9 @@ async def test_upgrade_is_opt_in_preserves_business_values_and_ledger(engine):
         )) == project
         assert await conn.scalar(text("SELECT hours_carryover FROM projects WHERE id=1")) is False
         assert await conn.scalar(text("SELECT requires_task_review FROM projects WHERE id=1")) is False
-        # Later additive steps (task procedure) add empty columns only.
+        # Later additive steps (task procedure, sort_rank) add empty columns only.
         assert await conn.scalar(text(
-            "SELECT to_jsonb(t)-'procedure_text'-'procedure_url' FROM tasks t WHERE id=1"
+            "SELECT to_jsonb(t)-'procedure_text'-'procedure_url'-'sort_rank' FROM tasks t WHERE id=1"
         )) == task
         after = (await conn.execute(text("SELECT * FROM agency_schema_versions ORDER BY version"))).all()
         assert set(ledger) <= set(after)

@@ -96,6 +96,7 @@ class TestTaskToResponse:
         mock_task.depends_on = None
         mock_task.created_by = None
         mock_task.scheduled_date = None
+        mock_task.sort_rank = None
         mock_task.waiting_for = None
         mock_task.follow_up_date = None
         mock_task.retired_at = None
@@ -154,6 +155,7 @@ class TestTaskToResponse:
         mock_task.depends_on = 6
         mock_task.created_by = 7
         mock_task.scheduled_date = None
+        mock_task.sort_rank = None
         mock_task.waiting_for = None
         mock_task.follow_up_date = None
         mock_task.retired_at = None
