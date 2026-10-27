@@ -38,6 +38,7 @@ import { ClientLifecycleButton, FormerClientNotice } from "@/components/clients/
 import { ClientOverview } from "@/components/clients/client-overview"
 import { ClientCredentialsTab } from "@/components/credentials/client-credentials-tab"
 import { WebTab } from "@/components/web/web-tab"
+import { ScopeRequestsTab } from "@/components/clients/scope-requests-tab"
 import { InvoiceStatusBadge } from "@/components/finance/invoice-status-badge"
 
 function formatMinutes(m: number): string {
@@ -86,7 +87,7 @@ export default function ClientDetailPage() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
-  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "control_seo", "seo", "ajustes", "facturas", "accesos", "web"] as const
+  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "control_seo", "seo", "ajustes", "facturas", "accesos", "web", "peticiones"] as const
   type Tab = (typeof validTabs)[number]
 
   // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
@@ -323,6 +324,7 @@ export default function ClientDetailPage() {
               ...(isTabVisible("tareas") ? (["tareas"] as TabKey[]) : []),
               ...(isTabVisible("proyectos") ? (["proyectos"] as TabKey[]) : []),
               ...(canReadTime ? (["tiempo"] as TabKey[]) : []),
+              "peticiones",
             ],
           },
           {
@@ -372,6 +374,7 @@ export default function ClientDetailPage() {
           tareas: "Tareas",
           proyectos: "Proyectos",
           tiempo: "Tiempo",
+          peticiones: "Peticiones extra",
           resumenes: "Resúmenes",
           comunicaciones: "Comunicaciones",
           control_seo: "Control SEO",
@@ -704,6 +707,8 @@ export default function ClientDetailPage() {
       {activeTab === "seo" && client.engine_project_id && <EngineSeoTab client={client} />}
 
       {/* Tab: Web (disponibilidad) */}
+      {activeTab === "peticiones" && <ScopeRequestsTab clientId={clientId} />}
+
       {activeTab === "web" && <WebTab clientId={clientId} website={client.website ?? null} />}
 
       {/* Tab: Ajustes */}

@@ -919,6 +919,30 @@ admin_users, admin_settings
 - Nada sale de la app (ni Discord ni email). Fuera del Deshacer. En el MCP sólo
   lectura (`list_suggestions`, sin imágenes).
 
+## Peticiones extra (fuera de alcance)
+- Pestaña "Peticiones extra" de la ficha (área Trabajo, `?tab=peticiones`,
+  `components/clients/scope-requests-tab.tsx`): lo que el cliente pide de más
+  (llamada, Slack, email) con título, detalle, coste estimado en minutos,
+  proyecto opcional, fecha de la petición y decisión `pending` | `absorb` (la
+  asumimos) | `bill` (a facturar) | `swap` (a cambio de otra cosa, con nota).
+  Quién y cuándo decidió se apunta solo; volver a pendiente lo borra (CHECK).
+- Tabla `client_scope_requests` (migración `client_scope_requests_v1`, en
+  cascada con el cliente). API `GET/POST /api/clients/{id}/scope-requests`
+  (`?month=AAAA-MM`: totales del mes por `requested_on` + lo pendiente de meses
+  anteriores), `PATCH`/`DELETE /{request_id}`; servicio `services/scope_requests.py`.
+- **Permisos**: leer = lectura de `clients`; escribir = escritura de `clients`
+  (decisión comercial sobre el cliente que existe sin proyecto; `projects` no
+  cubre una petición sin proyecto). Vincular proyecto pide leer `projects` y que
+  sea de ese cliente; sin esa lectura no se ve el proyecto en la respuesta.
+- **Desde Por aclarar**: "Petición extra" en la nota →
+  `POST /api/inbox/{id}/scope-request` (mismas reglas; título = primera línea,
+  detalle = la nota entera si tenía más líneas; `resolved_as="scope_request"`,
+  reintento idempotente).
+- **Entra en el Deshacer** (`client_scope_request`, hija del cliente, módulo
+  `clients`): la escribe una persona a mano y borrarla por error es justo lo que
+  cubre el Deshacer; no guarda secretos ni es de finanzas.
+- Fuera de la IA, del MCP y de los resúmenes del cliente (es interno).
+
 ## Accesos (contraseñas compartidas)
 
 - **Qué es**: `/credentials` (Ajustes → Accesos) y pestaña Accesos de la ficha

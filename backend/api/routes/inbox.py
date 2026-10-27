@@ -19,12 +19,14 @@ from backend.api.utils.db_helpers import safe_refresh
 from backend.schemas.inbox import (
     InboxNoteCreate, InboxNoteUpdate, InboxNoteResponse, ConvertToTaskBody,
 )
+from backend.schemas.scope_request import InboxScopeRequestBody
 from backend.core.rate_limiter import ai_limiter
 from backend.services.task_scope import validate_task_scope
 from backend.services.domain_writes import create_task as create_task_write
 from backend.services.file_uploads import stored_file_response_args
 from backend.services.inbox_processing import can_read as _can_read
 from backend.services.app_suggestions import APP_SUGGESTION, record_app_suggestion
+from backend.services.scope_requests import create_scope_request
 from backend.services.temporal import as_utc_instant, business_today
 
 logger = logging.getLogger(__name__)
@@ -356,6 +358,7 @@ async def convert_to_task(
                 return {"ok": True, "task_id": existing_task.id, "note": _to_response(note, user).model_dump()}
         raise HTTPException(status_code=409, detail=(
             "Esta nota ya se envió como sugerencia para la app" if note.resolved_as == APP_SUGGESTION
+            else "Esta nota ya se apuntó como petición extra" if note.resolved_as == "scope_request"
             else "Esta nota ya fue convertida en tarea"
         ))
 
@@ -517,6 +520,62 @@ async def send_as_app_suggestion(
     note.updated_at = _updated_clock()
     await db.commit()
     await safe_refresh(db, note, log_context="suggest_inbox_note")
+    return _to_response(note, user)
+
+
+# ---------------------------------------------------------------------------
+# POST /{id}/scope-request — La nota es una petición extra de un cliente
+# ---------------------------------------------------------------------------
+
+SCOPE_REQUEST = "scope_request"
+
+
+@router.post("/{note_id}/scope-request", response_model=InboxNoteResponse)
+async def convert_to_scope_request(
+    note_id: int,
+    body: InboxScopeRequestBody,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_module("clients", write=True)),
+):
+    """Apunta la nota como petición fuera de alcance del cliente elegido.
+
+    Mismas reglas que la pestaña "Peticiones extra" (escritura de ``clients``;
+    vincular proyecto pide leer ``projects``). Sin título, la primera línea de
+    la nota; sin detalle, la nota entera si tenía más de una línea.
+    """
+    note = (await db.execute(
+        select(InboxNote)
+        .where(InboxNote.id == note_id, InboxNote.user_id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    if note.resolved_as == SCOPE_REQUEST:
+        # Reintento (doble clic, red): la petición ya está apuntada.
+        return _to_response(note, user)
+    if note.status in (InboxNoteStatus.processed, InboxNoteStatus.dismissed):
+        raise HTTPException(status_code=409, detail="La nota ya está resuelta")
+
+    raw = note.raw_text.strip()
+    first_line = raw.splitlines()[0].strip() if raw else ""
+    title = body.title or first_line[:200]
+    if not title:
+        raise HTTPException(status_code=422, detail="La petición necesita un título")
+    detail = body.detail if body.detail is not None else (raw if raw != first_line else None)
+    row = await create_scope_request(db, actor=user, client_id=body.client_id, data={
+        "title": title,
+        "detail": detail,
+        "estimated_minutes": body.estimated_minutes,
+        "project_id": body.project_id,
+        "requested_on": body.requested_on,
+    })
+    note.status = InboxNoteStatus.processed
+    note.resolved_as = SCOPE_REQUEST
+    note.resolved_entity_id = row.id
+    note.updated_at = _updated_clock()
+    await db.commit()
+    await safe_refresh(db, note, log_context="scope_request_inbox_note")
     return _to_response(note, user)
 
 

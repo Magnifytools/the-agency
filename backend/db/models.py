@@ -1914,6 +1914,50 @@ class AppSuggestionImage(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+SCOPE_DECISIONS = ("pending", "absorb", "bill", "swap")
+
+
+class ClientScopeRequest(Base):
+    """Petición de un cliente fuera de lo contratado (llamada, Slack, email).
+
+    Se apunta con su coste estimado en minutos y se decide qué hacer con ella:
+    ``pending`` (sin decidir), ``absorb`` (la asumimos), ``bill`` (se factura
+    aparte) o ``swap`` (se hace a cambio de otra cosa del plan). El mes al que
+    cuenta es el de ``requested_on``. Migración ``client_scope_requests_v1``.
+    """
+    __tablename__ = "client_scope_requests"
+    __table_args__ = (
+        CheckConstraint("length(btrim(title)) > 0", name="ck_client_scope_requests_title"),
+        CheckConstraint(
+            "estimated_minutes > 0 AND estimated_minutes <= 60000",
+            name="ck_client_scope_requests_minutes",
+        ),
+        CheckConstraint(
+            "decision IN ('pending','absorb','bill','swap')",
+            name="ck_client_scope_requests_decision",
+        ),
+        CheckConstraint(
+            "(decision = 'pending') = (decided_at IS NULL)",
+            name="ck_client_scope_requests_decided",
+        ),
+        Index("ix_client_scope_requests_client_requested", "client_id", "requested_on"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    title = Column(String(200), nullable=False)
+    detail = Column(Text, nullable=True)
+    estimated_minutes = Column(Integer, nullable=False)
+    requested_on = Column(Date, nullable=False)
+    decision = Column(String(10), nullable=False, default="pending", server_default="pending")
+    decision_note = Column(Text, nullable=True)
+    decided_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    decided_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class ClientShareLink(Base):
     """Enlace de sólo lectura para el cliente: sus resúmenes entregados y su tráfico.
 

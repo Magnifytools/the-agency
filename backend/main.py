@@ -25,6 +25,7 @@ from backend.api.routes import (
     search, balance,
     inbox,
     suggestions,
+    scope_requests,
     extension,
     google_calendar,
     gsc,
@@ -240,6 +241,8 @@ _CORE_ROUTERS = [
     holidays,
     # suggestions: el botón "Sugerencias o fallos" del shell, para todos.
     suggestions,
+    # scope_requests: peticiones fuera de alcance (ficha del cliente, módulo clients).
+    scope_requests,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
     # de todas las demás — se registra siempre.
     changes, commands,
