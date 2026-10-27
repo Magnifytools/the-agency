@@ -1090,6 +1090,26 @@ admin_users, admin_settings
   snapshot llevaría el secreto a `change_logs` y un undo podría resucitar una
   contraseña rotada). Lo guarda `test_accesos_quedan_fuera_del_journal`.
 - **Fuera del MCP**: ver sección MCP.
+- **Códigos 2FA (función de 1Password)**: cada acceso puede guardar la clave del
+  autenticador de la cuenta de fuera (`credentials.totp_encrypted`, migración
+  `credentials_totp_v1`; CHECK `v1:%` como la contraseña). Se acepta suelta
+  (base32) o como enlace `otpauth://totp` (dígitos 6–8, periodo 15–120 s, SHA1/256/512)
+  y se guarda normalizada (`services/totp.py`, RFC 6238 sin dependencias). Nunca
+  vuelve en claro: `POST /api/credentials/{id}/totp` da el código de ahora y el
+  siguiente (para no pedirlo otra vez al caducar), con el mismo límite que ver la
+  contraseña y una fila `totp` en el registro. El listado sólo dice `has_totp`.
+  En el formulario, la clave se puede leer de una captura del QR con el
+  `BarcodeDetector` del navegador (si no lo hay, no se ofrece). No es un 2FA para
+  entrar en The Agency (decisión de David, 27 oct 2026).
+- **Generador** (`lib/password-generator.ts`): en el navegador con
+  `crypto.getRandomValues` y sin sesgo; 16–32 caracteres, uno de cada clase, sin
+  caracteres que se confunden.
+- **Importar** (botón en `/credentials`, `POST /api/credentials/import`): el CSV de
+  1Password, Bitwarden o Chrome se lee en el navegador (`lib/credential-import.ts`);
+  sólo se envían las filas marcadas (≤ 500), con su clave 2FA si la traen. Todo o
+  nada: una fila mal y no se guarda ninguna (el 422 dice cuál). Salen sin marcar
+  las repetidas (mismo nombre y usuario), archivadas o sin contraseña. Cada acceso
+  queda a nombre de quien importa y su `create` dice "Importado de …".
 - **Límite de seguridad**: el cifrado protege la BD y sus copias, no el
   servidor. Quien tenga a la vez la BD y `VAULT_KEY` (Railway) descifra todo.
   Rotar `VAULT_KEY` deja ilegibles los accesos existentes (no hay re-cifrado).

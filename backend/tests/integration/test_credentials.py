@@ -1,6 +1,8 @@
 """Accesos contra Postgres real: cifrado en reposo, acceso por entrada, registro."""
 from __future__ import annotations
 
+import time
+
 import pytest
 import pytest_asyncio
 from sqlalchemy import select, text
@@ -192,3 +194,102 @@ async def test_validation_errors_do_not_echo_the_secret(admin_client):
     assert r.status_code == 422 and SECRET not in r.text
     r = await admin_client.post("/api/credentials", json={"name": "x", "secret": "a" * 2001})
     assert r.status_code == 422 and "a" * 50 not in r.text
+
+
+# ── Códigos 2FA ──────────────────────────────────────────────────────
+
+TOTP_KEY = "JBSWY3DPEHPK3PXP"
+
+
+async def test_2fa_key_is_encrypted_and_only_comes_out_as_a_logged_code(admin_client, reader, db_session):
+    from backend.services import totp
+
+    created = await _create(admin_client, totp=f"otpauth://totp/WP?secret={TOTP_KEY}&issuer=WP",
+                            shared_user_ids=[reader.test_user.id])
+    cid = created["id"]
+    assert created["has_totp"] is True and TOTP_KEY not in str(created)
+    stored = await db_session.scalar(select(Credential.totp_encrypted).where(Credential.id == cid))
+    assert stored.startswith("v1:") and TOTP_KEY not in stored
+    assert TOTP_KEY not in (await admin_client.get("/api/credentials")).text
+
+    r = await reader.post(f"/api/credentials/{cid}/totp")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+    body = r.json()
+    config = totp.TotpConfig(secret=TOTP_KEY)
+    assert body["code"] in {totp.code_at(config, t) for t in (time.time() - 30, time.time(), time.time() + 30)}
+    assert body["digits"] == 6 and body["period"] == 30 and 1 <= body["remaining"] <= 30
+    assert TOTP_KEY not in r.text
+
+    actions = list(await db_session.scalars(
+        select(CredentialAccessLog.action).where(CredentialAccessLog.credential_id == cid).order_by(CredentialAccessLog.id)))
+    assert actions == ["create", "totp"]
+
+
+async def test_2fa_code_follows_access_rules_and_rate_limit(admin_client, reader):
+    with_2fa = (await _create(admin_client, totp=TOTP_KEY))["id"]
+    without = (await _create(admin_client, name="Sin 2FA"))["id"]
+    assert (await reader.post(f"/api/credentials/{with_2fa}/totp")).status_code == 404
+    assert (await admin_client.post(f"/api/credentials/{without}/totp")).status_code == 404
+    credential_reveal_limiter._limiter._requests.clear()
+    for _ in range(30):
+        assert (await admin_client.post(f"/api/credentials/{with_2fa}/totp")).status_code == 200
+    assert (await admin_client.post(f"/api/credentials/{with_2fa}/totp")).status_code == 429
+
+
+async def test_2fa_key_is_set_changed_and_removed_on_edit(admin_client, db_session):
+    cid = (await _create(admin_client))["id"]
+    r = await admin_client.patch(f"/api/credentials/{cid}", json={"totp": "123456"})
+    assert r.status_code == 422 and "código de 6 dígitos" in r.json()["detail"]
+    r = await admin_client.patch(f"/api/credentials/{cid}", json={"totp": TOTP_KEY})
+    assert r.status_code == 200 and r.json()["has_totp"] is True
+    r = await admin_client.patch(f"/api/credentials/{cid}", json={"name": "Otro nombre"})
+    assert r.json()["has_totp"] is True  # sin enviar, no cambia
+    r = await admin_client.patch(f"/api/credentials/{cid}", json={"totp": ""})
+    assert r.json()["has_totp"] is False
+    details = list(await db_session.scalars(
+        select(CredentialAccessLog.detail).where(CredentialAccessLog.action == "update").order_by(CredentialAccessLog.id)))
+    assert details == ["Cambió: código 2FA", "Cambió: nombre", "Cambió: código 2FA (quitado)"]
+
+
+async def test_2fa_key_in_plaintext_is_rejected_by_the_column(db_session):
+    with pytest.raises(Exception, match="ck_credentials_totp_encrypted"):
+        await db_session.execute(text(
+            "INSERT INTO credentials (name, secret_encrypted, totp_encrypted) VALUES ('x', 'v1:x', 'JBSWY3DP')"))
+
+
+# ── Importar (1Password, Bitwarden, Chrome) ──────────────────────────
+
+
+async def test_import_creates_everything_for_the_importer_and_logs_the_source(writer, reader, db_session, client_row):
+    items = [
+        {"name": "Google Ads", "url": "https://ads.google.com", "username": "ads@magnify.ing",
+         "secret": "pw-1", "totp": TOTP_KEY, "notes": "Cuenta MCC"},
+        {"name": "WordPress Fit", "url": "https://fit.example/wp-admin", "username": "magnify",
+         "secret": "pw-2", "client_id": client_row.id},
+    ]
+    r = await writer.post("/api/credentials/import", json={
+        "source": "1password", "items": items, "shared_user_ids": [reader.test_user.id]})
+    assert r.status_code == 201, r.text
+    assert r.json() == {"created": 2} and "pw-1" not in r.text
+
+    listed = {c["name"]: c for c in (await writer.get("/api/credentials")).json()}
+    assert listed["Google Ads"]["has_totp"] is True and listed["WordPress Fit"]["client_name"] == "Fit Generation"
+    assert all(c["created_by"] == writer.test_user.id for c in listed.values())
+    assert [c["name"] for c in (await reader.get("/api/credentials")).json()] == ["Google Ads", "WordPress Fit"]
+    assert (await reader.post(f"/api/credentials/{listed['WordPress Fit']['id']}/reveal", json={})).json() == {"secret": "pw-2"}
+    details = set(await db_session.scalars(select(CredentialAccessLog.detail).where(CredentialAccessLog.action == "create")))
+    assert details == {f"Importado de 1Password · Compartido con: {reader.test_user.full_name}"}
+
+
+async def test_import_is_all_or_nothing_and_names_the_bad_row(admin_client, db_session):
+    items = [{"name": "Bien", "secret": "pw"}, {"name": "Mal", "secret": "pw", "totp": "123456"}]
+    r = await admin_client.post("/api/credentials/import", json={"source": "bitwarden", "items": items})
+    assert r.status_code == 422 and r.json()["detail"].startswith("Fila 2 («Mal»):")
+    assert await db_session.scalar(select(Credential.id)) is None
+    r = await admin_client.post("/api/credentials/import", json={"source": "csv", "items": [{"name": "x", "secret": ""}]})
+    assert r.status_code == 422 and await db_session.scalar(select(Credential.id)) is None
+
+
+async def test_import_needs_write_access(reader):
+    r = await reader.post("/api/credentials/import", json={"source": "csv", "items": [{"name": "x", "secret": "pw"}]})
+    assert r.status_code == 403
