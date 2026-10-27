@@ -186,6 +186,8 @@ async def list_tasks(
     due_date_to: Optional[str] = Query(None),
     scheduled_date_from: Optional[str] = Query(None),
     scheduled_date_to: Optional[str] = Query(None),
+    unscheduled: Optional[bool] = Query(None),
+    completed_from: Optional[str] = Query(None, description="Completadas desde este día civil (YYYY-MM-DD)"),
     is_recurring: Optional[bool] = Query(None),
     timer_eligible: bool = Query(False),
     timer_scope: Literal["assigned", "assigned_or_created"] = Query("assigned"),
@@ -294,6 +296,15 @@ async def list_tasks(
             base = base.where(Task.scheduled_date <= d)
         except ValueError:
             raise HTTPException(status_code=422, detail="scheduled_date_to must be YYYY-MM-DD")
+    if unscheduled:
+        base = base.where(Task.scheduled_date.is_(None))
+    if completed_from is not None:
+        from datetime import date as date_type
+        try:
+            d = date_type.fromisoformat(completed_from)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="completed_from must be YYYY-MM-DD")
+        base = base.where(Task.completed_at >= civil_day_utc_bounds(d)[0])
 
     # Recurring filter: by default exclude templates from normal views
     if is_recurring is True:
