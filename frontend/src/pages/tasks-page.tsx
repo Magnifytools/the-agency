@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query"
 import { tasksApi, clientsApi, categoriesApi, usersApi } from "@/lib/api"
-import type { PaginatedResponse, Task, TaskAgendaSection, TaskCreate, TaskStatus, TaskPriority } from "@/lib/types"
+import type { Task, TaskAgendaSection, TaskCreate, TaskStatus } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { usePagination } from "@/hooks/use-pagination"
 import { useAuth } from "@/context/auth-context"
@@ -10,10 +10,12 @@ import { Pagination } from "@/components/ui/pagination"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { InfoTooltip } from "@/components/ui/tooltip"
 import { Plus, Pencil, Eye, Trash2, Clock, Calendar, Kanban, List, CheckSquare, CalendarDays, Repeat } from "lucide-react"
+import { InlineDate } from "@/components/ui/inline-edit"
+import { TaskAssigneeField, TaskDateField, TaskEstimateField, TaskPriorityBadge, TaskPriorityField, TaskTitleField } from "@/components/tasks/task-inline-fields"
+import { useTaskQuickUpdate, type TaskQuickUpdate } from "@/hooks/use-task-quick-update"
 import { useTableSort } from "@/hooks/use-table-sort"
 import { useBulkSelect } from "@/hooks/use-bulk-select"
 import { SortableTableHead } from "@/components/ui/sortable-table-head"
@@ -33,30 +35,14 @@ import { WeeklyPlannerView } from "@/components/tasks/weekly-planner-view"
 import { TaskPanel } from "@/components/tasks/task-panel"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-import { LAST_TASKS_VIEW, boardStatusQuery, calendarMonthFrom, calendarMonthParam, initialTasksView, rememberTasksView, selectedTaskAssignee, shiftCalendarMonth, taskQueryKeyWithWeek, weekOffsetFrom, weekParam, withTaskAssignee } from "@/components/tasks/task-page-utils"
-import { invalidateTaskChange, optimisticallyUpdateExactQuery, restoreQuerySnapshot, taskKeys } from "@/lib/query-keys"
-import type { OperationalImpact, QuerySnapshot } from "@/lib/query-keys"
-import { addCivilDays, formatCivilDate } from "@/lib/dates"
+import { LAST_TASKS_VIEW, agendaOrder, boardStatusQuery, calendarMonthFrom, calendarMonthParam, initialTasksView, rememberTasksView, selectedTaskAssignee, shiftCalendarMonth, taskQueryKeyWithWeek, weekOffsetFrom, weekParam, withTaskAssignee } from "@/components/tasks/task-page-utils"
+import { invalidateTaskChange, taskKeys } from "@/lib/query-keys"
+import type { OperationalImpact } from "@/lib/query-keys"
+import { addCivilDays } from "@/lib/dates"
+import { formatMinutes } from "@/lib/inline-edit"
 import { useBusinessDate } from "@/hooks/use-business-date"
 import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status"
 
-const priorityBadge = (priority: TaskPriority) => {
-  const map: Record<TaskPriority, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
-    urgent: { label: "Urgente", variant: "destructive" },
-    high: { label: "Alta", variant: "warning" },
-    medium: { label: "Media", variant: "secondary" },
-    low: { label: "Baja", variant: "outline" },
-  }
-  const { label, variant } = map[priority] ?? { label: priority, variant: "secondary" as const }
-  return <Badge variant={variant} dot={false}>{label}</Badge>
-}
-
-const formatMinutes = (mins: number) => {
-  if (mins < 60) return `${mins}m`
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return m > 0 ? `${h}h ${m}m` : `${h}h`
-}
 
 const weekRange = (offset: number, today: string) => {
   const day = new Date(`${today}T12:00:00`).getDay()
@@ -352,22 +338,6 @@ export default function TasksPage() {
     enabled: view === "recurring",
   })
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<TaskCreate> }) => tasksApi.update(id, data),
-    onSuccess: (task) => {
-      const previous = visibleTasks.find((item) => item.id === task.id) ?? editing
-      invalidateTaskViews({
-        projectId: task.project_id,
-        previousProjectId: previous?.project_id,
-        clientId: task.client_id,
-        previousClientId: previous?.client_id,
-      })
-      queryClient.invalidateQueries({ queryKey: taskKeys.recurring() })
-      closeDialog()
-      toast.success("Tarea actualizada")
-    },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar tarea")),
-  })
   const recurrencePauseMutation = useMutation({
     mutationFn: ({ id, paused }: { id: number; paused: boolean }) =>
       tasksApi.update(id, { recurrence_paused: paused }),
@@ -378,28 +348,15 @@ export default function TasksPage() {
     onError: (err) => toast.error(getErrorMessage(err, "No se pudo cambiar la recurrencia")),
   })
 
-  // Cambios rápidos desde tablero, calendario y semana: sin cerrar diálogos y
-  // al momento (optimista en las listas visibles; si el servidor dice que no,
-  // vuelve atrás y lo explica).
-  const boardQueryKeys = [tasksQueryKey, completedQueryKey, unscheduledQueryKey]
-  const quickUpdateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<TaskCreate> }) => tasksApi.update(id, data),
-    onMutate: async ({ id, data }) => {
-      const snapshots: QuerySnapshot[] = await Promise.all(boardQueryKeys.map((key) =>
-        optimisticallyUpdateExactQuery<PaginatedResponse<Task>>(queryClient, key, (old) =>
-          old && { ...old, items: old.items.map((task) => task.id === id ? { ...task, ...data } as Task : task) })))
-      const movedTask = visibleTasks.find((task) => task.id === id)
-      return { snapshots, projectId: movedTask?.project_id, clientId: movedTask?.client_id }
-    },
-    onSuccess: (task, { data }) => {
-      if (data.status === "in_review" && task.status === "in_review") toast.success("Enviada a revisión: la cierra quien revisa el proyecto")
-    },
-    onError: (err, _vars, ctx) => {
-      ctx?.snapshots.forEach((snapshot) => restoreQuerySnapshot(queryClient, snapshot))
-      toast.error(getErrorMessage(err, "No se pudo mover la tarea"))
-    },
-    onSettled: (_data, _error, _vars, ctx) => invalidateTaskViews({ projectId: ctx?.projectId, clientId: ctx?.clientId }),
-  })
+  // Cambios rápidos (celdas de la lista, tablero, calendario, semana y Mi
+  // agenda): sin abrir el panel y al momento; si el servidor dice que no,
+  // vuelve atrás y lo explica.
+  const quickUpdate = useTaskQuickUpdate()
+  const updateTask = (task: Task | undefined, update: Omit<TaskQuickUpdate, "task">) => {
+    if (task) quickUpdate.mutate({ task, ...update })
+  }
+  const moveTask = (task: Task | undefined, data: Partial<TaskCreate>) =>
+    updateTask(task, { data, error: "No se pudo mover la tarea" })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => tasksApi.delete(id),
@@ -429,6 +386,29 @@ export default function TasksPage() {
     setEditingInitialStatus(initialStatus)
     setDialogOpen(true)
   }
+
+  // El panel pasa a la tarea anterior o siguiente en el orden que se ve: la
+  // lista (página actual, con su orden) o Mi agenda (sección a sección).
+  const navigableTasks = view === "all" ? sortedTasks
+    : view === "my_day" ? agendaOrder({
+      planned: agendaData(plannedAgenda).items,
+      carryover: agendaData(carryoverAgenda).items,
+      followups: agendaData(followupsAgenda).items,
+      unplanned: agendaData(unplannedAgenda).items,
+      completed: agendaData(completedAgenda).items,
+    }, businessToday)
+    : []
+  const openIndex = dialogOpen && editing ? navigableTasks.findIndex((task) => task.id === editing.id) : -1
+  const panelNavigation = openIndex >= 0 ? {
+    position: openIndex + 1,
+    total: navigableTasks.length,
+    onNavigate: (direction: 1 | -1) => {
+      const next = navigableTasks[openIndex + direction]
+      if (!next) return
+      openEdit(next)
+      document.querySelector(`[data-task-row="${next.id}"]`)?.scrollIntoView({ block: "nearest" })
+    },
+  } : undefined
 
   const sendsForReview = (task: Task) => !!task.project_requires_task_review
     && !task.is_recurring
@@ -668,8 +648,8 @@ export default function TasksPage() {
               <TableHead>Asignado</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo." /></span></TableHead>
-              <TableHead>Fecha limite</TableHead>
-              <TableHead>Tiempo</TableHead>
+              <TableHead>Planificada</TableHead>
+              <TableHead>Fecha límite</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
             </TableRow>
           </TableHeader>
@@ -702,8 +682,8 @@ export default function TasksPage() {
               <TableHead>Asignado</TableHead>
               <SortableTableHead sortKey="status" currentSort={taskSortConfig} onSort={requestTaskSort}>Estado</SortableTableHead>
               <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo." /></span></TableHead>
-              <SortableTableHead sortKey="due_date" currentSort={taskSortConfig} onSort={requestTaskSort}>Fecha limite</SortableTableHead>
-              <TableHead>Timer</TableHead>
+              <SortableTableHead sortKey="scheduled_date" currentSort={taskSortConfig} onSort={requestTaskSort}>Planificada</SortableTableHead>
+              <SortableTableHead sortKey="due_date" currentSort={taskSortConfig} onSort={requestTaskSort}>Fecha límite</SortableTableHead>
               <TableHead className="w-24">Acciones</TableHead>
             </TableRow>
           </TableHeader>
@@ -726,7 +706,7 @@ export default function TasksPage() {
               const diff = est && real ? real - est : null
 
               return (
-                <TableRow key={t.id} className={rowHighlight}>
+                <TableRow key={t.id} data-task-row={t.id} aria-current={openIndex >= 0 && editing?.id === t.id ? "true" : undefined} className={cn(rowHighlight, "aria-[current=true]:bg-muted/60")}>
                   {canWriteTasks && <TableCell>
                     <input
                       type="checkbox"
@@ -736,11 +716,10 @@ export default function TasksPage() {
                       className="rounded border-border"
                     />
                   </TableCell>}
-                  <TableCell className="font-medium">
-                    <button type="button" onClick={() => openEdit(t)} className="inline-flex items-center gap-1 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm">
+                  <TableCell className="min-w-40 font-medium">
+                    <TaskTitleField task={t} canWrite={canWriteTasks} onUpdate={(update) => updateTask(t, update)} onOpen={() => openEdit(t)}>
                       {t.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" aria-label="Recurrente" />}
-                      {t.title}
-                    </button>
+                    </TaskTitleField>
                     {t.recurring_parent_title && t.recurrence_occurrence_date && (
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         Prevista por {t.recurring_parent_title} para {t.recurrence_occurrence_date}
@@ -754,9 +733,9 @@ export default function TasksPage() {
                     )}
                   </TableCell>
                   <TableCell>{t.client_name ?? (t.client_id != null ? <span className="text-muted-foreground">(eliminado)</span> : "-")}</TableCell>
-                  <TableCell>{priorityBadge(t.priority)}</TableCell>
+                  <TableCell><TaskPriorityField task={t} canWrite={canWriteTasks} onUpdate={(update) => updateTask(t, update)} /></TableCell>
                   <TableCell className={qaFilter === "unassigned" && QA_unassigned ? "text-destructive font-bold" : ""}>
-                    {t.assigned_user_name || (QA_unassigned && qaFilter === "unassigned" ? "Falta" : "-")}
+                    <TaskAssigneeField task={t} users={users} canWrite={canWriteTasks} onUpdate={(update) => updateTask(t, update)} emptyText={QA_unassigned && qaFilter === "unassigned" ? "Falta" : "-"} />
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
@@ -778,7 +757,7 @@ export default function TasksPage() {
                           openEdit(t, "waiting")
                           return
                         }
-                        updateMutation.mutate({ id: t.id, data: { status: next === "completed" && sendsForReview(t) ? "in_review" : next } })
+                        updateTask(t, { data: { status: next === "completed" && sendsForReview(t) ? "in_review" : next } })
                       }}
                     >
                       <option value="pending">Pendiente</option>
@@ -789,48 +768,38 @@ export default function TasksPage() {
                     </Select> : <span className={cn("rounded-md border px-2 py-1 text-xs", taskStatusSelectClass(t.status, t.scheduled_date))}>{taskStatusPresentation(t.status, t.scheduled_date).label}</span>}
                     </div>
                   </TableCell>
-                  <TableCell className="text-xs mono">
-                    {est || real ? (
-                      <span>
-                        {est ? formatMinutes(est) : "-"}
-                        {" / "}
-                        {real ? formatMinutes(real) : "-"}
-                        {diff !== null && diff !== 0 && (
-                          <span className={diff > 0 ? "text-red-400 ml-1" : "text-green-400 ml-1"}>
-                            ({diff > 0 ? "+" : ""}{formatMinutes(Math.abs(diff))})
-                          </span>
-                        )}
-                      </span>
-                    ) : (
-                      <span className={qaFilter === "no_estimate" && QA_noestimate ? "text-destructive font-bold" : ""}>
-                        {QA_noestimate && qaFilter === "no_estimate" ? "Falta" : "-"}
+                  <TableCell className={cn("text-xs mono whitespace-nowrap", qaFilter === "no_estimate" && QA_noestimate && "text-destructive font-bold")}>
+                    <TaskEstimateField task={t} canWrite={canWriteTasks} onUpdate={(update) => updateTask(t, update)} />
+                    {" / "}
+                    {real ? formatMinutes(real) : "-"}
+                    {diff !== null && diff !== 0 && (
+                      <span className={diff > 0 ? "text-red-400 ml-1" : "text-green-400 ml-1"}>
+                        ({diff > 0 ? "+" : ""}{formatMinutes(Math.abs(diff))})
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className={`mono ${(qaFilter === "no_date" && QA_nodate) || (qaFilter === "overdue" && QA_overdue)
-                      ? "text-destructive font-bold" : ""
-                    }`}>
-                    {t.due_date ? formatCivilDate(t.due_date) : (QA_nodate && qaFilter === "no_date" ? "Sin planificar" : "-")}
+                  <TableCell className={cn("mono whitespace-nowrap", qaFilter === "no_date" && QA_nodate && "text-destructive font-bold")}>
+                    <TaskDateField task={t} field="scheduled_date" today={todayStr} canWrite={canWriteTasks} onUpdate={(update) => updateTask(t, update)} emptyText={QA_nodate && qaFilter === "no_date" ? "Falta" : "-"} />
+                  </TableCell>
+                  <TableCell className={cn("mono whitespace-nowrap", qaFilter === "overdue" && QA_overdue && "text-destructive font-bold")}>
+                    <TaskDateField task={t} field="due_date" today={todayStr} canWrite={canWriteTasks} onUpdate={(update) => updateTask(t, update)} />
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
+                    <div className="flex gap-0.5">
                       <TimerButton taskId={t.id} />
                       <Button
                         variant="ghost"
                         size="icon"
+                        className="h-8 w-8"
                         onClick={() => setTimeLogTask(t)}
                         title="Ver registro de tiempo"
                       >
                         <Clock className="h-4 w-4" />
                       </Button>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" aria-label={canWriteTasks ? "Editar tarea" : "Ver tarea"} onClick={() => openEdit(t)}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={canWriteTasks ? "Editar tarea" : "Ver tarea"} onClick={() => openEdit(t)}>
                         {canWriteTasks ? <Pencil className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
-                      {canWriteTasks && <Button variant="ghost" size="icon" aria-label="Eliminar tarea" onClick={() => setDeleteId(t.id)}>
+                      {canWriteTasks && <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Eliminar tarea" onClick={() => setDeleteId(t.id)}>
                         <Trash2 className="h-4 w-4" />
                       </Button>}
                     </div>
@@ -878,8 +847,9 @@ export default function TasksPage() {
             onLoadMore={(section) => ({ planned: plannedAgenda, carryover: carryoverAgenda, unplanned: unplannedAgenda, followups: followupsAgenda, completed: completedAgenda, retired: retiredTasks }[section].fetchNextPage())}
             onStatusChange={(id, status) => {
               const task = [...agendaData(plannedAgenda).items, ...agendaData(carryoverAgenda).items, ...agendaData(unplannedAgenda).items, ...agendaData(followupsAgenda).items, ...agendaData(completedAgenda).items].find((item) => item.id === id)
-              updateMutation.mutate({ id, data: { status: status === "completed" && task && sendsForReview(task) ? "in_review" : status } })
+              updateTask(task, { data: { status: status === "completed" && task && sendsForReview(task) ? "in_review" : status } })
             }}
+            onUpdate={updateTask}
             onOpenEdit={openEdit}
             canCompleteReviewedTask={(task) => !!(isAdmin || task.project_review_owner_id === user?.id)}
             onReviewCarryover={setCarryoverTask}
@@ -893,7 +863,7 @@ export default function TasksPage() {
           tasks={boardTasks}
           onStatusChange={(taskId, newStatus) => {
             const task = boardTasks.find((item) => item.id === taskId)
-            quickUpdateMutation.mutate({ id: taskId, data: { status: newStatus === "completed" && task && sendsForReview(task) ? "in_review" : newStatus } })
+            moveTask(task, { status: newStatus === "completed" && task && sendsForReview(task) ? "in_review" : newStatus })
           }}
           onOpenEdit={openEdit}
           canWrite={canWriteTasks}
@@ -911,7 +881,7 @@ export default function TasksPage() {
           onNext={() => setCalMonth(shiftCalendarMonth(calMonth, 1))}
           onToday={() => setCalMonth(calendarMonthFrom(null, businessToday))}
           onOpenEdit={openEdit}
-          onDueDateChange={canWriteTasks ? (taskId, date) => quickUpdateMutation.mutate({ id: taskId, data: { due_date: date } }) : undefined}
+          onDueDateChange={canWriteTasks ? (taskId, date) => moveTask(allTasks.find((task) => task.id === taskId), { due_date: date }) : undefined}
         />
       )}
 
@@ -920,7 +890,7 @@ export default function TasksPage() {
           tasks={weekTasks}
           weekOffset={weekOffset}
           onWeekOffsetChange={setWeekOffset}
-          onScheduleChange={(taskId, date) => quickUpdateMutation.mutate({ id: taskId, data: { scheduled_date: date } })}
+          onScheduleChange={(taskId, date) => moveTask(weekTasks.find((task) => task.id === taskId), { scheduled_date: date })}
           onOpenEdit={openEdit}
           canWrite={canWriteTasks}
           unscheduledNote={unscheduledData && unscheduledData.total > unscheduledData.items.length
@@ -975,7 +945,7 @@ export default function TasksPage() {
                     </TableCell>
                     <TableCell>{t.client_name ?? <span className="text-muted-foreground">Sin cliente</span>}</TableCell>
                     <TableCell>{t.assigned_user_name}</TableCell>
-                    <TableCell>{priorityBadge(t.priority)}</TableCell>
+                    <TableCell><TaskPriorityBadge priority={t.priority} /></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Button
@@ -1011,6 +981,7 @@ export default function TasksPage() {
         defaults={editingInitialStatus ? { initialStatus: editingInitialStatus } : undefined}
         onOpenChange={(open) => { if (!open) closeDialog() }}
         onOpenTime={(task) => { setTimeLogTask(task); closeDialog() }}
+        navigation={panelNavigation}
       />
       {carryoverTask && canWriteTasks && <CarryoverReviewDialog key={carryoverTask.id} task={carryoverTask} open onOpenChange={(open) => !open && setCarryoverTask(null)} />}
       {timeLogTask && (
@@ -1077,6 +1048,18 @@ export default function TasksPage() {
           <option value="none">Sin asignar</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.full_name}</option>)}
         </Select>
+        <InlineDate
+          label="Planificar las tareas seleccionadas"
+          valueText="elige un día"
+          value={null}
+          today={todayStr}
+          clearLabel="Sin planificar"
+          alwaysClearable
+          onChange={(date) => bulkUpdateMutation.mutate({ ids: [...selectedTaskIds], updates: { scheduled_date: date } })}
+          className="mx-0 h-8 whitespace-nowrap rounded-md border border-border bg-background px-3 text-xs"
+        >
+          <CalendarDays className="h-3.5 w-3.5" aria-hidden /> Planificar para…
+        </InlineDate>
         <Button
           size="sm"
           variant="destructive"
