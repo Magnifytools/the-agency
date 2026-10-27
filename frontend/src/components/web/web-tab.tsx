@@ -17,6 +17,7 @@ import { WebWatchesCard } from "@/components/web/web-watches-card"
 import { WebChangesList, type ChangeListFilters } from "@/components/web/web-changes-list"
 import { WebRunsCard } from "@/components/web/web-runs-card"
 import { WebChangeSettingsCard } from "@/components/web/web-change-settings-card"
+import { WebExpiryCard, WebRobotsCard } from "@/components/web/web-health-card"
 
 interface Props {
   clientId: number
@@ -45,6 +46,7 @@ export function WebTab({ clientId, website }: Props) {
   return (
     <div className="space-y-4">
       <UptimeCard clientId={clientId} website={website} />
+      <WebExpiryCard clientId={clientId} />
       <ChangesSwitchCard clientId={clientId} enabled={settings.data?.changes_enabled ?? null} canWrite={canWrite} />
       {settings.data?.changes_enabled && <ChangesSections clientId={clientId} canWrite={canWrite} filters={changeFilters} onFiltersChange={setChangeFilters} />}
     </div>
@@ -60,6 +62,7 @@ function ChangesSections({ clientId, canWrite, filters, onFiltersChange }: {
   return (
     <>
       <WebWatchesCard clientId={clientId} />
+      <WebRobotsCard clientId={clientId} canWrite={canWrite} />
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3 space-y-0">
           <CardTitle className="flex items-center gap-2 text-base"><ListChecks className="h-4 w-4" /> Cambios detectados</CardTitle>

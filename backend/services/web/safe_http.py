@@ -31,7 +31,8 @@ import socket
 import ssl
 import time
 from dataclasses import dataclass, field
-from typing import Callable
+from datetime import datetime
+from typing import Awaitable, Callable
 
 import httpx
 
@@ -228,8 +229,16 @@ async def fetch(
     max_bytes: int = MAX_BODY_BYTES,
     max_redirects: int = MAX_REDIRECTS,
     transport_factory: TransportFactory | None = None,
+    accept: str | None = None,
 ) -> FetchResult:
-    """Un GET validado y acotado. ``timeout`` es el tiempo TOTAL (todos los saltos)."""
+    """Un GET validado y acotado. ``timeout`` es el tiempo TOTAL (todos los saltos).
+
+    ``accept`` sustituye la cabecera Accept de navegador (RDAP pide
+    ``application/rdap+json``); el resto de cabeceras no cambia.
+    """
+    headers = browser_headers(user_agent)
+    if accept:
+        headers["Accept"] = accept
     started = time.perf_counter()
     pins: dict[str, str] = {}
     current = url
@@ -244,7 +253,7 @@ async def fetch(
                 transport=(transport_factory or default_transport)(pins),
                 timeout=httpx.Timeout(timeout, connect=min(connect_timeout, timeout)),
                 follow_redirects=False,
-                headers=browser_headers(user_agent),
+                headers=headers,
             ) as client:
                 while True:
                     # Revalidar EN CADA SALTO (host, puerto e IP pública fijada).
@@ -268,3 +277,110 @@ async def fetch(
         raise
     except Exception as exc:  # noqa: BLE001 — una URL nunca tumba el ciclo
         return FetchResult(None, elapsed(), current, hops, error=error_kind(exc))
+
+
+# ── Certificado TLS ──────────────────────────────────────────────────
+# Leer cuándo caduca el certificado de una web exige abrir una conexión TLS al
+# host del cliente: la misma superficie de SSRF que un GET. Por eso pasa por las
+# mismas garantías: sintaxis + puerto permitido (``check_url_syntax``), DNS
+# resuelto UNA vez con TODAS las IPs globales (``resolve_public_ip``) y conexión
+# a esa IP fijada con el SNI del nombre original. Sólo se lee el certificado: no
+# se manda ni un byte de HTTP.
+
+
+@dataclass(frozen=True)
+class TlsCertificate:
+    """Lo que se sabe del certificado de ``host``. Nunca lanza.
+
+    ``verified`` dice si el navegador lo aceptaría (cadena y nombre). Si no lo
+    acepta se vuelve a leer sin verificar para saber al menos cuándo caduca, y
+    ``verify_error`` lleva el motivo. ``error`` (mismo vocabulario que
+    ``FetchResult.error``) es que no hubo certificado que leer.
+    """
+
+    not_after: datetime | None = None
+    issuer: str | None = None
+    verified: bool = False
+    verify_error: str | None = None
+    error: str | None = None
+
+
+# (ip, puerto, contexto, nombre para SNI, timeout) -> certificado en DER.
+CertOpener = Callable[[str, int, ssl.SSLContext, str, float], Awaitable[bytes]]
+
+
+async def _open_and_read_cert(ip: str, port: int, context: ssl.SSLContext, server_hostname: str,
+                              timeout: float) -> bytes:
+    _reader, writer = await asyncio.wait_for(
+        asyncio.open_connection(ip, port, ssl=context, server_hostname=server_hostname,
+                                ssl_handshake_timeout=timeout),
+        timeout,
+    )
+    try:
+        ssl_object = writer.get_extra_info("ssl_object")
+        der = ssl_object.getpeercert(binary_form=True) if ssl_object is not None else None
+        if not der:
+            raise ssl.SSLError("el servidor no presentó certificado")
+        return der
+    finally:
+        writer.close()
+        try:
+            await asyncio.wait_for(writer.wait_closed(), 2)
+        except Exception:  # noqa: BLE001 — cerrar mal no cambia lo leído
+            pass
+
+
+def _unverified_context() -> ssl.SSLContext:
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+def describe_certificate(der: bytes) -> tuple[datetime, str | None]:
+    """(caducidad en UTC, emisor legible) de un certificado DER."""
+    from cryptography import x509
+    from cryptography.x509.oid import NameOID
+
+    cert = x509.load_der_x509_certificate(der)
+    issuer = None
+    for oid in (NameOID.ORGANIZATION_NAME, NameOID.COMMON_NAME):
+        attrs = cert.issuer.get_attributes_for_oid(oid)
+        if attrs:
+            issuer = str(attrs[0].value)[:200]
+            break
+    return cert.not_valid_after_utc, issuer
+
+
+async def fetch_tls_certificate(
+    host: str, *, port: int = 443, timeout: float = 10.0, opener: CertOpener | None = None,
+) -> TlsCertificate:
+    """Certificado que sirve ``host`` en ``port`` (443), con las garantías de ``fetch``."""
+    open_cert = opener or _open_and_read_cert
+    try:
+        url = f"https://{host}/" if port == 443 else f"https://{host}:{port}/"
+        name, ip = await resolve_url(url)
+        try:
+            der = await open_cert(ip, port, ssl.create_default_context(), name, timeout)
+            verified, verify_error = True, None
+        except ssl.SSLCertVerificationError as exc:
+            verified = False
+            verify_error = (getattr(exc, "verify_message", None) or str(exc) or "certificado no válido")[:200]
+            der = await open_cert(ip, port, _unverified_context(), name, timeout)
+        not_after, issuer = describe_certificate(der)
+        return TlsCertificate(not_after=not_after, issuer=issuer, verified=verified, verify_error=verify_error)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — un host nunca tumba la pasada
+        return TlsCertificate(error=_tls_error_kind(exc))
+
+
+def _tls_error_kind(exc: BaseException) -> str:
+    # Aquí no hay httpx: los errores llegan crudos de asyncio/ssl.
+    if isinstance(exc, (SSRFError, TimeoutError, asyncio.TimeoutError)):
+        return error_kind(exc)
+    if isinstance(exc, ssl.SSLError):
+        return "tls"
+    if isinstance(exc, OSError):
+        return "connect"
+    return error_kind(exc)

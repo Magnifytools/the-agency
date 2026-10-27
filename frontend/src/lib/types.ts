@@ -8,6 +8,7 @@ export * from "./types/project"
 export * from "./types/finance"
 export * from "./types/integration"
 export * from "./types/web"
+export * from "./types/web-health"
 export * from "./types/seo-control"
 
 // --- Undo: journal de cambios ---

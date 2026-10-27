@@ -174,6 +174,8 @@ import type {
   JobRuntimeResponse,
   OperationalUsage,
   AppSuggestion,
+  ClientWebHealth,
+  TaskPublishCheck,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -415,6 +417,13 @@ export const tasksApi = {
   // Claude redacta hasta ~8.000 tokens: el backend corta a 100 s.
   draft: (taskId: number) =>
     api.post<TaskComment>(`/tasks/${taskId}/draft`, {}, { timeout: 120_000 }).then((r) => r.data),
+  // Revisión tras publicar: la hace el job `publish_checks`; el POST sólo la pone en cola.
+  publishCheck: {
+    get: (taskId: number) =>
+      api.get<TaskPublishCheck>(`/tasks/${taskId}/publish-check`).then((r) => r.data),
+    retry: (taskId: number) =>
+      api.post<TaskPublishCheck>(`/tasks/${taskId}/publish-check`).then((r) => r.data),
+  },
   attachments: {
     list: (taskId: number) =>
       api.get<TaskAttachment[]>(`/tasks/${taskId}/attachments`).then((r) => r.data),
@@ -1204,6 +1213,11 @@ export const webApi = {
   testSlack: (clientId: number) =>
     api.post<{ ok: boolean; revoked: boolean; error: string | null }>(`/clients/${clientId}/web/settings/slack/test`)
       .then((r) => r.data),
+  // Dominio, certificado, robots.txt y sitemap (job diario `web_health`).
+  health: (clientId: number) =>
+    api.get<ClientWebHealth>(`/clients/${clientId}/web/health`).then((r) => r.data),
+  reviewRobots: (clientId: number, origin: string) =>
+    api.post<{ ok: boolean }>(`/clients/${clientId}/web/robots/review`, { origin }).then((r) => r.data),
 }
 
 // --- Webs: cambios (URLs vigiladas, barridos y ajustes) ---

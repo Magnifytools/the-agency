@@ -227,6 +227,29 @@ async def _web_sweep_once():
         raise JobFailure("partial_failure")
 
 
+async def _web_health_once():
+    """Pasada diaria de dominio, certificado, robots.txt y sitemap (services/web/health.py)."""
+    from backend.db.database import async_session
+    from backend.services.job_runtime import JobFailure
+    from backend.services.web.health import run_cycle
+
+    result = await run_cycle(async_session)
+    # Sin el registro de la IANA no hay fechas de dominio: lo ve el estado del job.
+    if result.bootstrap_failed:
+        raise JobFailure("provider_unavailable")
+
+
+async def _publish_checks_once():
+    """Revisión tras publicar de las tareas completadas (services/web/publish_check.py)."""
+    from backend.db.database import async_session
+    from backend.services.job_runtime import JobFailure
+    from backend.services.web.publish_check import run_cycle
+
+    result = await run_cycle(async_session)
+    if result.failed:
+        raise JobFailure("partial_failure")
+
+
 # ── Retention cleanup ───────────────────────────────────────
 
 async def _retention_cleanup_once():
@@ -357,6 +380,8 @@ def start_background_tasks() -> list[asyncio.Task]:
         "ga4": ("ga4-sync", _ga4_sync_once),
         "uptime": ("web-uptime", _uptime_once),
         "web_sweep": ("web-sweep", _web_sweep_once),
+        "web_health": ("web-health", _web_health_once),
+        "publish_checks": ("publish-checks", _publish_checks_once),
     }
 
     for key, (task_name, operation) in operations.items():
