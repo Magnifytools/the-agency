@@ -2,9 +2,12 @@ import { useState } from "react"
 import type { PaginatedResponse, Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { TimerButton } from "@/components/timer/timer-button"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Pencil, Eye, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat } from "lucide-react"
+import { Pencil, Eye, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat, CalendarClock } from "lucide-react"
+import { InlineDate } from "@/components/ui/inline-edit"
+import { TaskPriorityField, type TaskFieldUpdate } from "@/components/tasks/task-inline-fields"
+import { formatMinutes } from "@/lib/inline-edit"
+import { sortAgendaTasks, sortFollowups } from "@/components/tasks/task-page-utils"
 import { cn } from "@/lib/utils"
 import { agencyTimezoneLabel, businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
 import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status"
@@ -28,51 +31,20 @@ interface Props {
   onRetryRetired?: () => void
   canWrite?: boolean
   canCompleteReviewedTask?: (task: Task) => boolean
+  /** Prioridad y "Mover a…" sin abrir la tarea. */
+  onUpdate?: (task: Task, update: Parameters<TaskFieldUpdate>[0]) => void
 }
 
-const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
-
-const priorityBadge = (priority: string) => {
-  const map: Record<string, { label: string; variant: "destructive" | "warning" | "secondary" | "outline" }> = {
-    urgent: { label: "Urgente", variant: "destructive" },
-    high: { label: "Alta", variant: "warning" },
-    medium: { label: "Media", variant: "secondary" },
-    low: { label: "Baja", variant: "outline" },
-  }
-  const { label, variant } = map[priority] ?? { label: priority, variant: "secondary" as const }
-  return <Badge variant={variant} dot={false} className="text-[10px]">{label}</Badge>
-}
-
-const formatMinutes = (mins: number) => {
-  if (mins < 60) return `${mins}m`
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return m > 0 ? `${h}h ${m}m` : `${h}h`
-}
-
-export function MyDayView({ planned, carryover, unplanned, followups = { items: [], total: 0, page: 1, page_size: 25 }, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false, canCompleteReviewedTask = () => true }: Props) {
+export function MyDayView({ planned, carryover, unplanned, followups = { items: [], total: 0, page: 1, page_size: 25 }, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false, canCompleteReviewedTask = () => true, onUpdate }: Props) {
   const today = businessDateString()
   const [showRetired, setShowRetired] = useState(false)
 
-  const sortTasks = (items: Task[]) => [...items].sort((a, b) => {
-    const aOverdue = a.due_date && a.due_date < today ? 1 : 0
-    const bOverdue = b.due_date && b.due_date < today ? 1 : 0
-    if (aOverdue !== bOverdue) return bOverdue - aOverdue
-
-    const pa = priorityOrder[a.priority] ?? 2
-    const pb = priorityOrder[b.priority] ?? 2
-    if (pa !== pb) return pa - pb
-
-    if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date)
-    if (a.due_date) return -1
-    if (b.due_date) return 1
-    return 0
-  })
+  const sortTasks = (items: Task[]) => sortAgendaTasks(items, today)
 
   const plannedTodayTasks = sortTasks(planned.items)
   const carryoverTasks = sortTasks(carryover.items)
   const unplannedTasks = sortTasks(unplanned.items)
-  const followupTasks = [...followups.items].sort((a, b) => (a.follow_up_date ?? "").localeCompare(b.follow_up_date ?? ""))
+  const followupTasks = sortFollowups(followups.items)
   const completedToday = completed.items
 
   const renderTaskCard = (task: Task, carryover = false) => {
@@ -84,6 +56,7 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
     return (
       <Card
         key={task.id}
+        data-task-row={task.id}
         className={cn(
           "group hover:shadow-sm transition-all cursor-pointer",
           isOverdue && "border-l-2 border-l-destructive",
@@ -123,7 +96,7 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
                 {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
                 {task.title}
               </span>
-              {priorityBadge(task.priority)}
+              <TaskPriorityField task={task} canWrite={canWrite && !!onUpdate} onUpdate={(update) => onUpdate?.(task, update)} className="text-[10px]" />
             </div>
             <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground flex-wrap">
               {statusPresentation.detail && <span>{statusPresentation.detail}</span>}
@@ -167,6 +140,22 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
 
           <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
             {canWrite && task.status !== "completed" && <TimerButton taskId={task.id} taskTitle={task.title} />}
+            {canWrite && onUpdate && task.status !== "completed" && (
+              <InlineDate
+                label={`Mover ${task.title} a otro día`}
+                valueText={task.scheduled_date ? formatCivilDate(task.scheduled_date) : "sin planificar"}
+                value={task.scheduled_date}
+                today={today}
+                clearLabel={task.scheduled_date === today ? "Quitar de hoy" : "Sin planificar"}
+                onChange={(date) => onUpdate(task, {
+                  data: { scheduled_date: date },
+                  success: date ? `Planificada: ${formatCivilDate(date, { weekday: "short", day: "numeric", month: "short" })}` : "Sin planificar",
+                })}
+                className="mx-0 h-9 w-9 justify-center px-0 text-muted-foreground sm:h-7 sm:w-7"
+              >
+                <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+              </InlineDate>
+            )}
             <Button
               variant="ghost"
               size="icon"

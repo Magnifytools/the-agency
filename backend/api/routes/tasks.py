@@ -4,7 +4,7 @@ from datetime import date as date_type, datetime, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import and_, select, func, or_
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -702,10 +702,19 @@ async def bulk_update_tasks(
 ):
     if not body.ids or len(body.ids) > 100:
         raise HTTPException(400, "Provide 1-100 task IDs")
-    allowed = {"status", "priority", "assigned_to", "category_id", "due_date", "client_id", "project_id", "phase_id"}
-    updates = {k: v for k, v in body.updates.items() if k in allowed}
-    if not updates:
+    allowed = {
+        "status", "priority", "assigned_to", "category_id", "due_date", "scheduled_date",
+        "client_id", "project_id", "phase_id",
+    }
+    raw_updates = {k: v for k, v in body.updates.items() if k in allowed}
+    if not raw_updates:
         raise HTTPException(400, "No valid fields to update")
+    # Mismos tipos que el PUT de una tarea: las fechas llegan como texto y la
+    # columna las quiere como fecha.
+    try:
+        updates = TaskUpdate.model_validate(raw_updates).model_dump(exclude_unset=True)
+    except ValidationError:
+        raise HTTPException(422, "Valores no válidos para actualizar las tareas")
     if updates.get("status") == TaskStatus.waiting.value:
         raise HTTPException(422, "Pon cada tarea en espera desde su ficha indicando respuesta, responsable y fecha de revisión")
 
