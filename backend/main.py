@@ -34,6 +34,7 @@ from backend.api.routes import (
     usage_stats, job_runtime, ga4,
     credentials,
     web_uptime, web_watches, web_changes, web_settings, web_health,
+    time_blocks,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -246,6 +247,8 @@ _CORE_ROUTERS = [
     suggestions,
     # scope_requests: peticiones fuera de alcance (ficha del cliente, módulo clients).
     scope_requests,
+    # time_blocks: bloques de trabajo con hora de Mi agenda (módulo tasks).
+    time_blocks,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
     # de todas las demás — se registra siempre.
     changes, commands,

@@ -60,6 +60,12 @@ export function businessHour(value = new Date()) {
   return Number(zonedParts(value).hour)
 }
 
+/** Minutos desde la medianoche en la hora civil de la agencia. */
+export function businessMinutes(value = new Date()) {
+  const parts = zonedParts(value)
+  return Number(parts.hour) * 60 + Number(parts.minute)
+}
+
 export function parseCivilDate(value: string) {
   const [year, month, day] = value.slice(0, 10).split("-").map(Number)
   return new Date(year, month - 1, day, 12)

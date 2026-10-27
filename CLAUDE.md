@@ -376,6 +376,25 @@ admin_users, admin_settings
   (`plannableFrom`): seguiría en Arrastre; se avisa de usar "Revisar". En el
   tablero, la tarjeta entera se reordena dentro de su columna y entra en otra en
   el sitio donde se suelta.
+- **Mi agenda con horas** (`agenda=horas` en la URL; `horas=semana` y `dia=`;
+  `components/tasks/agenda-hours-view.tsx`, cuentas en `lib/time-grid.ts`): de
+  8 a 20 h en cuartos de hora, Día o Semana (lunes a viernes). Reuniones de
+  Google (sólo lectura, `GET /api/calendar/events`, que antes fallaba y nadie
+  usaba) y **bloques de trabajo** propios: arrastrar una tarea de "Sin hora hoy"
+  (Planificadas hoy + Arrastre sin bloque hoy) a un hueco crea un bloque de lo
+  estimado (15 min-4 h; 1 h sin estimación); el bloque se arrastra (hora o día),
+  se estira por abajo, arranca el cronómetro, cambia de hora con un formulario
+  (teclado/móvil) y se quita (⌘Z lo devuelve). Lo que se solapa va en carriles.
+  Con "Todo el equipo" sólo hay lista (los bloques son de cada uno).
+- **Bloques** (`task_time_blocks`, migración `task_time_blocks_v1`): tarea,
+  persona, `starts_at`/`ends_at` en hora civil de la agencia sin zona (como
+  `events`), mismo día (puede acabar a medianoche), ≤ 12 h. Borrar un bloque no
+  toca la tarea; borrar la tarea borra sus bloques. Entran en el Deshacer como
+  hijos de la tarea (label = la franja, `display_label`). API
+  `/api/time-blocks` (GET de un rango ≤ 14 días, POST, PATCH, DELETE): cada uno
+  ve y toca sólo los suyos; leer pide lectura de `tasks`, cambiar, escritura;
+  ni plantillas recurrentes, ni retiradas, ni hechas. No se publican en Google
+  (fase 4 sin aprobar).
 - **Títulos de pestaña**: el layout pone el de la sección (`useSectionTitle`) y
   las fichas lo afinan con `usePageTitle` (cliente, proyecto, resumen).
 - **⌘K** (`search-palette.tsx` + `GET /api/search`): clientes, proyectos,
@@ -1093,6 +1112,9 @@ admin_users, admin_settings
   guarda de Google, cambia la política en el mismo PR.
 
 ## Google Calendar: desconexión y retención
+- **Ventana de lectura**: del lunes de esta semana al final de la siguiente (14
+  días, `sync_user_events`), para que la vista con horas tenga la semana entera.
+  `/privacidad` lo dice; si cambia, cambia la política en el mismo PR.
 - `POST /api/calendar/disconnect`: borra el token, borra SIEMPRE los `events`
   con `source="google"` de esa persona (los manuales se quedan) y, tras el
   commit, revoca el token en Google con `google_oauth.revoke_token` (mismo
