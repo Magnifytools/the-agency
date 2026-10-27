@@ -35,6 +35,7 @@ from backend.schemas.project import (
 from backend.schemas.pagination import PaginatedResponse
 from backend.api.deps import get_current_user, require_module, require_admin
 from backend.services.ai_utils import get_anthropic_client, parse_claude_json
+from backend.services.hours_carryover import MonthBudget, project_month_budget
 from backend.services.time_budget import effective_budgets, build_closing_status, is_recurring_project
 from backend.services.task_scope import validate_client_exists
 from backend.services.project_owner import validate_project_owner
@@ -170,6 +171,7 @@ def _build_project_response(
     hours_used_week: Optional[float] = None,
     hours_used_month: Optional[float] = None,
     closing_status: Optional[dict] = None,
+    month_budget: Optional[MonthBudget] = None,
 ) -> ProjectResponse:
     """Build a ProjectResponse from a Project model with eagerly loaded relationships."""
     eff_weekly, eff_monthly = effective_budgets(project)
@@ -230,6 +232,13 @@ def _build_project_response(
         hours_used_month=hours_used_month if can_read_hours else None,
         effective_weekly_hours_budget=eff_weekly,
         effective_monthly_hours_budget=eff_monthly,
+        hours_carryover=bool(project.hours_carryover),
+        month_hours_budget=(
+            round(month_budget.budget, 2) if month_budget and month_budget.budget is not None and can_read_hours else None
+        ),
+        month_hours_carried=(
+            round(month_budget.carried, 2) if month_budget and month_budget.carried is not None and can_read_hours else None
+        ),
         closing_status=closing_status if can_read_hours else None,
         created_at=project.created_at,
         updated_at=project.updated_at,
@@ -421,7 +430,7 @@ async def create_project(
             "name", "description", "project_type", "is_recurring", "start_date",
             "requires_task_review",
             "target_end_date", "budget_hours", "weekly_hours_budget",
-            "monthly_hours_budget", "budget_amount", "pricing_model", "monthly_fee",
+            "monthly_hours_budget", "hours_carryover", "budget_amount", "pricing_model", "monthly_fee",
             "unit_price", "unit_label", "scope", "client_id", "owner_id",
         }
     }
@@ -743,6 +752,10 @@ async def get_project(
     closing_status = None
     if can_read_hours and not is_recurring_project(project):
         closing_status = build_closing_status(project, total_minutes, today)
+    month_budget = None
+    if can_read_hours:
+        _, base_monthly = effective_budgets(project)
+        month_budget = await project_month_budget(db, project, base_monthly, month_start)
 
     return _build_project_response(
         project,
@@ -751,6 +764,7 @@ async def get_project(
         hours_used_week=hours_used_week,
         hours_used_month=hours_used_month,
         closing_status=closing_status,
+        month_budget=month_budget,
     )
 
 
@@ -852,7 +866,7 @@ _UPDATABLE_PROJECT_FIELDS = {
     "name", "description", "project_type", "is_recurring",
     "requires_task_review",
     "start_date", "target_end_date", "actual_end_date",
-    "status", "budget_hours", "weekly_hours_budget", "monthly_hours_budget", "budget_amount",
+    "status", "budget_hours", "weekly_hours_budget", "monthly_hours_budget", "hours_carryover", "budget_amount",
     "gsc_url", "ga4_property_id",
     "pricing_model", "monthly_fee", "unit_price", "unit_label", "scope",
     "owner_id",

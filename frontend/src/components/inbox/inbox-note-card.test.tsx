@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { InboxNoteCard } from "./inbox-note-card"
@@ -7,7 +7,7 @@ import type { InboxNote } from "@/lib/types"
 
 const mocks = vi.hoisted(() => ({
   classify: vi.fn(), update: vi.fn(), dismiss: vi.fn(), suggest: vi.fn(), remove: vi.fn(), upload: vi.fn(), deleteAttachment: vi.fn(),
-  convert: vi.fn(), projects: vi.fn(), clients: vi.fn(), users: vi.fn(),
+  convert: vi.fn(), projects: vi.fn(), clients: vi.fn(), users: vi.fn(), fromInbox: vi.fn(),
   permissions: { tasks: true, projects: true, clients: true, users: true },
 }))
 
@@ -18,6 +18,10 @@ vi.mock("@/lib/api", () => ({
     uploadAttachment: mocks.upload, deleteAttachment: mocks.deleteAttachment, convertToTask: mocks.convert,
   },
   projectsApi: { listAll: mocks.projects }, clientsApi: { listAll: mocks.clients }, usersApi: { listAll: mocks.users },
+}))
+vi.mock("@/lib/scope-requests", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/scope-requests")>()),
+  scopeRequestsApi: { fromInbox: mocks.fromInbox },
 }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
@@ -110,5 +114,45 @@ describe("InboxNoteCard app suggestion", () => {
     setup({ status: "processed", resolved_as: "app_suggestion", classification_error_code: null, classification_next_attempt_at: null })
     expect(screen.getByText("Sugerencia para la app")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Sugerencia para la app" })).not.toBeInTheDocument()
+  })
+})
+
+
+describe("InboxNoteCard petición extra", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.permissions = { tasks: true, projects: true, clients: true, users: true }
+    mocks.projects.mockResolvedValue([{ id: 9, name: "SEO mensual", client_id: 4 }, { id: 10, name: "Ajeno", client_id: 5 }])
+    mocks.clients.mockResolvedValue([{ id: 4, name: "Acme" }, { id: 5, name: "Beta" }])
+    mocks.users.mockResolvedValue([])
+    mocks.fromInbox.mockResolvedValue({ ...note, status: "processed", resolved_as: "scope_request" })
+  })
+
+  it("turns the note into an out-of-scope request of the chosen client", async () => {
+    setup({ raw_text: "Landing extra para Navidad\nLo pidió Marta", client_id: 4, classification_error_code: null, classification_next_attempt_at: null })
+    await userEvent.click(screen.getByRole("button", { name: "Petición extra" }))
+    expect(screen.getByLabelText("Qué ha pedido")).toHaveValue("Landing extra para Navidad")
+    const submit = screen.getByRole("button", { name: "Apuntar" })
+    expect(submit).toBeDisabled()
+    await userEvent.type(screen.getByLabelText("Coste estimado"), "1,5")
+    await userEvent.selectOptions(screen.getByLabelText("Unidad"), "h")
+    const project = await screen.findByLabelText("Proyecto (opcional)")
+    expect(within(project).queryByRole("option", { name: "Ajeno" })).not.toBeInTheDocument()
+    await userEvent.selectOptions(project, "9")
+    await userEvent.click(submit)
+    await waitFor(() => expect(mocks.fromInbox).toHaveBeenCalledWith(31, {
+      client_id: 4, estimated_minutes: 90, title: "Landing extra para Navidad", project_id: 9,
+    }))
+  })
+
+  it("is not offered without write access to clients", () => {
+    mocks.permissions.clients = false
+    setup({ classification_error_code: null, classification_next_attempt_at: null })
+    expect(screen.queryByRole("button", { name: "Petición extra" })).not.toBeInTheDocument()
+  })
+
+  it("labels a note already logged as an extra request", () => {
+    setup({ status: "processed", resolved_as: "scope_request", classification_error_code: null, classification_next_attempt_at: null })
+    expect(screen.getByText("Petición extra")).toBeInTheDocument()
   })
 })

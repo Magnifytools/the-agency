@@ -53,6 +53,7 @@ class ProjectCreate(BaseModel):
     budget_hours: Optional[float] = None
     weekly_hours_budget: Optional[float] = None
     monthly_hours_budget: Optional[float] = None
+    hours_carryover: bool = False
     budget_amount: Optional[float] = None
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
@@ -79,6 +80,7 @@ class ProjectUpdate(BaseModel):
     budget_hours: Optional[float] = None
     weekly_hours_budget: Optional[float] = None
     monthly_hours_budget: Optional[float] = None
+    hours_carryover: Optional[bool] = None
     budget_amount: Optional[float] = None
     gsc_url: Optional[str] = None
     ga4_property_id: Optional[str] = None
@@ -88,6 +90,13 @@ class ProjectUpdate(BaseModel):
     unit_label: Optional[str] = None
     scope: Optional[str] = None
     owner_id: Optional[int] = None
+
+    @field_validator("hours_carryover", mode="before")
+    @classmethod
+    def carryover_cannot_be_null(cls, value):
+        if value is None:
+            raise ValueError("hours_carryover no puede ser nulo")
+        return value
 
     @field_validator("status", mode="before")
     @classmethod
@@ -133,6 +142,11 @@ class ProjectResponse(BaseModel):
     # Techos efectivos: caen a budget_hours en retainers mensuales si no hay techo explícito
     effective_weekly_hours_budget: Optional[float] = None
     effective_monthly_hours_budget: Optional[float] = None
+    # Arrastre de horas (``hours_carryover``): techo de ESTE mes = base + lo que
+    # sobró (o − el exceso) del mes anterior. Sólo en la ficha y con lectura de horas.
+    hours_carryover: bool = False
+    month_hours_budget: Optional[float] = None
+    month_hours_carried: Optional[float] = None
     # Estado de cierre para proyectos puntuales (fecha final + horas vs tiempo). None en recurrentes.
     closing_status: Optional[dict] = None
     created_at: datetime
@@ -288,6 +302,9 @@ class ProjectMonthlyCycleResponse(BaseModel):
     total_minutes: Optional[int]
     used_hours: Optional[float]
     budget_hours: Optional[float] = None
+    # Con arrastre (``hours_carryover``): budget_hours = base + carried.
+    base_budget_hours: Optional[float] = None
+    carried_hours: Optional[float] = None
     remaining_hours: Optional[float] = None
     tasks: list[ProjectCycleTaskResponse]
 

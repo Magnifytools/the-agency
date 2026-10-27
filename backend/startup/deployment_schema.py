@@ -43,6 +43,8 @@ from backend.startup.app_suggestions_schema import MIGRATION as APP_SUGGESTIONS_
 from backend.startup.app_suggestion_images_schema import MIGRATION as APP_SUGGESTION_IMAGES_MIGRATION
 from backend.startup.seo_annotations_schema import MIGRATION as SEO_ANNOTATIONS_MIGRATION
 from backend.startup.web_health_schema import MIGRATION as WEB_HEALTH_MIGRATION
+from backend.startup.client_scope_requests_schema import MIGRATION as CLIENT_SCOPE_REQUESTS_MIGRATION
+from backend.startup.project_hours_carryover_schema import MIGRATION as PROJECT_HOURS_CARRYOVER_MIGRATION
 
 MIGRATIONS = (
     *schema_baseline.MIGRATIONS, JOB_RUNTIME_MIGRATION, INBOX_RECOVERY_MIGRATION,
@@ -57,6 +59,7 @@ MIGRATIONS = (
     VIGIL_RETIREMENT_MIGRATION, APP_SUGGESTIONS_MIGRATION, APP_SUGGESTION_IMAGES_MIGRATION,
     SEO_ANNOTATIONS_MIGRATION,
     WEB_HEALTH_MIGRATION,
+    CLIENT_SCOPE_REQUESTS_MIGRATION, PROJECT_HOURS_CARRYOVER_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

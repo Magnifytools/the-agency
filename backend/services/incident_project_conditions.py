@@ -5,7 +5,7 @@ import hashlib
 from datetime import datetime, time, timedelta
 from types import SimpleNamespace
 
-from sqlalchemy import Date, and_, case, cast, false, func, literal, or_, select
+from sqlalchemy import Date, and_, case, cast, exists, false, func, literal, or_, select
 
 from backend.core.modules import is_enabled
 from backend.db.models import (
@@ -15,10 +15,13 @@ from backend.db.models import (
     Task,
     TaskStatus,
     TimeEntry,
+    User,
+    UserRole,
 )
+from backend.services import hours_carryover
 from backend.services.incident_conditions import Condition, module_permission
 from backend.services.temporal import business_today
-from backend.services.time_budget import CLOSING_SOON_DAYS, effective_budgets
+from backend.services.time_budget import CLOSING_SOON_DAYS, WARNING_THRESHOLD, effective_budgets
 from backend.services.time_entry_dates import time_entry_civil_period
 
 PROJECT_NO_NEXT_ACTION = "project_no_next_action"
@@ -38,6 +41,12 @@ PROJECT_CONDITIONS = (
     PROJECT_HOURS_WARNING,
     PROJECT_HOURS_EXCEEDED,
 )
+
+#: Horas del mes: aviso temprano al 75 % (antes 80 %) y alerta al 100 %. Las
+#: dos llegan al responsable del proyecto y a los admins (antes sólo al responsable).
+MONTHLY_HOURS_CONDITIONS = (PROJECT_MONTHLY_HOURS_WARNING, PROJECT_MONTHLY_HOURS_EXCEEDED)
+MONTHLY_WARNING_RATIO = WARNING_THRESHOLD
+FIXED_WARNING_RATIO = 0.8
 
 _ELIGIBLE_STATUSES = (ProjectStatus.active, ProjectStatus.planning)
 _NEXT_ACTION_STATUSES = tuple(
@@ -126,6 +135,7 @@ def project_measure_rows(now: datetime):
         .group_by(Task.project_id)
         .subquery()
     )
+    previous_minutes = hours_carryover.previous_month_minutes_subquery(month_start)
     return select(
         Project.id,
         Project.name,
@@ -137,6 +147,9 @@ def project_measure_rows(now: datetime):
         Project.budget_hours,
         Project.weekly_hours_budget,
         Project.monthly_hours_budget,
+        Project.hours_carryover,
+        hours_carryover.eligible_clause(month_start).label("carry_eligible"),
+        func.coalesce(previous_minutes.c.minutes, 0).label("previous_month_minutes"),
         next_actions.c.project_id.is_not(None).label("has_next_action"),
         func.coalesce(monthly_minutes.c.minutes, 0).label("month_minutes"),
         func.coalesce(total_minutes.c.minutes, 0).label("total_minutes"),
@@ -148,20 +161,15 @@ def project_measure_rows(now: datetime):
         monthly_minutes, monthly_minutes.c.project_id == Project.id,
     ).outerjoin(
         total_minutes, total_minutes.c.project_id == Project.id,
+    ).outerjoin(
+        previous_minutes, previous_minutes.c.project_id == Project.id,
     ).where(
         Project.status.in_(_ELIGIBLE_STATUSES),
     ).order_by(Project.id)
 
 
-def _project_rows(now: datetime):
-    return project_measure_rows(now).where(
-        Project.owner_id.is_not(None),
-        module_permission(Project.owner_id, "projects"),
-    )
-
-
-def monthly_hours_usage(row) -> tuple[float, float] | None:
-    """(hours logged this month, monthly ceiling), or None when there is no ceiling."""
+def monthly_hours_budget(row) -> hours_carryover.MonthBudget:
+    """This month's ceiling for a measure row, with last month's carry if enabled."""
     project_view = SimpleNamespace(
         monthly_hours_budget=row.monthly_hours_budget,
         weekly_hours_budget=row.weekly_hours_budget,
@@ -170,22 +178,85 @@ def monthly_hours_usage(row) -> tuple[float, float] | None:
         budget_hours=row.budget_hours,
     )
     _, monthly_budget = effective_budgets(project_view)
-    if not monthly_budget or monthly_budget <= 0:
+    return hours_carryover.month_budget(
+        monthly_budget,
+        carryover=bool(getattr(row, "hours_carryover", False)),
+        previous_minutes=getattr(row, "previous_month_minutes", None),
+        eligible=bool(getattr(row, "carry_eligible", False)),
+    )
+
+
+def monthly_hours_usage(row) -> tuple[float, float] | None:
+    """(hours logged this month, this month's ceiling), or None without a ceiling.
+
+    The ceiling includes the hours carried from last month when the project has
+    ``hours_carryover`` (``services/hours_carryover.py``); it can be 0.
+    """
+    month = monthly_hours_budget(row)
+    if month.budget is None:
         return None
-    return float(row.month_minutes or 0) / 60, float(monthly_budget)
+    return float(row.month_minutes or 0) / 60, month.budget
+
+
+def hours_ratio(used: float, budget: float) -> float:
+    """Share of the month's ceiling; a ceiling eaten by last month's excess is over."""
+    if budget <= 0:
+        return float("inf")
+    return used / budget
+
+
+def _monthly_condition(row, today) -> Condition | None:
+    """75 % = aviso temprano; 100 % = alerta. Ciclo = mes civil."""
+    month = monthly_hours_budget(row)
+    if month.budget is None:
+        return None
+    used = float(row.month_minutes or 0) / 60
+    ratio = hours_ratio(used, month.budget)
+    if ratio >= 1:
+        kind, severity = PROJECT_MONTHLY_HOURS_EXCEEDED, "critical"
+    elif ratio >= MONTHLY_WARNING_RATIO:
+        kind, severity = PROJECT_MONTHLY_HOURS_WARNING, "warning"
+    else:
+        return None
+    name = row.name or f"Proyecto #{row.id}"
+    share = f"{int(ratio * 100)}%" if month.budget > 0 else "sin margen"
+    message = f"Tiempo registrado: {_hours(used)}. Presupuesto del mes: {_hours(month.budget)}"
+    if month.carried is not None:
+        sign, what = ("+", "que sobraron") if month.carried >= 0 else ("−", "de exceso")
+        message += f" ({_hours(month.base)} {sign} {_hours(abs(month.carried))} {what} el mes anterior)"
+    message += "." if kind == PROJECT_MONTHLY_HOURS_EXCEEDED else ". Aviso temprano: aún hay margen para reorganizar el mes."
+    return _condition(
+        kind,
+        row.id,
+        today.strftime("%Y-%m"),
+        f"Horas del mes en {name}: {share}",
+        message,
+        severity=severity,
+        legacy_since=datetime.combine(today.replace(day=1), time.min),
+    )
 
 
 async def collect_project_conditions(db, user_id: int, now: datetime) -> dict[str, Condition]:
-    """Collect project conditions for one explicit owner in one bounded SELECT."""
+    """Conditions of the projects this user owns; admins also get every project's monthly hours."""
     if not is_enabled("projects"):
         return {}
     today = business_today(now=now)
-    month_cycle = today.strftime("%Y-%m")
-    month_start = datetime.combine(today.replace(day=1), time.min)
-    rows = (await db.execute(_project_rows(now).where(Project.owner_id == user_id))).all()
+    owned = and_(Project.owner_id == user_id, module_permission(Project.owner_id, "projects"))
+    admin = exists().where(User.id == user_id, User.is_active.is_(True), User.role == UserRole.admin)
+    # Una sola consulta: los proyectos que lleva y, si es admin, todos los demás
+    # (de esos sólo cuentan las horas del mes).
+    rows = (await db.execute(
+        project_measure_rows(now).add_columns(owned.label("owned")).where(or_(owned, admin))
+    )).all()
     result: dict[str, Condition] = {}
 
     for row in rows:
+        if not row.owned:
+            if is_enabled("timesheet"):
+                condition = _monthly_condition(row, today)
+                if condition is not None:
+                    result[condition.key] = condition
+            continue
         href_name = row.name or f"Proyecto #{row.id}"
         end_date = row.target_end_date.date() if row.target_end_date else None
 
@@ -231,27 +302,9 @@ async def collect_project_conditions(db, user_id: int, now: datetime) -> dict[st
 
         if not row.timesheet_read or not is_enabled("timesheet"):
             continue
-        monthly = monthly_hours_usage(row)
-        if monthly is not None:
-            used, monthly_budget = monthly
-            ratio = used / monthly_budget
-            if ratio >= 1:
-                kind, severity = PROJECT_MONTHLY_HOURS_EXCEEDED, "critical"
-            elif ratio >= 0.8:
-                kind, severity = PROJECT_MONTHLY_HOURS_WARNING, "warning"
-            else:
-                kind = None
-            if kind:
-                condition = _condition(
-                    kind,
-                    row.id,
-                    month_cycle,
-                    f"Horas del mes en {href_name}: {int(ratio * 100)}%",
-                    f"Tiempo registrado: {_hours(used)}. Presupuesto mensual: {_hours(float(monthly_budget))}.",
-                    severity=severity,
-                    legacy_since=month_start,
-                )
-                result[condition.key] = condition
+        condition = _monthly_condition(row, today)
+        if condition is not None:
+            result[condition.key] = condition
 
         is_monthly = bool(row.is_recurring) or row.pricing_model == "monthly"
         if not is_monthly and row.budget_hours and row.budget_hours > 0:
@@ -259,7 +312,7 @@ async def collect_project_conditions(db, user_id: int, now: datetime) -> dict[st
             ratio = used / float(row.budget_hours)
             if ratio >= 1:
                 kind, severity = PROJECT_HOURS_EXCEEDED, "critical"
-            elif ratio >= 0.8:
+            elif ratio >= FIXED_WARNING_RATIO:
                 kind, severity = PROJECT_HOURS_WARNING, "warning"
             else:
                 kind = None
@@ -288,6 +341,17 @@ def _monthly_budget_expr():
             Project.budget_hours,
         ),
         else_=None,
+    )
+
+
+def _recipient_clause(user_id: int):
+    """The owner sees every project condition; an active admin, the monthly hours ones."""
+    return or_(
+        Project.owner_id == user_id,
+        and_(
+            Notification.type.in_(MONTHLY_HOURS_CONDITIONS),
+            exists().where(User.id == user_id, User.is_active.is_(True), User.role == UserRole.admin),
+        ),
     )
 
 
@@ -323,7 +387,7 @@ def project_visibility_clause(user_id: int, *, current_only: bool = False, now: 
         permission,
         select(literal(1)).where(
             Project.id == Notification.entity_id,
-            Project.owner_id == user_id,
+            _recipient_clause(user_id),
         ).exists(),
     )
     if not current_only:
@@ -362,9 +426,17 @@ def project_visibility_clause(user_id: int, *, current_only: bool = False, now: 
         else_="open",
     )
     cycle_key = lambda kind, cycle: func.concat(kind, ":project:", Project.id, ":", cycle)
+    previous_minutes = select(func.coalesce(func.sum(TimeEntry.minutes), 0)).select_from(Task).join(
+        TimeEntry, TimeEntry.task_id == Task.id,
+    ).where(
+        Task.project_id == Project.id,
+        TimeEntry.minutes.is_not(None),
+        time_entry_civil_period(hours_carryover.previous_month_start(month_start), month_start),
+    ).scalar_subquery()
+    month_budget_minutes = hours_carryover.budget_minutes_expr(monthly_budget, previous_minutes, month_start)
     live = select(literal(1)).where(
         Project.id == Notification.entity_id,
-        Project.owner_id == user_id,
+        _recipient_clause(user_id),
         Project.status.in_(_ELIGIBLE_STATUSES),
         or_(
             and_(
@@ -387,20 +459,20 @@ def project_visibility_clause(user_id: int, *, current_only: bool = False, now: 
             and_(
                 Notification.type == PROJECT_MONTHLY_HOURS_WARNING,
                 monthly_budget > 0,
-                month_minutes >= monthly_budget * 60 * 0.8,
-                month_minutes < monthly_budget * 60,
+                month_minutes >= month_budget_minutes * MONTHLY_WARNING_RATIO,
+                month_minutes < month_budget_minutes,
                 Notification.dedupe_key == cycle_key(PROJECT_MONTHLY_HOURS_WARNING, month_cycle),
             ),
             and_(
                 Notification.type == PROJECT_MONTHLY_HOURS_EXCEEDED,
                 monthly_budget > 0,
-                month_minutes >= monthly_budget * 60,
+                month_minutes >= month_budget_minutes,
                 Notification.dedupe_key == cycle_key(PROJECT_MONTHLY_HOURS_EXCEEDED, month_cycle),
             ),
             and_(
                 Notification.type == PROJECT_HOURS_WARNING,
                 fixed_budget,
-                total_minutes >= Project.budget_hours * 60 * 0.8,
+                total_minutes >= Project.budget_hours * 60 * FIXED_WARNING_RATIO,
                 total_minutes < Project.budget_hours * 60,
                 Notification.dedupe_key == cycle_key(PROJECT_HOURS_WARNING, fixed_cycle),
             ),

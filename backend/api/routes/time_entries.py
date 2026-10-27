@@ -32,6 +32,7 @@ from backend.schemas.time_entry import (
 from backend.api.deps import get_current_user, require_admin, require_module
 from backend.services.csv_utils import build_csv_response
 from backend.services.project_lifecycle import ensure_project_allows_timer
+from backend.services.hours_carryover import project_month_budget
 from backend.services.time_budget import (
     build_budget_status,
     build_closing_status,
@@ -966,11 +967,14 @@ async def get_project_time_budget(
         week_minutes = await _sum_minutes(week_start, week_start + timedelta(days=7))
         month_minutes = await _sum_minutes(month_start, next_month)
         weekly_budget, monthly_budget = effective_budgets(project)
+        month = await project_month_budget(db, project, monthly_budget, month_start)
         status_block = build_budget_status(
             weekly_budget,
-            monthly_budget,
+            month.budget,
             week_minutes,
             month_minutes,
+            month_base=month.base,
+            month_carried=month.carried,
         )
         return {
             "project_id": project.id,

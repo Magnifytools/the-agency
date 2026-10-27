@@ -2,6 +2,7 @@ import { ProjectWorkSummary } from "@/components/projects/project-work-summary"
 import type { ProjectTaskItem, ProjectTaskGroup } from "@/lib/project-work"
 import { useBusinessDate } from "@/hooks/use-business-date"
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
+import { carryoverNote } from "@/lib/hours-carryover"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
@@ -270,7 +271,9 @@ export default function ProjectDetailPage() {
   const primaryHoursUsed = hasTimeMetrics
     ? (project.is_recurring ? project.hours_used_month : project.hours_used)
     : null
-  const primaryHoursBudget = project.is_recurring ? project.effective_monthly_hours_budget : project.budget_hours
+  const primaryHoursBudget = project.is_recurring
+    ? (project.month_hours_budget ?? project.effective_monthly_hours_budget)
+    : project.budget_hours
 
   const formatDate = (date: string | null) => {
     if (!date) return "—"
@@ -481,9 +484,11 @@ export default function ProjectDetailPage() {
       {hasTimeMetrics && ((project.effective_weekly_hours_budget ?? 0) > 0 || (project.effective_monthly_hours_budget ?? 0) > 0) && (
         <HoursBudgetCard
           weeklyBudget={project.effective_weekly_hours_budget}
-          monthlyBudget={project.effective_monthly_hours_budget}
+          monthlyBudget={project.month_hours_budget ?? project.effective_monthly_hours_budget}
           usedWeek={project.hours_used_week!}
           usedMonth={project.hours_used_month!}
+          carried={project.month_hours_carried ?? null}
+          baseMonthly={project.effective_monthly_hours_budget}
         />
       )}
 
@@ -843,6 +848,7 @@ function EditProjectDialog({
     budget_hours: project.budget_hours?.toString() || "",
     weekly_hours_budget: project.weekly_hours_budget?.toString() || "",
     monthly_hours_budget: project.monthly_hours_budget?.toString() || "",
+    hours_carryover: project.hours_carryover,
     budget_amount: project.budget_amount?.toString() || "",
     monthly_fee: project.monthly_fee?.toString() || "",
     scope: project.scope || "",
@@ -868,6 +874,7 @@ function EditProjectDialog({
         budget_hours: formData.budget_hours ? parseFloat(formData.budget_hours) : undefined,
         weekly_hours_budget: formData.weekly_hours_budget ? parseFloat(formData.weekly_hours_budget) : null,
         monthly_hours_budget: formData.monthly_hours_budget ? parseFloat(formData.monthly_hours_budget) : null,
+        hours_carryover: formData.hours_carryover,
         budget_amount: formData.budget_amount ? parseFloat(formData.budget_amount) : undefined,
         monthly_fee: formData.monthly_fee ? parseFloat(formData.monthly_fee) : undefined,
         scope: formData.scope || null,
@@ -999,8 +1006,19 @@ function EditProjectDialog({
             />
           </div>
         </div>
+        <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={formData.hours_carryover}
+            onChange={(event) => setFormData({ ...formData, hours_carryover: event.target.checked })}
+          />
+          <span>
+            <span className="font-medium">Pasar al mes siguiente las horas que sobren (o el exceso)</span>
+            <span className="block text-xs text-muted-foreground">El techo del mes suma lo que no se gastó el mes anterior, o resta lo que se pasó. Sólo cuenta el mes anterior, sin acumular.</span>
+          </span>
+        </label>
         <p className="text-xs text-muted-foreground -mt-2">
-          La alerta usa el techo mensual (aviso al 80%, alerta al pasarse). El semanal es solo referencia visual; se permite compensar entre semanas.
+          El aviso usa el techo mensual (aviso temprano al 75 % y alerta al pasarse; le llega al responsable y a los admins). El semanal es solo referencia visual; se permite compensar entre semanas.
         </p>
 
         {/* --- Pricing model --- */}
@@ -1200,11 +1218,14 @@ function SaveTemplateDialog({
 
 type BudgetStatus = "ok" | "warning" | "over"
 
+/** Aviso temprano al 75 % (el mismo umbral que el aviso del proyecto en la campana). */
+const MONTHLY_WARNING_RATIO = 0.75
+
 function budgetStatus(used: number, budget: number | null | undefined): BudgetStatus | null {
   if (!budget || budget <= 0) return null
   const pct = used / budget
   if (pct >= 1) return "over"
-  if (pct >= 0.8) return "warning"
+  if (pct >= MONTHLY_WARNING_RATIO) return "warning"
   return "ok"
 }
 
@@ -1299,7 +1320,7 @@ function MonthlyCycleCard({ cycle, month, currentMonth, loading, error, onMonthC
             <CycleMetric label={month === currentMonth ? "Horas restantes" : "Diferencia con presupuesto actual"} value={cycle.remaining_hours == null ? "Sin presupuesto" : `${cycle.remaining_hours.toFixed(1)}h`} />
           </div>
           <p className="text-xs text-muted-foreground">Finalizadas en el mes sólo cuenta tareas con fecha de finalización registrada dentro del mes.</p>
-          {cycle.budget_hours != null && cycle.used_hours != null && <HoursBudgetCard weeklyBudget={null} monthlyBudget={cycle.budget_hours} usedWeek={0} usedMonth={cycle.used_hours} showWeekly={false} monthLabel={month === currentMonth ? "Este mes" : "Presupuesto actual de referencia"} />}
+          {cycle.budget_hours != null && cycle.used_hours != null && <HoursBudgetCard weeklyBudget={null} monthlyBudget={cycle.budget_hours} usedWeek={0} usedMonth={cycle.used_hours} showWeekly={false} monthLabel={month === currentMonth ? "Este mes" : "Presupuesto actual de referencia"} carried={cycle.carried_hours ?? null} baseMonthly={cycle.base_budget_hours ?? null} />}
           <div>
             <p className="mb-2 text-sm font-medium">Tareas planificadas o finalizadas en el mes</p>
             {cycle.tasks.length ? <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border">
@@ -1329,6 +1350,8 @@ function HoursBudgetCard({
   usedMonth,
   showWeekly = true,
   monthLabel = "Este mes",
+  carried = null,
+  baseMonthly = null,
 }: {
   weeklyBudget: number | null
   monthlyBudget: number | null
@@ -1336,6 +1359,8 @@ function HoursBudgetCard({
   usedMonth: number
   showWeekly?: boolean
   monthLabel?: string
+  carried?: number | null
+  baseMonthly?: number | null
 }) {
   const monthStatus = budgetStatus(usedMonth, monthlyBudget)
   const alert = monthStatus === "warning" || monthStatus === "over"
@@ -1356,8 +1381,11 @@ function HoursBudgetCard({
           label={monthLabel}
           used={usedMonth}
           budget={monthlyBudget}
-          note="Aviso al llegar al 80 % del presupuesto mensual."
+          note={carryoverNote(carried, baseMonthly) ?? "Aviso temprano al llegar al 75 % del presupuesto mensual."}
         />
+        {carried != null && monthlyBudget != null && monthlyBudget <= 0 && (
+          <p className="text-xs text-red-600">El exceso del mes anterior se ha comido todo el presupuesto de este mes.</p>
+        )}
       </CardContent>
     </Card>
   )

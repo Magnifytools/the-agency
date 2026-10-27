@@ -54,6 +54,7 @@ from backend.db.models import (
     ChangeLog,
     Client,
     ClientContact,
+    ClientScopeRequest,
     GrowthIdea,
     Lead,
     LeadActivity,
@@ -138,6 +139,9 @@ _SPECS: dict[type, _Spec] = {
     Project:       _Spec("project",       "name",         "projects", "Proyecto",  False, 0),
     Client:        _Spec("client",        "name",         "clients",  "Cliente",   False, 0),
     ClientContact: _Spec("client_contact", "name",        "clients",  "Contacto",  False, 1),
+    # Peticiones extra: las escribe una persona a mano y borrar una por error es
+    # justo lo que el Deshacer debe cubrir. Hija del cliente (cascada).
+    ClientScopeRequest: _Spec("client_scope_request", "title", "clients", "Petición extra", True, 1),
     Lead:          _Spec("lead",          "company_name", "growth",   "Lead",      False, 0),
     GrowthIdea:    _Spec("growth_idea",   "title",        "growth",   "Idea",      True,  0),
     ProjectPhase:  _Spec("project_phase", "name",         "projects", "Fase",      True,  1),

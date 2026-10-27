@@ -1,0 +1,42 @@
+{
+  "version": "20261027_client_scope_requests_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS client_scope_requests (\n id SERIAL PRIMARY KEY,\n client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,\n project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,\n title VARCHAR(200) NOT NULL,\n detail TEXT,\n estimated_minutes INTEGER NOT NULL,\n requested_on DATE NOT NULL,\n decision VARCHAR(10) NOT NULL DEFAULT 'pending',\n decision_note TEXT,\n decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n decided_at TIMESTAMPTZ,\n created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT ck_client_scope_requests_title CHECK (length(btrim(title)) > 0),\n CONSTRAINT ck_client_scope_requests_minutes CHECK (estimated_minutes > 0 AND estimated_minutes <= 60000),\n CONSTRAINT ck_client_scope_requests_decision CHECK (decision IN ('pending','absorb','bill','swap')),\n CONSTRAINT ck_client_scope_requests_decided CHECK ((decision = 'pending') = (decided_at IS NULL))\n)",
+    "CREATE INDEX IF NOT EXISTS ix_client_scope_requests_client_requested ON client_scope_requests (client_id, requested_on)",
+    "CREATE INDEX IF NOT EXISTS ix_client_scope_requests_project_id ON client_scope_requests (project_id)"
+  ],
+  "columns": {
+    "client_scope_requests": {
+      "id": ["int4", false, null],
+      "client_id": ["int4", false, null],
+      "project_id": ["int4", true, null],
+      "title": ["varchar", false, 200],
+      "detail": ["text", true, null],
+      "estimated_minutes": ["int4", false, null],
+      "requested_on": ["date", false, null],
+      "decision": ["varchar", false, 10],
+      "decision_note": ["text", true, null],
+      "decided_by": ["int4", true, null],
+      "decided_at": ["timestamptz", true, null],
+      "created_by": ["int4", true, null],
+      "created_at": ["timestamptz", false, null]
+    }
+  },
+  "primary_keys": {
+    "client_scope_requests": ["id"]
+  },
+  "foreign_keys": [
+    {"table": "client_scope_requests", "column": "client_id", "references": "clients", "on_delete": "c"},
+    {"table": "client_scope_requests", "column": "project_id", "references": "projects", "on_delete": "n"},
+    {"table": "client_scope_requests", "column": "decided_by", "references": "users", "on_delete": "n"},
+    {"table": "client_scope_requests", "column": "created_by", "references": "users", "on_delete": "n"}
+  ],
+  "check_constraints": {
+    "client_scope_requests": [
+      "ck_client_scope_requests_decided",
+      "ck_client_scope_requests_decision",
+      "ck_client_scope_requests_minutes",
+      "ck_client_scope_requests_title"
+    ]
+  }
+}

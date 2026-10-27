@@ -49,6 +49,12 @@ export interface Project {
   hours_used_month: number | null
   effective_weekly_hours_budget: number | null
   effective_monthly_hours_budget: number | null
+  /** Lo que sobra (o el exceso) de un mes pasa al siguiente. */
+  hours_carryover: boolean
+  /** Techo de ESTE mes con el arrastre (sólo en la ficha y con lectura de horas). */
+  month_hours_budget?: number | null
+  /** Horas que pasan del mes anterior: + sobran, − exceso; null si no aplica. */
+  month_hours_carried?: number | null
   closing_status: ProjectClosingStatus | null
   created_at: string
   updated_at: string
@@ -135,6 +141,8 @@ export interface ProjectMonthlyCycle {
   total_minutes: number | null
   used_hours: number | null
   budget_hours: number | null
+  base_budget_hours?: number | null
+  carried_hours?: number | null
   remaining_hours: number | null
   tasks: ProjectCycleTask[]
 }
@@ -171,6 +179,7 @@ export interface ProjectCreate {
   budget_hours?: number | null
   weekly_hours_budget?: number | null
   monthly_hours_budget?: number | null
+  hours_carryover?: boolean
   budget_amount?: number | null
   gsc_url?: string | null
   ga4_property_id?: string | null
