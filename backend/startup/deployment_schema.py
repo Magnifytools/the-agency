@@ -48,6 +48,7 @@ from backend.startup.project_hours_carryover_schema import MIGRATION as PROJECT_
 from backend.startup.digest_seo_detail_schema import MIGRATION as DIGEST_SEO_DETAIL_MIGRATION
 from backend.startup.credentials_totp_schema import MIGRATION as CREDENTIALS_TOTP_MIGRATION
 from backend.startup.task_sort_rank_schema import MIGRATION as TASK_SORT_RANK_MIGRATION
+from backend.startup.task_time_blocks_schema import MIGRATION as TASK_TIME_BLOCKS_MIGRATION
 
 MIGRATIONS = (
     *schema_baseline.MIGRATIONS, JOB_RUNTIME_MIGRATION, INBOX_RECOVERY_MIGRATION,
@@ -65,7 +66,7 @@ MIGRATIONS = (
     CLIENT_SCOPE_REQUESTS_MIGRATION, PROJECT_HOURS_CARRYOVER_MIGRATION,
     DIGEST_SEO_DETAIL_MIGRATION,
     CREDENTIALS_TOTP_MIGRATION,
-    TASK_SORT_RANK_MIGRATION,
+    TASK_SORT_RANK_MIGRATION, TASK_TIME_BLOCKS_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 
