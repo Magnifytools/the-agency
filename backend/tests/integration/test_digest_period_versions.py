@@ -386,3 +386,22 @@ async def test_el_historial_dice_que_version_se_entrego_y_quien(admin_client, db
     assert by_id[delivered.id]["delivered_by_name"] == admin_user.full_name
     assert by_id[revoked.id]["delivered_at"] is None
     assert by_id[draft.id]["delivered_at"] is None and by_id[draft.id]["delivered_by_name"] is None
+
+
+async def test_la_busqueda_global_encuentra_resumenes_por_cliente(admin_client, db_session, admin_user):
+    client = Client(name="Buscable Resúmenes SL", status=ClientStatus.active)
+    db_session.add(client)
+    await db_session.flush()
+    digest = WeeklyDigest(
+        client_id=client.id, period_start=date(2026, 9, 1), period_end=date(2026, 9, 30),
+        status=DigestStatus.draft, tone=DigestTone.cercano, content=_content(),
+        raw_context={"client_name": client.name}, generated_at=datetime(2026, 10, 2, 8),
+        created_by=admin_user.id,
+    )
+    db_session.add(digest)
+    await db_session.flush()
+    res = await admin_client.get("/api/search", params={"q": "Buscable Resúmenes"})
+    assert res.status_code == 200, res.text
+    assert res.json()["digests"] == [{
+        "id": digest.id, "client_name": client.name, "period_start": "2026-09-01", "period_end": "2026-09-30",
+    }]

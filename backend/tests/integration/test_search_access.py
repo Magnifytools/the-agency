@@ -94,7 +94,7 @@ async def test_search_related_names_require_clients_read_permission(
 
         empty = await no_modules.get("/api/search", params={"q": "Needle"})
         assert empty.status_code == 200
-        assert empty.json() == {"clients": [], "projects": [], "tasks": [], "leads": []}
+        assert empty.json() == {"clients": [], "projects": [], "tasks": [], "leads": [], "digests": [], "notes": []}
     finally:
         await projects_only.aclose()
         await tasks_and_clients.aclose()

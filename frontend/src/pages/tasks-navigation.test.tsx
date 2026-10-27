@@ -101,10 +101,10 @@ describe("tasks URL navigation", () => {
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: true })))
     await userEvent.click(screen.getByRole("button", { name: "Todas" }))
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: undefined, page: 1 })))
-    expect(screen.queryByRole("button", { name: "Limpiar filtros QA" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Quitar revisión" })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Atrás navegador" }))
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: true })))
-    expect(screen.getByRole("button", { name: "Limpiar filtros QA" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Quitar revisión" })).toBeInTheDocument()
   })
   it("renders recurring templates from their own query without ordinary task filters or counts", async () => {
     api.list.mockResolvedValue({ items: [], total: 99, page: 1, page_size: 25 })
@@ -144,5 +144,21 @@ describe("tasks URL navigation", () => {
     clock.today = "2027-02-01"
     view.rerender(view.tree)
     expect(screen.getByText(/enero 2027/i)).toBeInTheDocument()
+  })
+  it("los filtros viven en la URL y la búsqueda espera a que dejes de escribir", async () => {
+    showAgenda("/tasks?view=all&cliente=7&estado=completed&prioridad=high")
+    await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ client_id: 7, status: "completed", priority: "high" })))
+    // Un filtro secundario activo abre "Más filtros" y lo cuenta.
+    expect(screen.getByText("Más filtros (1)").closest("details")).toHaveAttribute("open")
+    api.list.mockClear()
+    await userEvent.type(screen.getByRole("searchbox", { name: "Buscar tareas" }), "informe")
+    expect(api.list).not.toHaveBeenCalledWith(expect.objectContaining({ search: "i" }))
+    await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ search: "informe" })))
+    expect(api.list.mock.calls.filter(([params]) => params.search).length).toBe(1)
+  })
+  it("el título de la fila abre la tarea", async () => {
+    api.list.mockResolvedValueOnce({ items: [{ id: 8, title: "Preparar informe", status: "pending", priority: "medium", assigned_to: null, scheduled_date: null, estimated_minutes: null, due_date: null }], total: 1, page: 1, page_size: 25 })
+    showAgenda("/tasks?view=all")
+    expect(await screen.findByRole("button", { name: "Preparar informe" })).toBeInTheDocument()
   })
 })

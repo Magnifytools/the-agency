@@ -311,7 +311,7 @@ describe("TaskPanel", () => {
     mocks.update.mockResolvedValue({ ...task, phase_id: 4 });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     expect(screen.getByLabelText("Depende de")).toHaveValue("11");
     expect(screen.getByLabelText("Patrón")).toHaveValue("biweekly");
     expect(screen.getByLabelText("Día")).toHaveValue("2");
@@ -427,7 +427,7 @@ describe("TaskPanel", () => {
     });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     expect(screen.getByText(/mantiene el calendario actual/)).toBeInTheDocument();
     expect(screen.getByLabelText("Día")).toHaveDisplayValue("Miércoles");
     await userEvent.click(screen.getByRole("button", { name: "Ver próximas fechas" }));
@@ -451,7 +451,7 @@ describe("TaskPanel", () => {
       .mockResolvedValueOnce({ ...task, recurrence_paused_at: null });
     const { onOpenChange } = setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.click(screen.getByRole("button", { name: "Pausar recurrencia" }));
     await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, { recurrence_paused: true }));
     await userEvent.click(await screen.findByRole("button", { name: "Reanudar recurrencia" }));
@@ -464,7 +464,7 @@ describe("TaskPanel", () => {
     mocks.recurrencePreview.mockReturnValue(new Promise((done) => { resolve = done; }));
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.click(screen.getByRole("button", { name: "Ver próximas fechas" }));
     await userEvent.selectOptions(screen.getByLabelText("Día"), "4");
     resolve({ state: "active", reason: null, label: "Resultado antiguo", next_dates: ["2026-10-07"] });
@@ -484,7 +484,7 @@ describe("TaskPanel", () => {
     mocks.recurrencePreview.mockResolvedValue({ state: "active", reason: null, label: "Calendario", next_dates: ["2026-10-07"] });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.type(screen.getByLabelText("Repetir cada dos semanas desde"), "2026-10-01");
     expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Comparar calendario actual" }));
@@ -496,7 +496,7 @@ describe("TaskPanel", () => {
     mocks.recurrencePreview.mockResolvedValue({ state: "active", reason: null, label: "Calendario", next_dates: ["2026-10-07"] });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.selectOptions(screen.getByLabelText("Día"), "0");
     await userEvent.clear(screen.getByLabelText("Finaliza"));
     await userEvent.type(screen.getByLabelText("Finaliza"), "2027-01-15");
@@ -514,7 +514,7 @@ describe("TaskPanel", () => {
     mocks.recurrencePreview.mockResolvedValue({ state: "active", reason: null, label: "Cada dos semanas", next_dates: ["2026-10-07"] });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.selectOptions(screen.getByLabelText("Patrón"), "biweekly");
     expect(screen.getByLabelText("Repetir cada dos semanas desde")).not.toHaveValue("");
     await userEvent.click(screen.getByRole("button", { name: "Ver próximas fechas" }));
@@ -526,7 +526,7 @@ describe("TaskPanel", () => {
     mocks.recurrencePreview.mockResolvedValue({ state: "active", reason: null, label: "Al reanudar", next_dates: ["2026-10-07"] });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.click(screen.getByRole("button", { name: "Comparar calendario actual" }));
     expect(await screen.findByText("Fechas al reanudar")).toBeInTheDocument();
     await waitFor(() => expect(mocks.recurrencePreview).toHaveBeenCalledTimes(2));

@@ -361,19 +361,20 @@ describe("client detail areas", () => {
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("outputs")
     const sections = screen.getByLabelText("Sección del área")
     expect(within(sections).getByRole("option", { name: "Control SEO" })).toBeInTheDocument()
-    expect(within(sections).getByRole("option", { name: "Engine" })).toBeInTheDocument()
+    // Engine está congelado: ya no sale en Resultados.
+    expect(within(sections).queryByRole("option", { name: /Engine/ })).not.toBeInTheDocument()
     expect(within(sections).queryByRole("option", { name: "SEO" })).not.toBeInTheDocument()
     // Sin propiedad todavía, el enlace del estado vacío lleva a Configuración.
     await userEvent.click(screen.getByRole("button", { name: "Ir a configuración" }))
     expect(await screen.findByText("Settings")).toBeInTheDocument()
   })
 
-  it("keeps old ?tab=seo links on the Engine tab, now labelled Engine", async () => {
+  it("keeps old ?tab=seo links on the Engine tab, now next to the settings", async () => {
     mocks.summary.mockResolvedValue({ ...summary, client: { ...summary.client, gsc_url: "sc-domain:acme.com", engine_project_id: 9 } })
     show("seo")
     expect(await screen.findByText("SEO")).toBeInTheDocument()
     expect(screen.getByLabelText("Sección del área")).toHaveValue("seo")
-    expect(screen.getByRole("button", { name: "Engine" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Engine (congelado)" })).toBeInTheDocument()
   })
 
   it("hides Control SEO without a Search Console property, even from a saved URL", async () => {

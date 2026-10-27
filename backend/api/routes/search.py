@@ -6,7 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.modules import is_enabled
 from backend.db.database import get_db
-from backend.db.models import User, UserRole, Client, Project, Task, Lead
+from backend.db.models import User, UserRole, Client, Project, Task, Lead, InboxNote, WeeklyDigest
+from backend.services.digest_access import digest_visibility_clause
 from backend.api.deps import get_current_user
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -106,5 +107,40 @@ async def global_search(
         ]
     else:
         results["leads"] = []
+
+    # Resúmenes — por nombre del cliente; los que la persona puede abrir.
+    if _user_has_module(current_user, "digests"):
+        digest_query = (
+            select(WeeklyDigest.id, WeeklyDigest.period_start, WeeklyDigest.period_end, Client.name.label("client_name"))
+            .join(Client, WeeklyDigest.client_id == Client.id)
+            .where(Client.name.ilike(pattern))
+            .order_by(WeeklyDigest.period_end.desc(), WeeklyDigest.id.desc())
+            .limit(5)
+        )
+        visibility = digest_visibility_clause(current_user)
+        if visibility is not None:
+            digest_query = digest_query.where(visibility)
+        results["digests"] = [
+            {"id": row.id, "client_name": row.client_name,
+             "period_start": row.period_start.isoformat(), "period_end": row.period_end.isoformat()}
+            for row in (await db.execute(digest_query)).all()
+        ]
+    else:
+        results["digests"] = []
+
+    # Notas por aclarar — sólo las propias, como en /inbox.
+    if _user_has_module(current_user, "tasks"):
+        note_result = await db.execute(
+            select(InboxNote.id, InboxNote.raw_text, InboxNote.status)
+            .where(InboxNote.user_id == current_user.id, InboxNote.raw_text.ilike(pattern))
+            .order_by(InboxNote.created_at.desc(), InboxNote.id.desc())
+            .limit(5)
+        )
+        results["notes"] = [
+            {"id": row.id, "text": row.raw_text[:140], "status": row.status.value}
+            for row in note_result.all()
+        ]
+    else:
+        results["notes"] = []
 
     return results
