@@ -356,7 +356,7 @@ export default function LeadsPage() {
       <ConfirmDialog
         open={deleteLeadId !== null}
         title="Eliminar lead"
-        description="Esta acción no se puede deshacer. El lead y su historial serán eliminados permanentemente."
+        description="Se eliminarán el lead y su historial. Puedes deshacerlo con ⌘Z."
         onConfirm={() => deleteLeadId && deleteMutation.mutate(deleteLeadId)}
         onOpenChange={(o) => { if (!o) setDeleteLeadId(null) }}
       />

@@ -43,7 +43,7 @@ const classificationMessages = {
 
 const captureSourceLabels: Record<string, string> = {
   dashboard: "Panel",
-  quick_capture: "Captura rápida",
+  quick_capture: "Anotación rápida",
   chrome_extension: "Extensión",
 }
 

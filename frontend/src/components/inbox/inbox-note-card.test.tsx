@@ -48,7 +48,7 @@ describe("InboxNoteCard classification", () => {
     setup()
     expect(screen.getByText("Llamar a Acme")).toBeInTheDocument()
     expect(screen.getByText(/No se pudo generar una sugerencia/)).toBeInTheDocument()
-    expect(screen.getByText("Capturada desde Captura rápida")).toBeInTheDocument()
+    expect(screen.getByText("Capturada desde Anotación rápida")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Crear tarea" })).toBeEnabled()
     await userEvent.click(screen.getByRole("button", { name: "Reintentar" }))
     await waitFor(() => expect(mocks.classify).toHaveBeenCalledWith(31))

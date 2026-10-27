@@ -33,6 +33,7 @@ from backend.db.models import (
     Delivery,
     DigestExternalDeliveryEvent,
     DigestStatus,
+    ExternalDeliveryAction,
     User,
     UserPermission,
     UserRole,
@@ -440,6 +441,27 @@ async def generate_batch_retired(
 # ---------------------------------------------------------------------------
 
 
+async def _confirmed_deliveries(db: AsyncSession, ids: list[int]) -> dict[int, tuple[datetime, Optional[str]]]:
+    """Versiones cuya ÚLTIMA acción de entrega externa es una confirmación
+    (la regla de ``delivery_is_confirmed``): cuándo y quién. Revocar la anula."""
+    rows = (await db.execute(
+        select(DigestExternalDeliveryEvent.digest_id, DigestExternalDeliveryEvent.action,
+               DigestExternalDeliveryEvent.created_at, User.full_name)
+        .join(User, User.id == DigestExternalDeliveryEvent.actor_id)
+        .where(DigestExternalDeliveryEvent.digest_id.in_(ids))
+        .order_by(DigestExternalDeliveryEvent.digest_id,
+                  DigestExternalDeliveryEvent.created_at.desc(), DigestExternalDeliveryEvent.id.desc())
+    )).all()
+    latest: dict[int, tuple] = {}
+    for digest_id, action, created_at, actor_name in rows:
+        latest.setdefault(digest_id, (action, created_at, actor_name))
+    return {
+        digest_id: (created_at, actor_name)
+        for digest_id, (action, created_at, actor_name) in latest.items()
+        if action == ExternalDeliveryAction.confirmed
+    }
+
+
 @router.get("", response_model=list[DigestResponse])
 async def list_digests(
     client_id: Optional[int] = Query(None),
@@ -488,9 +510,12 @@ async def list_digests(
     ))).all())
     can_write = await user_has_digest_permission(db, current_user.id, write=True)
     readable = await _readable_modules(db, current_user)
+    delivered = await _confirmed_deliveries(db, ids)
     responses = []
     for digest in digests:
         response = _to_response(digest, readable)
+        if digest.id in delivered:
+            response.delivered_at, response.delivered_by_name = delivered[digest.id]
         response.can_delete = (
             can_write
             and (current_user.role == UserRole.admin or digest.status != DigestStatus.sent)

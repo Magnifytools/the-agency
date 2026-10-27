@@ -26,7 +26,7 @@ const areas: NavigationArea[] = [
     { to: "/web/cambios", label: "Cambios web", mobileLabel: "Cambios", module: "web" },
   ] },
   { id: "summaries", label: "Resúmenes", icon: ClipboardList, links: [
-    { to: "/dailys", label: "Mi resumen diario", mobileLabel: "Diario" },
+    { to: "/dailys", label: "Cierre del día", mobileLabel: "Cierre" },
     { to: "/digests", label: "Resúmenes de clientes", mobileLabel: "Clientes", module: "digests" },
   ] },
   { id: "settings", label: "Ajustes", icon: Settings, links: [

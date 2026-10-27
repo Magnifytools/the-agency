@@ -31,7 +31,7 @@ export function ClientPortfolio({ cohort }: { cohort: ClientCohort }) {
     )
   }
   const rows = query.data ?? []
-  if (rows.length === 0) return <p className="py-8 text-center text-sm text-muted-foreground">No hay clientes activos en esta cohorte.</p>
+  if (rows.length === 0) return <p className="py-8 text-center text-sm text-muted-foreground">No hay clientes activos en este grupo.</p>
 
   const counts = Object.fromEntries(SUMMARY.map(({ level }) => [level, rows.filter((r) => r.status === level).length]))
 

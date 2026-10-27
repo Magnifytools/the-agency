@@ -348,3 +348,41 @@ def test_all_renderers_ignore_generated_date_when_period_is_available():
     assert all("FECHA INVENTADA" not in value for value in rendered)
     assert "Resumen diario" not in rendered[1]
     assert "**📊 Resumen — Magnify" in rendered[1]
+
+
+async def test_el_historial_dice_que_version_se_entrego_y_quien(admin_client, db_session, admin_user):
+    client = Client(name="Cliente con historial de entregas", status=ClientStatus.active)
+    db_session.add(client)
+    await db_session.flush()
+
+    def version(day: int) -> WeeklyDigest:
+        return WeeklyDigest(
+            client_id=client.id, period_start=date(2026, 10, 19), period_end=date(2026, 10, 25),
+            status=DigestStatus.reviewed, tone=DigestTone.cercano, content=_content(),
+            raw_context={"client_name": client.name}, generated_at=datetime(2026, 10, day, 8),
+            created_by=admin_user.id,
+        )
+
+    delivered, revoked, draft = version(26), version(27), version(28)
+    db_session.add_all([delivered, revoked, draft])
+    await db_session.flush()
+
+    def event(digest: WeeklyDigest, action: ExternalDeliveryAction, minute: int):
+        return DigestExternalDeliveryEvent(
+            digest_id=digest.id, action=action, actor_id=admin_user.id,
+            request_key=uuid4().hex, request_hash="a" * 64, created_at=datetime(2026, 10, 28, 9, minute))
+
+    db_session.add_all([
+        event(delivered, ExternalDeliveryAction.confirmed, 0),
+        event(revoked, ExternalDeliveryAction.confirmed, 1),
+        event(revoked, ExternalDeliveryAction.revoked, 2),
+    ])
+    await db_session.flush()
+
+    res = await admin_client.get(f"/api/digests?client_id={client.id}")
+    assert res.status_code == 200, res.text
+    by_id = {row["id"]: row for row in res.json()}
+    assert by_id[delivered.id]["delivered_at"].startswith("2026-10-28T09:00")
+    assert by_id[delivered.id]["delivered_by_name"] == admin_user.full_name
+    assert by_id[revoked.id]["delivered_at"] is None
+    assert by_id[draft.id]["delivered_at"] is None and by_id[draft.id]["delivered_by_name"] is None

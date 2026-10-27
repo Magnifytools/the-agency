@@ -245,7 +245,7 @@ export default function ClientDetailPage() {
           <TableHead>Estado</TableHead>
           <TableHead>Est.</TableHead>
           <TableHead>Real</TableHead>
-          <TableHead>Timer</TableHead>
+          <TableHead>Cronómetro</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody role="rowgroup" className="block md:table-row-group">
@@ -457,11 +457,11 @@ export default function ClientDetailPage() {
         </Card>}
         {canReadTime && <Card
           className="lg:col-span-2"
-          title="Tiempo tracked: suma del timer real del equipo. Estimado: lo previsto al crear la tarea. Declarado: lo que el responsable apuntó al cerrarla."
+          title="Tiempo fichado: suma del cronómetro real del equipo. Estimado: lo previsto al crear la tarea. Declarado: lo que el responsable apuntó al cerrarla."
         >
           <CardContent className="p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-              Tiempo tracked
+              Tiempo fichado
               <span className="text-muted-foreground/60 cursor-help">ⓘ</span>
             </p>
             <p className="kpi-value mt-1">{summary.total_tracked_minutes == null ? "—" : formatMinutes(summary.total_tracked_minutes)}</p>

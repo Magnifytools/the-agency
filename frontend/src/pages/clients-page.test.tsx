@@ -193,7 +193,7 @@ describe("ClientsPage recovery states", () => {
 
   it("keeps the cohort in the portfolio request", async () => {
     showPortfolio()
-    await screen.findByText("No hay clientes activos en esta cohorte.")
+    await screen.findByText("No hay clientes activos en este grupo.")
 
     await userEvent.click(screen.getByRole("button", { name: "Externos" }))
 

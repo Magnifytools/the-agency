@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, noload
 
+from backend.core.auth_cookies import renewed_token
 from backend.core.security import decode_access_token
 from backend.core.token_blacklist import token_blacklist
 from backend.config import settings
@@ -57,6 +58,9 @@ async def get_current_user(
     # Surface the resolved user id to middlewares (UsageTrackerMiddleware reads
     # this to attribute the request to a user without rerunning JWT decode).
     request.state.user_id = user.id
+    # Sólo la cookie de la web se renueva; la extensión y el MCP traen su Bearer.
+    if not credentials:
+        request.state.renewed_token = renewed_token(payload)
     # Autor de los cambios de esta petición: sin esto el journal de Undo no
     # registra nada (ver backend/services/change_journal.py).
     set_actor(user.id)

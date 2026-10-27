@@ -93,8 +93,11 @@ class DigestResponse(BaseModel):
     creator_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    # Sólo en el listado: la entrega externa confirmada (la única que cuenta).
+    delivered_at: Optional[datetime] = None
+    delivered_by_name: Optional[str] = None
 
-    @field_serializer("generated_at", "edited_at", "created_at", "updated_at")
+    @field_serializer("generated_at", "edited_at", "created_at", "updated_at", "delivered_at")
     def _ser_dt(self, dt: Optional[datetime]) -> Optional[str]:
         return _serialize_utc(dt)
 

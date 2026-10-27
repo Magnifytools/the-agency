@@ -381,7 +381,7 @@ export default function TasksPage() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{view === "my_day" ? "Hoy" : "Tareas"}</h1>
+          <h1 className="text-2xl font-bold">{view === "my_day" ? "Mi agenda" : "Tareas"}</h1>
           {view === "my_day" ? (
             <p className="text-sm text-muted-foreground mt-1">
               {agendaData(plannedAgenda).total} para hoy · {agendaData(carryoverAgenda).total} de arrastre · {agendaData(unplannedAgenda).total} sin planificar · {agendaData(followupsAgenda).total} seguimientos · {agendaData(completedAgenda).total} completadas hoy
@@ -592,7 +592,7 @@ export default function TasksPage() {
               <TableHead>Prioridad</TableHead>
               <TableHead>Asignado</TableHead>
               <TableHead>Estado</TableHead>
-              <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo/Timer." /></span></TableHead>
+              <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo." /></span></TableHead>
               <TableHead>Fecha limite</TableHead>
               <TableHead>Tiempo</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
@@ -626,7 +626,7 @@ export default function TasksPage() {
               <SortableTableHead sortKey="priority" currentSort={taskSortConfig} onSort={requestTaskSort}>Prioridad</SortableTableHead>
               <TableHead>Asignado</TableHead>
               <SortableTableHead sortKey="status" currentSort={taskSortConfig} onSort={requestTaskSort}>Estado</SortableTableHead>
-              <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo/Timer." /></span></TableHead>
+              <TableHead><span className="inline-flex items-center gap-1">Est / Real <InfoTooltip content="Estimado: minutos previstos al crear la tarea. Real: minutos declarados al cerrarla. Para horas fichadas con el cronómetro, mira la columna Tiempo." /></span></TableHead>
               <SortableTableHead sortKey="due_date" currentSort={taskSortConfig} onSort={requestTaskSort}>Fecha limite</SortableTableHead>
               <TableHead>Timer</TableHead>
               <TableHead className="w-24">Acciones</TableHead>
@@ -764,7 +764,9 @@ export default function TasksPage() {
               )
             })}
             {tasks.length === 0 && (
-              <EmptyTableState colSpan={canWriteTasks ? 10 : 9} icon={CheckSquare} title="Sin tareas" description="Crea tareas, asígnalas y trackea con timer integrado." />
+              searchQuery || filterClient || filterCategory || filterPriority || filterDateFrom || filterDateTo || qaFilter !== "none"
+                ? <EmptyTableState colSpan={canWriteTasks ? 10 : 9} icon={CheckSquare} title="Ninguna tarea con estos filtros" description="Quita algún filtro o cambia la búsqueda para ver más." />
+                : <EmptyTableState colSpan={canWriteTasks ? 10 : 9} icon={CheckSquare} title="Sin tareas" description="Crea tareas, asígnalas y ficha su tiempo con el cronómetro." />
             )}
           </TableBody>
         </Table>
@@ -939,7 +941,7 @@ export default function TasksPage() {
         open={deleteId !== null}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="Eliminar tarea"
-        description="Esta acción no se puede deshacer. Se eliminará la tarea permanentemente."
+        description="Se eliminará la tarea. Si te equivocas, puedes deshacerlo con ⌘Z o desde el panel ↶."
         onConfirm={() => {
           if (deleteId !== null) {
             deleteMutation.mutate(deleteId)
@@ -1002,7 +1004,7 @@ export default function TasksPage() {
         open={bulkDeleteOpen}
         onOpenChange={setBulkDeleteOpen}
         title="Eliminar tareas"
-        description={`Esta acción no se puede deshacer. Se eliminarán ${selectedTaskCount} tareas permanentemente.`}
+        description={`Se eliminarán ${selectedTaskCount} tareas. Si te equivocas, puedes deshacerlo de una vez con ⌘Z o desde el panel ↶.`}
         confirmLabel="Eliminar"
         onConfirm={() => bulkDeleteMutation.mutate([...selectedTaskIds])}
       />

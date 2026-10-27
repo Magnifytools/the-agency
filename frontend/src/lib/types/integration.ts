@@ -129,6 +129,9 @@ export interface Digest {
   creator_name: string | null
   created_at: string
   updated_at: string
+  /** Sólo en el listado: entrega externa confirmada (la única que cuenta). */
+  delivered_at?: string | null
+  delivered_by_name?: string | null
 }
 
 export interface DigestGenerateRequest {

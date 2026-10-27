@@ -4,6 +4,10 @@ import userEvent from "@testing-library/user-event"
 import type { PaginatedResponse, Task } from "@/lib/types"
 import { MyDayView } from "./my-day-view"
 
+vi.mock("@/components/timer/timer-button", () => ({
+  TimerButton: ({ taskTitle }: { taskTitle?: string }) => <button type="button">Cronómetro de {taskTitle}</button>,
+}))
+
 const task = (id: number, title: string, overrides: Partial<Task> = {}): Task => ({
   id, title, description: null, status: "pending", priority: "medium", estimated_minutes: null,
   actual_minutes: null, start_date: null, due_date: null, client_id: null, category_id: null,
@@ -140,5 +144,12 @@ describe("MyDayView", () => {
     expect(screen.getByText(/^Seguimiento 14 ene/)).toHaveClass("text-red-500")
     fireEvent.click(screen.getByRole("button", { name: /Ver más seguimientos/ }))
     expect(onLoadMore).toHaveBeenCalledWith("followups")
+  })
+
+  it("cada tarea abierta de Mi agenda trae su cronómetro, sin pasar por la barra", () => {
+    render(<MyDayView planned={page([task(1, "Informe Fit")])} carryover={page([task(2, "Arrastrada")])} unplanned={page([])} completed={page([task(3, "Ya hecha", { status: "completed" })])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite />)
+    expect(screen.getByRole("button", { name: "Cronómetro de Informe Fit" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Cronómetro de Arrastrada" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Cronómetro de Ya hecha" })).not.toBeInTheDocument()
   })
 })

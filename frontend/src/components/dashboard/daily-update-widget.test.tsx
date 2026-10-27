@@ -24,7 +24,7 @@ it("keeps a failed read distinct from an empty day and recovers the existing rec
   expect(screen.queryByText("Sin resumen guardado hoy.")).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", { name: "Reintentar" }))
   expect(await screen.findByText("Recibos conservados")).toBeInTheDocument()
-  expect(screen.getByRole("link", { name: "Abrir mi resumen diario" })).toHaveAttribute("href", "/dailys")
+  expect(screen.getByRole("link", { name: "Abrir mi cierre del día" })).toHaveAttribute("href", "/dailys")
   expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
 })
 

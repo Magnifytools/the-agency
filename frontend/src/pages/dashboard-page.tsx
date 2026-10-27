@@ -289,22 +289,22 @@ export default function DashboardPage() {
   const startTimerMutation = useMutation({
     mutationFn: (taskId: number) => timerApi.start({ task_id: taskId }),
     onSuccess: () => {
-      toast.success("Timer iniciado")
+      toast.success("Cronómetro en marcha")
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all() })
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar el timer")),
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo iniciar el cronómetro")),
   })
   const stopTimerMutation = useMutation({
     mutationFn: (timerId: number) => timerApi.stop(timerId),
     onSuccess: () => {
-      toast.success("Timer parado")
+      toast.success("Cronómetro parado")
       queryClient.invalidateQueries({ queryKey: dashboardKeys.all() })
       invalidateTimeChange(queryClient)
     },
     onError: (err) => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      toast.error(getErrorMessage(err, "Error al parar el timer"))
+      toast.error(getErrorMessage(err, "No se pudo parar el cronómetro"))
     },
   })
 
@@ -469,7 +469,7 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-3">
                     <div className="w-2 h-2 rounded-full bg-brand animate-pulse" />
                     <div>
-                      <p className="text-sm font-medium text-brand">Timer activo</p>
+                      <p className="text-sm font-medium text-brand">Cronómetro en marcha</p>
                       <p className="text-xs text-muted-foreground">
                         {activeTimer.task_title || "Sin tarea asignada"}
                         {activeTimer.client_name ? ` · ${activeTimer.client_name}` : ""}
@@ -543,14 +543,14 @@ export default function DashboardPage() {
                     )}
                     {activeTimer?.task_id === t.id ? (
                       <span className="text-brand text-xs font-medium flex items-center gap-1 flex-shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />timer
+                        <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />cronómetro
                       </span>
                     ) : canWriteTime ? (
                       <button
                         onClick={() => startTimerMutation.mutate(t.id)}
                         disabled={startTimerMutation.isPending || timerUnknown || !!activeTimer}
                         className="p-1.5 text-muted-foreground hover:text-brand hover:bg-brand/10 rounded-lg transition-colors disabled:opacity-40 flex-shrink-0"
-                        title="Iniciar timer"
+                        title="Iniciar el cronómetro"
                       >
                         <Play className="h-3.5 w-3.5" />
                       </button>
@@ -593,7 +593,7 @@ export default function DashboardPage() {
                         onClick={() => startTimerMutation.mutate(t.id)}
                         disabled={startTimerMutation.isPending || timerUnknown || !!activeTimer}
                         className="p-1 text-muted-foreground hover:text-brand rounded transition-colors disabled:opacity-40"
-                        title="Iniciar timer"
+                        title="Iniciar el cronómetro"
                       >
                         <Play className="h-3 w-3" />
                       </button>}
@@ -788,7 +788,7 @@ export default function DashboardPage() {
                     <TableHead><span className="inline-flex items-center gap-1">Presupuesto <InfoTooltip content="Fee mensual del cliente" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Coste <InfoTooltip content="Horas trabajadas × tarifa/hora" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Estimado <InfoTooltip content="Suma de horas estimadas declaradas en las tareas del mes (campo opcional)" /></span></TableHead>
-                    <TableHead><span className="inline-flex items-center gap-1">Real <InfoTooltip content="Tiempo tracked del mes (timesheet/cronómetro real). Es la fuente de verdad para horas trabajadas." /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">Real <InfoTooltip content="Tiempo fichado del mes (cronómetro real). Es la fuente de verdad para horas trabajadas." /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Δ <InfoTooltip content="Diferencia real − estimado" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Margen <InfoTooltip content="Presupuesto − Coste" /></span></TableHead>
                     <TableHead>Estado</TableHead>
@@ -826,11 +826,11 @@ export default function DashboardPage() {
 
       {isAdmin && (
         <Card>
-          <CardHeader><CardTitle>Resumen Diario</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Cierre del día del equipo (Discord)</CardTitle></CardHeader>
           <CardContent className="pt-4">
             <div className="flex flex-wrap gap-2 items-center">
               <Button variant="outline" onClick={handlePreview}><Eye className="h-4 w-4 mr-2" /> Vista previa antes de enviar</Button>
-              {!discordConfigured && <span className="text-xs text-muted-foreground">Configura el webhook en Ajustes → Discord</span>}
+              {!discordConfigured && <span className="text-xs text-muted-foreground">Discord no está conectado: falta la variable DISCORD_WEBHOOK_URL en Railway</span>}
             </div>
           </CardContent>
         </Card>

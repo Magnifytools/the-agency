@@ -11,15 +11,17 @@ import { elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
 
 interface TimerButtonProps {
   taskId: number
+  /** Para el nombre accesible: "Iniciar cronómetro en …". */
+  taskTitle?: string
 }
 
-export function TimerButton({ taskId }: TimerButtonProps) {
+export function TimerButton({ taskId, taskTitle }: TimerButtonProps) {
   const { user, hasPermission } = useAuth()
   if (!hasPermission("timesheet") || !hasPermission("timesheet", true)) return null
-  return <PermittedTimerButton key={`${user?.id}:${taskId}`} taskId={taskId} />
+  return <PermittedTimerButton key={`${user?.id}:${taskId}`} taskId={taskId} taskTitle={taskTitle} />
 }
 
-function PermittedTimerButton({ taskId }: TimerButtonProps) {
+function PermittedTimerButton({ taskId, taskTitle }: TimerButtonProps) {
   const queryClient = useQueryClient()
   const [elapsed, setElapsed] = useState("")
 
@@ -53,13 +55,21 @@ function PermittedTimerButton({ taskId }: TimerButtonProps) {
     return () => clearInterval(interval)
   }, [isThisTaskRunning, timer?.started_at, timer?.is_paused, timer?.accumulated_seconds])
 
+  // Con otro en marcha, el servidor lo para y guarda su tiempo antes de arrancar este:
+  // cambiar de tarea es un solo clic.
+  const switching = !!timer && !isThisTaskRunning
   const startMutation = useMutation({
-    mutationFn: () => timerApi.start({ task_id: taskId }),
-    onSuccess: () => {
+    mutationFn: (_previous: { title: string | null } | null) => timerApi.start({ task_id: taskId }),
+    onSuccess: (_started, previous) => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      toast.success("Timer iniciado")
+      if (previous) {
+        invalidateTimeChange(queryClient)
+        toast.success(`Cronómetro cambiado. El tiempo de «${previous.title || "la tarea anterior"}» queda guardado.`)
+      } else {
+        toast.success("Cronómetro en marcha")
+      }
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar timer")),
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo iniciar el cronómetro")),
   })
 
   const stopMutation = useMutation({
@@ -67,11 +77,11 @@ function PermittedTimerButton({ taskId }: TimerButtonProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       invalidateTimeChange(queryClient)
-      toast.success("Timer detenido")
+      toast.success("Cronómetro parado")
     },
     onError: (err) => {
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      toast.error(getErrorMessage(err, "Error al detener timer"))
+      toast.error(getErrorMessage(err, "No se pudo parar el cronómetro"))
     },
   })
 
@@ -86,7 +96,8 @@ function PermittedTimerButton({ taskId }: TimerButtonProps) {
           size="icon"
           onClick={() => stopMutation.mutate(timer!.id)}
           disabled={stopMutation.isPending}
-          title="Detener timer"
+          title="Parar el cronómetro"
+          aria-label={taskTitle ? `Parar el cronómetro de ${taskTitle}` : "Parar el cronómetro"}
         >
           <Square className="h-4 w-4" />
         </Button>
@@ -114,9 +125,10 @@ function PermittedTimerButton({ taskId }: TimerButtonProps) {
     <Button
       variant="ghost"
       size="icon"
-      onClick={() => startMutation.mutate()}
-      disabled={startMutation.isPending || (!!timer && !isThisTaskRunning)}
-      title={timer ? "Detén el timer activo primero" : "Iniciar timer"}
+      onClick={() => startMutation.mutate(switching ? { title: timer!.task_title } : null)}
+      disabled={startMutation.isPending}
+      title={switching ? "Cambiar el cronómetro a esta tarea" : "Iniciar el cronómetro"}
+      aria-label={`${switching ? "Cambiar el cronómetro a" : "Iniciar el cronómetro en"} ${taskTitle ?? "esta tarea"}`}
     >
       <Play className="h-4 w-4" />
     </Button>
