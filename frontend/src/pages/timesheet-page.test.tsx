@@ -40,11 +40,10 @@ describe("TimesheetPage recovery", () => {
     api.projects.mockResolvedValue([])
   })
 
-  it("names the timer selectors and weekly and custom period controls", async () => {
+  it("remite al cronómetro único y nombra los controles de semana y periodo", async () => {
     show()
-    expect(await screen.findByRole("combobox", { name: "Cliente del cronómetro" })).toBeInTheDocument()
-    expect(screen.getByRole("combobox", { name: "Proyecto del cronómetro" })).toBeInTheDocument()
-    expect(screen.getByRole("combobox", { name: "Tarea del cronómetro" })).toBeInTheDocument()
+    expect(await screen.findByText(/usa el cronómetro de la barra de arriba/)).toBeInTheDocument()
+    expect(screen.queryByRole("combobox", { name: "Cliente del cronómetro" })).not.toBeInTheDocument()
     expect(screen.getByRole("combobox", { name: "Período de horas" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Semana anterior" })).toBeInTheDocument()
     expect(screen.getByLabelText("Inicio de la semana")).toBeInTheDocument()
@@ -85,7 +84,7 @@ describe("TimesheetPage recovery", () => {
     api.list.mockResolvedValue([{ id: 5, minutes: 15, notes: "Consulta", task_id: null }])
     show()
     await screen.findByText("Consulta")
-    expect(screen.queryByText("Iniciar")).not.toBeInTheDocument()
+    expect(screen.queryByText(/usa el cronómetro de la barra/)).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Editar registro" })).not.toBeInTheDocument()
     expect(api.assigned).not.toHaveBeenCalled()
   })

@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo, Fragment } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { timeEntriesApi, tasksApi, timerApi, clientsApi, projectsApi } from "@/lib/api"
-import { invalidateTimeChange, projectKeys, taskKeys, timeKeys } from "@/lib/query-keys"
+import { timeEntriesApi, tasksApi } from "@/lib/api"
+import { invalidateTimeChange, taskKeys, timeKeys } from "@/lib/query-keys"
 import { useAuth } from "@/context/auth-context"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Select } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, Play, Square, ChevronLeft, AlertTriangle, User as UserIcon, CheckSquare, CalendarDays } from "lucide-react"
+import { Clock, Download, ChevronDown, ChevronRight, Users, FolderKanban, Building2, Pencil, Check, X, ChevronLeft, AlertTriangle, User as UserIcon, CheckSquare, CalendarDays } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { EmptyState, EmptyTableState } from "@/components/ui/empty-state"
 import { toast } from "sonner"
@@ -16,7 +16,6 @@ import { formatCurrency } from "@/lib/format"
 import type { ProjectTimeReport, ClientTimeReport, WeeklyTimesheetTask } from "@/lib/types"
 import { agencyTimezoneLabel, civilDateRangeUtc, parseCivilDate } from "@/lib/dates"
 import { useBusinessDate } from "@/hooks/use-business-date"
-import { elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
 
 /** Parse "YYYY-MM-DD" as local date (not UTC) to avoid timezone shift */
 const parseLocalDate = parseCivilDate
@@ -181,165 +180,6 @@ function ClientReportRow({ client }: { client: ClientTimeReport }) {
     </>
   )
 }
-
-function TimerWidget({ tasks, tasksError, canReadTasks, canReadClients, canReadProjects, onRetryTasks, onTimerChange }: { tasks: { id: number; title: string; status?: string; client_id?: number | null; client_name?: string | null; project_id?: number | null; project_name?: string | null; scheduled_date?: string | null; due_date?: string | null }[]; tasksError: boolean; canReadTasks: boolean; canReadClients: boolean; canReadProjects: boolean; onRetryTasks: () => void; onTimerChange: () => void }) {
-  const queryClient = useQueryClient()
-  const [filterClient, setFilterClient] = useState("")
-  const [filterProject, setFilterProject] = useState("")
-  const [selectedTask, setSelectedTask] = useState("")
-  const [elapsed, setElapsed] = useState("")
-
-  const activeTimerQuery = useQuery({
-    queryKey: ["active-timer"],
-    queryFn: () => timerApi.active(),
-    refetchInterval: 10_000,
-  })
-  const activeTimer = activeTimerQuery.isError ? undefined : activeTimerQuery.data
-  const timerUnknown = (activeTimerQuery.isPending || activeTimerQuery.isError) && !activeTimer
-
-  // Source of truth for the Cliente dropdown: ALL active clients (not just those
-  // with tasks assigned to the current user). Fixes the bug where only Taxfix +
-  // Kinetic Digital appeared.
-  const clientsQuery = useQuery({
-    queryKey: ["clients-active"],
-    queryFn: () => clientsApi.listAll("active"),
-    staleTime: 60_000,
-    enabled: canReadClients,
-  })
-  const allActiveClients = !canReadClients || clientsQuery.isError ? [] : (clientsQuery.data ?? [])
-
-  // Active projects for the selected client (or all if none selected)
-  const filterClientNum = filterClient ? parseInt(filterClient, 10) : undefined
-  const projectsQuery = useQuery({
-    queryKey: projectKeys.list(["active", "client", filterClientNum]),
-    queryFn: () => projectsApi.listAll({ client_id: filterClientNum, status: "active" }),
-    enabled: !!filterClientNum && canReadProjects,
-    staleTime: 30_000,
-  })
-  const allActiveProjects = !canReadProjects || projectsQuery.isError ? [] : (projectsQuery.data ?? [])
-
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- Timer tick requires setInterval in effect
-  useEffect(() => {
-    if (!activeTimer?.started_at) { setElapsed(""); return }
-    const tick = () => {
-      setElapsed(formatElapsedSeconds(elapsedSeconds(
-        activeTimer.started_at,
-        activeTimer.accumulated_seconds || 0,
-        activeTimer.is_paused || false,
-      )))
-    }
-    tick()
-    if (activeTimer.is_paused) return
-    const iv = setInterval(tick, 1000)
-    return () => clearInterval(iv)
-  }, [activeTimer?.started_at, activeTimer?.accumulated_seconds, activeTimer?.is_paused])
-
-  // Cliente: SIEMPRE todos los activos (no derivado de tareas del usuario).
-  const clients: [number, string][] = allActiveClients.map((c) => [c.id, c.name])
-  // Proyecto: si hay cliente seleccionado, todos sus proyectos activos; si no,
-  // los derivados de tareas (legacy fallback para no romper el flujo sin cliente).
-  const projects: [number, string][] = filterClient
-    ? allActiveProjects.map((p) => [p.id, p.name])
-    : Array.from(new Map(tasks.filter((t) => t.project_id).map((t) => [t.project_id, t.project_name])).entries()) as [number, string][]
-  const filteredTasks = tasks.filter((t) => {
-    if (t.status === "completed") return false
-    if (filterClient && String(t.client_id) !== filterClient) return false
-    if (filterProject && String(t.project_id) !== filterProject) return false
-    return true
-  })
-
-  const handleStart = async () => {
-    if (!selectedTask) {
-      toast.error("Selecciona una tarea para iniciar el cronómetro")
-      return
-    }
-    try {
-      await timerApi.start({ task_id: Number(selectedTask) })
-      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      onTimerChange()
-      toast.success("Cronómetro en marcha")
-    } catch (err) {
-      toast.error(getErrorMessage(err, "No se pudo iniciar el cronómetro"))
-    }
-  }
-
-  const handleStop = async () => {
-    try {
-      if (!activeTimer) return
-      await timerApi.stop(activeTimer.id)
-      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      onTimerChange()
-      toast.success("Cronómetro parado")
-    } catch (err) {
-      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      toast.error(getErrorMessage(err, "No se pudo parar el cronómetro"))
-    }
-  }
-
-  return (
-    <Card className={activeTimer ? "border-green-500/30 bg-green-500/5" : ""}>
-      <CardContent className="py-3">
-        {timerUnknown && activeTimerQuery.isPending ? (
-          <p role="status" className="text-sm text-muted-foreground">Comprobando el cronómetro…</p>
-        ) : timerUnknown ? (
-          <RecoveryNotice label="el estado del cronómetro" onRetry={() => void activeTimerQuery.refetch()} />
-        ) : activeTimer ? (
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 flex-1">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="font-mono text-lg font-semibold">{elapsed}</span>
-              <span className="text-sm text-muted-foreground truncate">
-                {activeTimer.task_title || "Sin tarea"}
-                {activeTimer.client_name && <span className="ml-1 text-xs">({activeTimer.client_name})</span>}
-              </span>
-            </div>
-            <Button size="sm" variant="destructive" onClick={handleStop} className="gap-1.5">
-              <Square className="h-3.5 w-3.5" />
-              Parar
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {(tasksError || (canReadClients && clientsQuery.isError) || (canReadProjects && projectsQuery.isError)) && (
-              <RecoveryNotice
-                label="los selectores del cronómetro"
-                onRetry={() => {
-                  if (canReadTasks) void onRetryTasks()
-                  if (canReadClients) void clientsQuery.refetch()
-                  if (canReadProjects && filterClientNum) void projectsQuery.refetch()
-                }}
-              />
-            )}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
-            <Select aria-label="Cliente del cronómetro" value={filterClient} onChange={(e) => { setFilterClient(e.target.value); setFilterProject(""); setSelectedTask("") }} className="h-8 text-xs w-36" disabled={!canReadClients || (clientsQuery.isError && allActiveClients.length === 0)}>
-              <option value="">Cliente...</option>
-              {clients.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
-            </Select>
-            <Select aria-label="Proyecto del cronómetro" value={filterProject} onChange={(e) => { setFilterProject(e.target.value); setSelectedTask("") }} className="h-8 text-xs w-36" disabled={!!filterClient && (!canReadProjects || (projectsQuery.isError && allActiveProjects.length === 0))}>
-              <option value="">Proyecto...</option>
-              {projects.map(([id, name]) => <option key={id} value={String(id)}>{name}</option>)}
-            </Select>
-            <Select aria-label="Tarea del cronómetro" value={selectedTask} onChange={(e) => setSelectedTask(e.target.value)} className="h-8 text-xs flex-1 min-w-[180px]" disabled={!canReadTasks || (tasksError && tasks.length === 0)}>
-              <option value="">Selecciona una tarea...</option>
-              {filteredTasks.slice(0, 50).map((t) => (
-                <option key={t.id} value={String(t.id)}>
-                  {t.title.length > 60 ? t.title.slice(0, 60) + "…" : t.title}
-                </option>
-              ))}
-            </Select>
-            <Button size="sm" onClick={handleStart} disabled={!canReadTasks || !selectedTask || (tasksError && tasks.length === 0)} className="gap-1.5 shrink-0">
-              <Play className="h-3.5 w-3.5" />
-              Iniciar
-            </Button>
-          </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
 
 // ─── Task Tab ────────────────────────────────────────────────
 
@@ -630,8 +470,6 @@ export default function TimesheetPage() {
   const { user, isAdmin, hasPermission } = useAuth()
   const canWriteTime = hasPermission("timesheet") && hasPermission("timesheet", true)
   const canReadTasks = hasPermission("tasks")
-  const canReadClients = hasPermission("clients")
-  const canReadProjects = hasPermission("projects")
   const queryClient = useQueryClient()
   const businessToday = useBusinessDate()
   const [weekStart, setWeekStart] = useState(() => toInputDate(getMonday(parseCivilDate(businessToday))))
@@ -807,19 +645,8 @@ export default function TimesheetPage() {
         </Button>
       </div>
 
-      {/* Quick Timer */}
-      {canWriteTime && <TimerWidget
-        tasks={myTasks}
-        tasksError={myTasksQuery.isError}
-        canReadTasks={canReadTasks}
-        canReadClients={canReadClients}
-        canReadProjects={canReadProjects}
-        onRetryTasks={() => void myTasksQuery.refetch()}
-        onTimerChange={() => {
-          invalidateTimeEntries()
-          queryClient.invalidateQueries({ queryKey: ["admin-active-timers"] })
-        }}
-      />}
+      {/* Un solo cronómetro: el de la barra de arriba (y el ▶ de cada tarea). */}
+      {canWriteTime && <p className="text-sm text-muted-foreground">Para fichar, usa el cronómetro de la barra de arriba o el ▶ de cada tarea en Mi agenda.</p>}
 
       {/* Admin: Active Timers */}
       {isAdmin && activeTimersQuery.isError && (
