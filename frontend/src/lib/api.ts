@@ -5,6 +5,9 @@ import { toast } from "sonner"
 import type { UploadProgressHandler } from "@/hooks/use-file-upload"
 import type {
   ClientLeads,
+  SeoAnnotations,
+  SeoImpact,
+  SeoDecay,
   ClientSeoSummary,
   SeoGroupsResponse,
   SeoMoversParams,
@@ -962,6 +965,18 @@ export const clientSeoApi = {
   /** Leads por landing (GA4) de los últimos 28 días frente a los 28 anteriores. */
   leads: (clientId: number) =>
     api.get<ClientLeads>(`/clients/${clientId}/leads`).then((r) => r.data),
+  /** Notas, actualizaciones de Google, cambios críticos de la web y tareas publicadas. */
+  annotations: (clientId: number, from: string, to: string) =>
+    api.get<SeoAnnotations>(`/clients/${clientId}/seo/annotations`, { params: { from, to } }).then((r) => r.data),
+  createAnnotation: (clientId: number, data: { date: string; text: string }) =>
+    api.post<{ id: number; date: string; text: string }>(`/clients/${clientId}/seo/annotations`, data).then((r) => r.data),
+  deleteAnnotation: (clientId: number, annotationId: number) =>
+    api.delete(`/clients/${clientId}/seo/annotations/${annotationId}`).then(() => undefined),
+  /** Antes y después de una fecha: la web, una página o un grupo de URL. */
+  impact: (clientId: number, params: { date: string; days?: number; page?: string; group?: string }) =>
+    api.get<SeoImpact>(`/clients/${clientId}/seo/impact`, { params }).then((r) => r.data),
+  decay: (clientId: number) =>
+    api.get<SeoDecay>(`/clients/${clientId}/seo/decay`).then((r) => r.data),
 }
 
 // --- Capacity Planning ---

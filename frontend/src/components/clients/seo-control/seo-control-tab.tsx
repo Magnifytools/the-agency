@@ -17,6 +17,9 @@ import { SeoBrandSplit } from "./seo-brand-split"
 import { SeoSectionsTable } from "./seo-sections-table"
 import { SeoGroupsCard } from "./seo-groups-card"
 import { SeoMoversTable } from "./seo-movers-table"
+import { SeoAnnotationsCard } from "./seo-annotations-card"
+import { SeoImpactCard, type ImpactQuery } from "./seo-impact-card"
+import { SeoDecayCard } from "./seo-decay-card"
 
 interface Props {
   client: Client
@@ -59,6 +62,24 @@ export function SeoControlTab({ client, onOpenSettings }: Props) {
     queryFn: () => clientSeoApi.get(client.id, days),
     staleTime: SEO_STALE_TIME,
   })
+  // "Qué ha pasado" cubre las 16 semanas de la gráfica.
+  const trend = data?.brand?.trend ?? []
+  const annotationsTo = data?.window?.end ?? null
+  const annotationsFrom = trend[0]?.week_start ?? (annotationsTo ? shiftDay(annotationsTo, -111) : null)
+  const annotationsQuery = useQuery({
+    queryKey: clientSeoKeys.annotations(client.id, annotationsFrom ?? "", annotationsTo ?? ""),
+    queryFn: () => clientSeoApi.annotations(client.id, annotationsFrom!, annotationsTo!),
+    enabled: !!annotationsFrom && !!annotationsTo,
+    staleTime: SEO_STALE_TIME,
+  })
+  const [impact, setImpact] = useState<ImpactQuery | null>(null)
+  const impactQuery: ImpactQuery = impact ?? {
+    date: annotationsTo ? shiftDay(annotationsTo, -28) : "", days: 28, scope: "site", page: "", group: "",
+  }
+  const compare = (next: Partial<ImpactQuery>) => {
+    setImpact({ ...impactQuery, ...next })
+    requestAnimationFrame(() => document.getElementById("seo-impact")?.scrollIntoView?.({ behavior: "smooth", block: "start" }))
+  }
 
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -139,7 +160,13 @@ export function SeoControlTab({ client, onOpenSettings }: Props) {
         </CardContent></Card>
       ) : (
         <>
-          <SeoBrandSplit brand={data.brand} canEditTerms={canWriteClient} onEditTerms={onOpenSettings} />
+          <SeoBrandSplit brand={data.brand} canEditTerms={canWriteClient} onEditTerms={onOpenSettings}
+            markedDates={annotationsQuery.data?.items.map((item) => item.date)} />
+          {annotationsFrom && annotationsTo && (
+            <SeoAnnotationsCard clientId={client.id} from={annotationsFrom} to={annotationsTo} data={annotationsQuery.data}
+              isError={annotationsQuery.isError} onRetry={() => void annotationsQuery.refetch()} canWrite={canWriteClient}
+              onCompare={(date) => compare({ date, scope: "site" })} />
+          )}
           {view === "sections" ? (
             <SeoSectionsTable sections={data.sections} selected={section} onSelect={setSection} actions={viewToggle} />
           ) : (
@@ -150,10 +177,24 @@ export function SeoControlTab({ client, onOpenSettings }: Props) {
           <SeoMoversTable key={`pages-${days}`} clientId={client.id} kind="pages" days={days} summaryRows={data.pages}
             section={section} sectionLabel={sectionLabel} onClearSection={() => setSection(null)}
             group={group} onClearGroup={() => setGroup(null)} />
+          <SeoDecayCard clientId={client.id} canCreateTask={hasPermission("tasks", true)}
+            onCompare={(page) => compare({ scope: "page", page, days: 28, date: annotationsTo ? shiftDay(annotationsTo, -28) : impactQuery.date })} />
+          {annotationsTo && (
+            <div id="seo-impact" className="scroll-mt-8">
+              <SeoImpactCard clientId={client.id} end={annotationsTo}
+                groups={(client.seo_page_groups ?? []).map((g) => g.name)} value={impactQuery} onChange={setImpact} />
+            </div>
+          )}
         </>
       )}
     </div>
   )
+}
+
+function shiftDay(day: string, days: number) {
+  const date = new Date(`${day}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + days)
+  return date.toISOString().slice(0, 10)
 }
 
 function Kpi({ label, value, delta }: { label: string; value: string; delta: ReactNode }) {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TaskSeoImpact } from "@/components/tasks/task-seo-impact";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TimerButton } from "@/components/timer/timer-button";
 import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes";
@@ -830,6 +831,9 @@ export function TaskPanel({
             </div>
             {taskId && loadedTask?.status === "completed" && loadedTask.link_url && (
               <PublishCheckBlock taskId={taskId} canWrite={canWrite} />
+            )}
+            {loadedTask?.status === "completed" && loadedTask.completed_at && loadedTask.link_url && loadedTask.client_id && (
+              <TaskSeoImpact clientId={loadedTask.client_id} url={loadedTask.link_url} completedAt={loadedTask.completed_at} />
             )}
             {draft.is_recurring ? (
               <details open={!!(savedProcedureText || savedProcedureUrl)}>

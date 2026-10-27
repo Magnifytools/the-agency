@@ -192,6 +192,9 @@ export const clientSeoKeys = {
   history: (clientId: number, query: string) => ["client-seo", clientId, "history", query] as const,
   groups: (clientId: number, days: number) => ["client-seo", clientId, "groups", days] as const,
   leads: (clientId: number) => ["client-seo", clientId, "leads"] as const,
+  annotations: (clientId: number, from: string, to: string) => ["client-seo", clientId, "annotations", from, to] as const,
+  impact: (clientId: number, params: object) => ["client-seo", clientId, "impact", params] as const,
+  decay: (clientId: number) => ["client-seo", clientId, "decay"] as const,
 }
 
 export async function invalidateClientChange(queryClient: QueryClient, clientIds: number[] = []) {

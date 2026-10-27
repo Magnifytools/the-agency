@@ -208,6 +208,20 @@ def _no_real_ga4_leads(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_google_status(monkeypatch):
+    """Las anotaciones de Control SEO leen el panel de estado de Google Search:
+    en los tests nunca sale a la red. Por defecto no hay eventos; un test que
+    quiera otros sustituye `_fetch`."""
+    from backend.services import google_search_status
+
+    google_search_status.clear_cache()
+    fake = AsyncMock(return_value=[])
+    monkeypatch.setattr(google_search_status, "_fetch", fake)
+    yield fake
+    google_search_status.clear_cache()
+
+
+@pytest.fixture(autouse=True)
 def _no_real_web_health_network(monkeypatch):
     """Dominio, certificado, robots.txt, sitemap y la revisión tras publicar
     nunca salen a la red en los tests: por defecto "no responde" (``timeout``) y
