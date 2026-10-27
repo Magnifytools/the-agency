@@ -303,6 +303,25 @@ admin_users, admin_settings
   en las tres: estado, fecha límite y día planificado, optimista con vuelta
   atrás. Soltar en "En espera" abre el panel; "Hecho" pasa a revisión si el
   proyecto la exige (mismas reglas que el select de estado).
+- **Edición en línea**: en la Lista se cambian sin abrir la tarea prioridad,
+  responsable (sólo personas activas), estimación, planificada, fecha límite y
+  título (lápiz al lado; Enter guarda, Escape no). En Mi agenda, prioridad y
+  "Mover a…" (Hoy, Mañana, El lunes, otro día, quitar). Sin escritura en `tasks`
+  se ven los valores, sin botón. Piezas: `components/ui/popover.tsx`
+  (`@floating-ui/react`: posición, Escape/clic fuera, foco) e `inline-edit.tsx`
+  (`InlineSelect`, `InlineDate`, `InlineMinutes`, `InlineTextInput`); las de
+  tarea en `components/tasks/task-inline-fields.tsx`. Todas guardan con
+  `hooks/use-task-quick-update.ts`: `PUT` parcial optimista en TODAS las listas
+  en caché (lista, agenda infinita, ficha), vuelta atrás si falla y aviso con
+  "Deshacer" que deshace el último cambio de ESA tarea (no el último a secas).
+  Selección en bloque: "Planificar para…" (`scheduled_date` en
+  `PATCH /api/tasks/bulk/update`, que ahora valida con `TaskUpdate`: antes una
+  fecha en texto no se guardaba).
+- **Panel de tarea lateral** (`Dialog variant="side"`): a la derecha a toda
+  altura con la lista visible detrás (pantalla completa en móvil). En la Lista y
+  en Mi agenda pasa a la anterior/siguiente en el orden que se ve (botones y
+  ↑/↓ fuera de los campos; `agendaOrder` en `task-page-utils.ts`); con cambios
+  sin guardar pregunta antes. El título sólo coge el foco al crear.
 - **Títulos de pestaña**: el layout pone el de la sección (`useSectionTitle`) y
   las fichas lo afinan con `usePageTitle` (cliente, proyecto, resumen).
 - **⌘K** (`search-palette.tsx` + `GET /api/search`): clientes, proyectos,

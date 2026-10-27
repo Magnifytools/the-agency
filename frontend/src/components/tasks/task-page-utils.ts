@@ -1,4 +1,4 @@
-import type { TaskCreate } from "@/lib/types"
+import type { Task, TaskCreate } from "@/lib/types"
 
 export type TasksInitialView = "my_day" | "sprint" | "all" | "calendar" | "weekly" | "recurring"
 export type TasksWorkView = Exclude<TasksInitialView, "my_day">
@@ -107,4 +107,39 @@ export function withExplicitActualMinutes(data: TaskCreate, rawValue: FormDataEn
 
 export function shouldPreserveCurrentProject(currentProjectId: number | null | undefined, selectedProjectId: string, activeProjectIds: number[]) {
   return !!currentProjectId && selectedProjectId === String(currentProjectId) && !activeProjectIds.includes(currentProjectId)
+}
+
+const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
+
+/** Orden de cada sección de Mi agenda: vencidas, prioridad y fecha límite. */
+export function sortAgendaTasks(items: Task[], today: string) {
+  return [...items].sort((a, b) => {
+    const aOverdue = a.due_date && a.due_date < today ? 1 : 0
+    const bOverdue = b.due_date && b.due_date < today ? 1 : 0
+    if (aOverdue !== bOverdue) return bOverdue - aOverdue
+
+    const pa = PRIORITY_ORDER[a.priority] ?? 2
+    const pb = PRIORITY_ORDER[b.priority] ?? 2
+    if (pa !== pb) return pa - pb
+
+    if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date)
+    if (a.due_date) return -1
+    if (b.due_date) return 1
+    return 0
+  })
+}
+
+export function sortFollowups(items: Task[]) {
+  return [...items].sort((a, b) => (a.follow_up_date ?? "").localeCompare(b.follow_up_date ?? ""))
+}
+
+/** Tareas de Mi agenda en el orden en que se pintan (para pasar de una a otra). */
+export function agendaOrder(sections: { planned: Task[]; carryover: Task[]; followups: Task[]; unplanned: Task[]; completed: Task[] }, today: string) {
+  return [
+    ...sortAgendaTasks(sections.planned, today),
+    ...sortAgendaTasks(sections.carryover, today),
+    ...sortFollowups(sections.followups),
+    ...sortAgendaTasks(sections.unplanned, today),
+    ...sections.completed,
+  ]
 }

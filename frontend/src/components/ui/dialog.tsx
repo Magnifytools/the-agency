@@ -9,6 +9,8 @@ interface DialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   children: React.ReactNode
+  /** "side": panel a la derecha a toda altura, con lo de detrás a la vista (en móvil, pantalla completa). */
+  variant?: "center" | "side"
 }
 
 function visibleFocusable(panel: HTMLElement) {
@@ -23,7 +25,7 @@ function visibleFocusable(panel: HTMLElement) {
   })
 }
 
-function Dialog({ open, onOpenChange, children }: DialogProps) {
+function Dialog({ open, onOpenChange, children, variant = "center" }: DialogProps) {
   const titleId = React.useMemo(() => `dialog-title-${++dialogIdCounter}`, [])
   const panelRef = React.useRef<HTMLDivElement>(null)
   const previouslyFocused = React.useRef<HTMLElement | null>(null)
@@ -90,9 +92,9 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
   if (!open) return null
   return createPortal(
     <DialogContext.Provider value={{ titleId }}>
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4">
+      <div className={cn("fixed inset-0 z-[60] flex", variant === "side" ? "justify-end" : "items-center justify-center p-2 sm:p-4")}>
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+          className={cn("fixed inset-0", variant === "side" ? "bg-black/30" : "bg-black/60 backdrop-blur-sm")}
           onClick={() => onOpenChange(false)}
         />
         <div
@@ -101,7 +103,12 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className="relative z-50 w-full max-w-lg max-h-[90vh] md:max-h-[85vh] overflow-y-auto rounded-[16px] border border-border bg-card p-6 shadow-2xl"
+          className={cn(
+            "relative z-50 w-full overflow-y-auto border border-border bg-card p-6 shadow-2xl",
+            variant === "side"
+              ? "h-full border-y-0 border-r-0 sm:max-w-xl animate-slide-in-right"
+              : "max-w-lg max-h-[90vh] md:max-h-[85vh] rounded-[16px]",
+          )}
           onClick={(e) => e.stopPropagation()}
         >
           <button

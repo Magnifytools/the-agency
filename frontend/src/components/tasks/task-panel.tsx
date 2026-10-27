@@ -5,6 +5,8 @@ import { TimerButton } from "@/components/timer/timer-button";
 import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ChevronDown,
+  ChevronUp,
   Clock,
   Copy,
   Download,
@@ -60,6 +62,20 @@ export interface TaskPanelProps {
   onOpenChange: (open: boolean) => void;
   onSaved?: (task: Task) => void;
   onOpenTime?: (task: Task) => void;
+  /** Pasar a la tarea anterior o siguiente de la lista sin cerrar el panel. */
+  navigation?: TaskPanelNavigation;
+}
+
+export interface TaskPanelNavigation {
+  position: number;
+  total: number;
+  onNavigate: (direction: 1 | -1) => void;
+}
+
+/** ↑/↓ mueven entre tareas sólo si no se está escribiendo ni eligiendo en un campo. */
+function isEditingField(target: EventTarget | null) {
+  return target instanceof HTMLElement
+    && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 }
 
 const EMPTY: TaskCreate = {
@@ -150,6 +166,7 @@ export function TaskPanel({
   onOpenChange,
   onSaved,
   onOpenTime,
+  navigation,
 }: TaskPanelProps) {
   const queryClient = useQueryClient();
   const { hasPermission, user, isAdmin } = useAuth();
@@ -167,7 +184,8 @@ export function TaskPanel({
   const [legacyComparison, setLegacyComparison] = useState<LegacyComparison | null>(null);
   const [restoreConflict, setRestoreConflict] = useState<string | null>(null);
   const [initialDraft, setInitialDraft] = useState<string | null>(null);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // Lo que se hará (cerrar o pasar a otra tarea) si se aceptan perder los cambios.
+  const [discardThen, setDiscardThen] = useState<(() => void) | null>(null);
   const initializedFor = useRef<string | null>(null);
   const contextKey = `${taskId ?? "new"}:${defaults?.clientId ?? ""}:${defaults?.projectId ?? ""}:${defaults?.phaseId ?? ""}:${defaults?.initialStatus ?? ""}`;
 
@@ -528,32 +546,69 @@ export function TaskPanel({
   });
   const unsaved = open && canWrite && initialDraft !== null && JSON.stringify(draft) !== initialDraft;
   useUnsavedChangesWarning(unsaved);
-  // Escape, clic fuera o "Cerrar" con cambios sin guardar: se pregunta antes de tirarlos.
-  const requestOpenChange = (next: boolean) => {
-    if (!next && unsaved && !save.isPending) {
-      setConfirmDiscard(true);
-      return;
-    }
-    onOpenChange(next);
+  // Escape, clic fuera, "Cerrar" o pasar a otra tarea con cambios sin guardar:
+  // se pregunta antes de tirarlos.
+  const unlessUnsaved = (action: () => void) => {
+    if (unsaved && !save.isPending) setDiscardThen(() => action);
+    else action();
   };
+  const requestOpenChange = (next: boolean) => {
+    if (next) onOpenChange(true);
+    else unlessUnsaved(() => onOpenChange(false));
+  };
+  const navigate = (direction: 1 | -1) => {
+    if (!navigation) return;
+    const target = navigation.position + direction;
+    if (target < 1 || target > navigation.total) return;
+    unlessUnsaved(() => navigation.onNavigate(direction));
+  };
+  const navigateRef = useRef(navigate);
+  useEffect(() => { navigateRef.current = navigate; });
+  useEffect(() => {
+    if (!open || !navigation || discardThen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (isEditingField(event.target)) return;
+      event.preventDefault();
+      navigateRef.current(event.key === "ArrowDown" ? 1 : -1);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, navigation, discardThen]);
   return (
     <>
     <ConfirmDialog
-      open={confirmDiscard}
-      onOpenChange={setConfirmDiscard}
+      open={discardThen !== null}
+      onOpenChange={(next) => { if (!next) setDiscardThen(null); }}
       title="¿Descartar los cambios?"
-      description="Has cambiado la tarea y no la has guardado. Si cierras ahora, esos cambios se pierden."
+      description="Has cambiado la tarea y no la has guardado. Si sigues, esos cambios se pierden."
       cancelLabel="Seguir editando"
       confirmLabel="Descartar cambios"
-      onConfirm={() => onOpenChange(false)}
+      onConfirm={() => { const action = discardThen; setDiscardThen(null); action?.(); }}
     />
-    <Dialog open={open} onOpenChange={requestOpenChange}>
+    <Dialog open={open} onOpenChange={requestOpenChange} variant="side">
       <DialogHeader>
         <div className="flex items-center justify-between gap-2 pr-8">
           <DialogTitle>{taskId ? "Detalle de tarea" : "Nueva tarea"}</DialogTitle>
-          {loadedTask && canWrite && !isRetired && loadedTask.status !== "completed" && (
-            <TimerButton taskId={loadedTask.id} taskTitle={loadedTask.title} />
-          )}
+          <div className="flex items-center gap-1">
+            {loadedTask && canWrite && !isRetired && loadedTask.status !== "completed" && (
+              <TimerButton taskId={loadedTask.id} taskTitle={loadedTask.title} />
+            )}
+            {navigation && taskId && (
+              <div role="group" aria-label="Pasar a otra tarea" className="flex items-center gap-0.5">
+                <span className="mono px-1 text-xs text-muted-foreground" aria-live="polite">{navigation.position} de {navigation.total}</span>
+                <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Tarea anterior" title="Tarea anterior (↑)"
+                  disabled={navigation.position <= 1} onClick={() => navigate(-1)}>
+                  <ChevronUp className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Tarea siguiente" title="Tarea siguiente (↓)"
+                  disabled={navigation.position >= navigation.total} onClick={() => navigate(1)}>
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </DialogHeader>
       {taskQuery.isError && (
@@ -603,7 +658,9 @@ export function TaskPanel({
               <Label htmlFor="task-panel-title">Título</Label>
               <Input
                 id="task-panel-title"
-                autoFocus
+                // Sólo al crear: en una existente el foco queda fuera de los
+                // campos para pasar de tarea con ↑/↓ nada más abrirla.
+                autoFocus={!taskId}
                 value={draft.title}
                 onChange={(e) => change("title", e.target.value)}
                 disabled={!canWrite}
