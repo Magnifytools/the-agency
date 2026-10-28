@@ -6,6 +6,8 @@ from uuid import uuid4
 from unittest.mock import AsyncMock
 
 import httpx
+
+from backend.services.extension_package import read_version
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI, HTTPException
@@ -80,7 +82,10 @@ async def client(fixture, identity="member"):
         async with maker() as db: return await svc.load_actor(db, ids[identity])
     app.dependency_overrides[get_db] = session
     app.dependency_overrides[get_current_user] = actor
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as http: yield http
+    # Como la extensión al día: el aviso de versión nueva tiene su propio test
+    # (test_extension_release.py) y aquí sólo cuentan las reuniones.
+    headers = {"X-Agency-Extension-Version": read_version()}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test", headers=headers) as http: yield http
 
 
 async def count(maker, model):

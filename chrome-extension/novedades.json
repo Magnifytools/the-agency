@@ -1,5 +1,12 @@
 [
   {
+    "version": "2.4.0",
+    "date": "2026-10-28",
+    "changes": [
+      "Cuando haya una versión nueva te avisa en Chrome (y en la campana de The Agency); al pulsar el aviso se abre la página de descarga."
+    ]
+  },
+  {
     "version": "2.3.0",
     "date": "2026-10-27",
     "changes": [

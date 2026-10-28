@@ -11,7 +11,7 @@ function setup() {
   const noop = () => {};
   const context = vm.createContext({
     chrome: {
-      runtime: { onInstalled: { addListener: noop }, onStartup: { addListener: noop }, onMessage: { addListener: noop } },
+      runtime: { getManifest: () => ({ version: '2.4.0' }), onInstalled: { addListener: noop }, onStartup: { addListener: noop }, onMessage: { addListener: noop } },
       contextMenus: { create: noop, onClicked: { addListener: fn => { capture = fn; } } },
       storage: {
         local: {

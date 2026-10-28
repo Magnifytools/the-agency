@@ -1,7 +1,7 @@
 """Own opt-in schedules and durable occurrence history. No inline provider calls."""
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,7 @@ from backend.db.database import get_db
 from backend.db.models import CommunicationSchedule as Schedule, CommunicationOccurrence as Occurrence, CommunicationRequest, Delivery, DiscordSettings, User, UserRole
 from backend.services import scheduled_communications as service, deliveries
 from backend.services.temporal import utc_now_naive, utc_isoformat
+from backend.services.extension_release import EXTENSION_VERSION_HEADER, update_notice
 
 router = APIRouter(prefix="/api/communication-schedules", tags=["communication-schedules"])
 CLOCK = r"^(?:[01]\d|2[0-3]):[0-5]\d$"
@@ -115,12 +116,16 @@ async def get_history(limit: int = Query(30, ge=1, le=100), before: int | None =
 
 
 @router.get("/extension-upcoming")
-async def extension_upcoming(db: AsyncSession = Depends(get_db), actor: User = Depends(get_current_user)):
+async def extension_upcoming(request: Request, db: AsyncSession = Depends(get_db), actor: User = Depends(get_current_user)):
     policy = await db.scalar(select(Schedule).where(Schedule.policy_key == service.policy_key("meeting", actor.id)))
     view = await service.policy_view(db, policy, actor, "meeting")
+    # Todas las versiones de la extensión consultan esto cada minuto y enseñan cada
+    # entrada como aviso: aquí llega a las antiguas el "hay una versión nueva",
+    # con o sin avisos de reuniones (services/extension_release.py).
+    notice = update_notice(request.headers.get(EXTENSION_VERSION_HEADER))
     response = dict(user_id=actor.id, timezone=service.settings.AGENCY_TIMEZONE, scheduler_enabled=service.settings.SCHEDULED_COMMUNICATIONS_ENABLED,
         extension_min_version=service.EXTENSION_MIN_VERSION, extension_download_url=service.EXTENSION_DOWNLOAD_URL,
-        policy=view, occurrences=[])
+        policy=view, occurrences=[notice] if notice else [])
     now = utc_now_naive()
     if not service.settings.SCHEDULED_COMMUNICATIONS_ENABLED or view["state"] != "ready" or "extension" not in policy.channels or service.quiet_until(policy, now) > now:
         return response

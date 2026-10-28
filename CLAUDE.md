@@ -1149,6 +1149,20 @@ admin_users, admin_settings
 - Tests: `chrome-extension/tests/desktop-notices.test.cjs` y
   `backend/tests/integration/test_desktop_notices.py`.
 
+## Extensión de Chrome: aviso de versión nueva
+- Al desplegar una versión nueva (la del `manifest.json`), el job
+  `extension_release` (lock **21**, al arrancar y a diario) deja en la campana de
+  cada persona activa "Nueva versión de la extensión…" con enlace a
+  `/settings#extension`. Una vez por persona y versión (`dedupe_key`).
+- En la propia extensión, también las viejas: todas consultan cada minuto
+  `GET /api/communication-schedules/extension-upcoming` y enseñan cada entrada
+  como aviso de Chrome. Si la petición no trae `X-Agency-Extension-Version`
+  (antes de la 2.4.0 no se mandaba) o trae una anterior, el servidor añade la
+  entrada `extension-update-<versión>` (sin hora: sólo texto). Sale una vez por
+  instalación y versión; desde la 2.4.0, pulsarla abre la descarga.
+  `services/extension_release.py`. Al cambiar el código de la extensión: subir
+  la versión del manifest y su entrada en `novedades.json` (ver abajo).
+
 ## Extensión de Chrome: descarga
 - Ajustes → "Extensión de Chrome" (`components/settings/extension-section.tsx`):
   botón "Descargar extensión" con la versión desplegada y pasos para instalar

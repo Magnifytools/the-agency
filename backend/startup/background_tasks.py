@@ -321,6 +321,17 @@ async def _due_tomorrow_once():
         logging.info("Due-tomorrow notices created: %d", created)
 
 
+async def _extension_release_once():
+    from backend.db.database import async_session
+    from backend.services.extension_release import notify_release
+
+    async with async_session() as session:
+        created = await notify_release(session)
+        await session.commit()
+    if created:
+        logging.info("Extension release notices created: %d", created)
+
+
 async def _incident_once():
     from backend.db.database import async_session
     from backend.services.incidents import reconcile_all
@@ -394,6 +405,7 @@ def start_background_tasks() -> list[asyncio.Task]:
         "web_health": ("web-health", _web_health_once),
         "publish_checks": ("publish-checks", _publish_checks_once),
         "due_tomorrow": ("due-tomorrow", _due_tomorrow_once),
+        "extension_release": ("extension-release", _extension_release_once),
     }
 
     for key, (task_name, operation) in operations.items():
