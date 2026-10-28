@@ -3,15 +3,15 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { CalendarSection } from "./settings-page"
 
-const mocks = vi.hoisted(() => ({ status: vi.fn(), sync: vi.fn(), auth: vi.fn(), disconnect: vi.fn() }))
-const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }))
+const mocks = vi.hoisted(() => ({ status: vi.fn(), sync: vi.fn(), auth: vi.fn(), disconnect: vi.fn(), blocksAuth: vi.fn(), disableBlocks: vi.fn() }))
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() }))
 vi.mock("@/lib/api", () => ({
-  calendarApi: { getStatus: mocks.status, sync: mocks.sync, getAuthUrl: mocks.auth, disconnect: mocks.disconnect },
+  calendarApi: { getStatus: mocks.status, sync: mocks.sync, getAuthUrl: mocks.auth, disconnect: mocks.disconnect, getBlocksAuthUrl: mocks.blocksAuth, disableBlocks: mocks.disableBlocks },
   usersApi: {}, categoriesApi: {},
 }))
 vi.mock("@/components/communication-schedules", () => ({ CommunicationSchedules: () => null }))
 vi.mock("sonner", () => ({ toast: toasts }))
-const connected = { connected: true, connection_status: "connected", last_synced_at: "2026-09-18T08:00:00Z", calendar_id: "primary" }
+const connected = { connected: true, connection_status: "connected", last_synced_at: "2026-09-18T08:00:00Z", calendar_id: "primary", blocks_calendar: false }
 const revoked = { ...connected, connected: false, connection_status: "reconnect_required" }
 function show() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })}><CalendarSection /></QueryClientProvider>) }
 beforeEach(() => { vi.resetAllMocks(); window.history.replaceState({}, "", "/settings"); mocks.status.mockResolvedValue(connected) })
@@ -72,4 +72,39 @@ it("explains a cancelled Google authorization without treating it as a provider 
   show()
   await waitFor(() => expect(toasts.info).toHaveBeenCalledWith("Conexión de Google Calendar cancelada"))
   expect(window.location.pathname + window.location.search).toBe("/settings")
+})
+
+it("offers to publish work blocks with their own Google permission", async () => {
+  mocks.blocksAuth.mockRejectedValue(new Error("offline"))
+  show()
+  fireEvent.click(await screen.findByRole("button", { name: "Publicar mis bloques" }))
+  await waitFor(() => expect(mocks.blocksAuth).toHaveBeenCalledTimes(1))
+  expect(mocks.auth).not.toHaveBeenCalled()
+})
+
+it("stops publishing and deletes the Google calendar unless unchecked", async () => {
+  mocks.status.mockResolvedValue({ ...connected, blocks_calendar: true })
+  mocks.disableBlocks.mockResolvedValue({ ok: true, calendar_deleted: true })
+  show()
+  fireEvent.click(await screen.findByRole("button", { name: "Dejar de publicar" }))
+  fireEvent.click(await screen.findByRole("checkbox", { name: /Borrar también el calendario/ }))
+  fireEvent.click(screen.getAllByRole("button", { name: "Dejar de publicar" }).at(-1)!)
+  await waitFor(() => expect(mocks.disableBlocks).toHaveBeenCalledWith(false, expect.anything()))
+})
+
+it("asks about the blocks calendar before disconnecting", async () => {
+  mocks.status.mockResolvedValue({ ...connected, blocks_calendar: true })
+  mocks.disconnect.mockResolvedValue({ ok: true, google_revoked: true, events_deleted: 0, blocks_calendar_deleted: true })
+  show()
+  fireEvent.click(await screen.findByRole("button", { name: "Desconectar" }))
+  expect(mocks.disconnect).not.toHaveBeenCalled()
+  fireEvent.click(screen.getAllByRole("button", { name: "Desconectar" }).at(-1)!)
+  await waitFor(() => expect(mocks.disconnect).toHaveBeenCalledWith(true, expect.anything()))
+})
+
+it("disconnects at once when no blocks are published", async () => {
+  mocks.disconnect.mockResolvedValue({ ok: true, google_revoked: true, events_deleted: 0, blocks_calendar_deleted: false })
+  show()
+  fireEvent.click(await screen.findByRole("button", { name: "Desconectar" }))
+  await waitFor(() => expect(mocks.disconnect).toHaveBeenCalledWith(false, expect.anything()))
 })

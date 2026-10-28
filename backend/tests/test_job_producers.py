@@ -254,6 +254,7 @@ def test_startup_loops_match_enabled_catalog(monkeypatch):
         "publish_checks": "publish-checks",
         "due_tomorrow": "due-tomorrow",
         "extension_release": "extension-release",
+        "calendar_blocks": "calendar-blocks",
     }
     definitions = {definition.spec.key: definition for definition in job_definitions()}
     expected = {

@@ -47,6 +47,7 @@ async def test_oauth_preserves_connection_without_enabling_reminders(monkeypatch
     user = SimpleNamespace(id=77, preferences={}, is_active=True)
     result = MagicMock(); result.scalar_one_or_none.return_value = user
     db = AsyncMock(); db.execute.return_value = result
+    db.scalar.return_value = None  # no publica bloques
     response = await google_calendar.calendar_callback("code", google_calendar._sign_oauth_state(77), db)
     assert response.headers["location"] == "/settings?calendar=connected"
     assert user.google_calendar_connected is True and user.preferences == {}
