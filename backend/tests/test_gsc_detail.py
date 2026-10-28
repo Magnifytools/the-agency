@@ -212,6 +212,9 @@ def _ai_paths() -> list[Path]:
         )
     }
     paths.add(ROOT / "backend" / "api" / "routes" / "advisor.py")
+    # Search Console en vivo para el MCP: pregunta a Google, nunca lee lo guardado.
+    paths.add(services / "gsc_live.py")
+    paths.add(ROOT / "backend" / "api" / "routes" / "client_gsc.py")
     # Cualquier servicio que llame a Claude.
     paths |= {p for p in services.glob("*.py") if "ai_utils" in p.read_text(encoding="utf-8")}
     paths |= set((ROOT / "mcp-server" / "agency_mcp").rglob("*.py"))
@@ -243,6 +246,7 @@ def test_el_detalle_de_search_console_no_llega_a_la_ia():
     paths = _ai_paths()
     assert ROOT / "backend" / "services" / "digest_generator.py" in paths
     assert any("mcp-server" in str(p) for p in paths)
+    assert ROOT / "backend" / "services" / "gsc_live.py" in paths
     offenders = [str(p.relative_to(ROOT)) for p in paths
                  if p.exists() and _FORBIDDEN.search(p.read_text(encoding="utf-8"))]
     assert offenders == []

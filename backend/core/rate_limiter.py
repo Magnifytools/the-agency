@@ -201,3 +201,22 @@ class PdfExportLimiter:
 # Descargar el resumen en PDF: con sesión, por usuario; desde el enlace público, por IP.
 pdf_export_limiter = PdfExportLimiter()
 public_pdf_limiter = PdfExportLimiter("rate:public-pdf")
+
+
+class GscLiveLimiter:
+    """Sliding-window limiter for live Search Console queries (MCP), per user."""
+
+    def __init__(self) -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix="rate:gsc-live",
+            detail_fn=lambda _max_requests, _window_seconds: (
+                "Demasiadas consultas a Search Console seguidas. Espera un minuto."
+            ),
+        )
+
+    def check(self, key: str | int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(key, max_requests, window_seconds)
+
+
+# Cada consulta en vivo son tres llamadas a Google (filas, totales y último día).
+gsc_live_limiter = GscLiveLimiter()

@@ -50,9 +50,9 @@ it("la política cuenta el detalle por consulta y página de Search Console y su
   expect(text).toContain("incluye el detalle por búsqueda y página")
   expect(text).toContain("for 120 days the same daily figures per search query and per page, as aggregated and anonymised by Google")
   expect(text).toContain("Query and page detail is deleted after 120 days or when the site is no longer linked to an active client")
-  // Sigue prometiendo que las cifras de Google no van a la IA (lo vigila test_gsc_detail.py).
-  expect(text).toContain("no se envían a ningún servicio de IA")
-  expect(text).toContain("not sent to any AI service")
+  // El detalle guardado sigue sin ir a la IA (lo vigila test_gsc_detail.py).
+  expect(text).toContain("Ni Analytics ni el detalle guardado por búsqueda y página se envían a ningún servicio de IA")
+  expect(text).toContain("the stored per-query and per-page detail are never sent to any AI service")
   // Ya no dice lo contrario.
   expect(text).not.toContain("No guardamos consultas, páginas")
   expect(text).not.toContain("No queries, pages")
@@ -88,7 +88,20 @@ it("la política cuenta los leads por página de entrada y el historial importad
   expect(text).toContain("monthly per-query totals older than those 16 months, with the same Search Console data, imported once from our previous tool; they are kept while the site is linked to an active client")
   expect(text).toContain("those imported from our previous tool are kept while the site is linked to an active client")
   // Siguen sin ir a la IA.
-  expect(text).toContain("no se envían a ningún servicio de IA")
+  expect(text).toContain("Ni Analytics ni el detalle guardado por búsqueda y página se envían a ningún servicio de IA")
+})
+
+it("la política cuenta las consultas en vivo a Search Console desde Claude (gsc_live)", () => {
+  renderPage(<PrivacyPage />)
+  const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
+  expect(text).toContain("The Agency consulta Search Console en ese momento")
+  expect(text).toContain("pasa la respuesta de Google a Claude. Esas consultas no se guardan en The Agency")
+  expect(text).toContain("y con Anthropic, proveedor de Claude")
+  expect(text).toContain("passes Google's response to Claude. Those queries are not stored in The Agency")
+  expect(text).toContain("and with Anthropic, Claude's provider")
+  // Ya no promete lo que dejó de ser verdad.
+  expect(text).not.toContain("Las cifras de Google se pintan con código: no se envían a ningún servicio de IA")
+  expect(text).not.toContain("Google figures are rendered by code and are not sent to any AI service")
 })
 
 it("la página de inicio menciona el detalle por búsqueda y página", () => {
