@@ -131,7 +131,7 @@ export default function DashboardPage() {
   const { data: leadReminders } = useQuery({
     queryKey: ["dashboard", "lead-reminders", user?.id ?? "anonymous", dashboardPermissionSignature],
     queryFn: () => leadsApi.reminders(),
-    enabled: !!user && hasPermission("leads") && isEnabled("leads"),
+    enabled: !!user && hasPermission("growth") && isEnabled("leads"),
   })
   const { data: allProposals } = useQuery({
     queryKey: ["dashboard", "proposals-pipeline", user?.id ?? "anonymous", dashboardPermissionSignature],

@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     # Semáforo SEO: incidencia cuando los clics de 30 días caen este % o más
     # frente a los 30 anteriores, si el periodo anterior llegaba a este mínimo.
     SEO_DROP_ALERT_PCT: float = 20.0
+    # Formulario web → Pipeline (POST /api/leads/inbound con cabecera X-Lead-Token).
+    # Sin token, la entrada no existe (404).
+    LEADS_WEBHOOK_TOKEN: Optional[str] = None
     SEO_DROP_MIN_CLICKS: int = 100
     # Webs: disponibilidad (job ``uptime``, lock 15). Apagado por defecto: en
     # Railway se enciende con UPTIME_ENABLED=true. Umbrales en

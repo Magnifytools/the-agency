@@ -51,6 +51,7 @@ from backend.startup.task_sort_rank_schema import MIGRATION as TASK_SORT_RANK_MI
 from backend.startup.task_time_blocks_schema import MIGRATION as TASK_TIME_BLOCKS_MIGRATION
 from backend.startup.calendar_blocks_sync_schema import MIGRATION as CALENDAR_BLOCKS_SYNC_MIGRATION
 from backend.startup.task_recurrence_rules_schema import MIGRATION as TASK_RECURRENCE_RULES_MIGRATION
+from backend.startup.lead_status_history_schema import MIGRATION as LEAD_STATUS_HISTORY_MIGRATION
 from backend.startup.alert_settings_notify_retirement_schema import (
     MIGRATION as ALERT_SETTINGS_NOTIFY_RETIREMENT_MIGRATION,
 )
@@ -75,6 +76,7 @@ MIGRATIONS = (
     ALERT_SETTINGS_NOTIFY_RETIREMENT_MIGRATION,
     CALENDAR_BLOCKS_SYNC_MIGRATION,
     TASK_RECURRENCE_RULES_MIGRATION,
+    LEAD_STATUS_HISTORY_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

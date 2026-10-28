@@ -96,6 +96,7 @@ export default function LeadDetailPage() {
       qc.invalidateQueries({ queryKey: ["lead", leadId] })
       qc.invalidateQueries({ queryKey: ["leads"] })
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
+      qc.invalidateQueries({ queryKey: ["lead-funnel"] })
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar")),
   })

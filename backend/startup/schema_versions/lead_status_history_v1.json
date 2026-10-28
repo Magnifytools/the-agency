@@ -1,0 +1,14 @@
+{
+  "version": "20261028_lead_status_history_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS lead_status_history (\n id SERIAL PRIMARY KEY,\n lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,\n status leadstatus NOT NULL,\n entered_at TIMESTAMP NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')\n)",
+    "CREATE INDEX IF NOT EXISTS ix_lead_status_history_lead ON lead_status_history (lead_id, entered_at)",
+    "INSERT INTO lead_status_history (lead_id, status, entered_at) SELECT l.id, l.status, COALESCE(l.updated_at, l.created_at, now() AT TIME ZONE 'UTC') FROM leads l WHERE NOT EXISTS (SELECT 1 FROM lead_status_history h WHERE h.lead_id = l.id)"
+  ],
+  "columns": {
+    "id": "int4",
+    "lead_id": "int4",
+    "status": "leadstatus",
+    "entered_at": "timestamp"
+  }
+}

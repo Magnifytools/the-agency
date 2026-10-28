@@ -359,6 +359,7 @@ async def convert_to_task(
         raise HTTPException(status_code=409, detail=(
             "Esta nota ya se envió como sugerencia para la app" if note.resolved_as == APP_SUGGESTION
             else "Esta nota ya se apuntó como petición extra" if note.resolved_as == "scope_request"
+            else "Esta nota ya se pasó al Pipeline como lead" if note.resolved_as == "lead"
             else "Esta nota ya fue convertida en tarea"
         ))
 
@@ -576,6 +577,62 @@ async def convert_to_scope_request(
     note.updated_at = _updated_clock()
     await db.commit()
     await safe_refresh(db, note, log_context="scope_request_inbox_note")
+    return _to_response(note, user)
+
+
+# ---------------------------------------------------------------------------
+# POST /{id}/lead — La nota es un cliente potencial: pasa al Pipeline
+# ---------------------------------------------------------------------------
+
+LEAD = "lead"
+
+
+@router.post("/{note_id}/lead", response_model=InboxNoteResponse)
+async def convert_to_lead(
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(require_module("growth", write=True)),
+):
+    """Crea un lead en "Nuevo" a nombre de quien anota: empresa = primera línea
+    de la nota; notas = la nota entera si tenía más líneas. Avisa como cualquier
+    lead nuevo. Reintento idempotente."""
+    from backend.core.modules import is_enabled
+    from backend.db.models import Lead, LeadSource, LeadStatus
+    from backend.services import lead_pipeline
+
+    if not is_enabled("leads"):
+        raise HTTPException(status_code=404, detail="El Pipeline no está activo")
+    note = (await db.execute(
+        select(InboxNote)
+        .where(InboxNote.id == note_id, InboxNote.user_id == user.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if note is None:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    if note.resolved_as == LEAD:
+        return _to_response(note, user)
+    if note.status in (InboxNoteStatus.processed, InboxNoteStatus.dismissed):
+        raise HTTPException(status_code=409, detail="La nota ya está resuelta")
+    raw = note.raw_text.strip()
+    first_line = raw.splitlines()[0].strip() if raw else ""
+    if not first_line:
+        raise HTTPException(status_code=422, detail="La nota está vacía")
+    lead = Lead(
+        company_name=first_line[:200], notes=raw if raw != first_line else None,
+        status=LeadStatus.new, source=LeadSource.other, assigned_to=user.id,
+    )
+    db.add(lead)
+    await db.flush()
+    lead_pipeline.record_status(db, lead, LeadStatus.new)
+    await lead_pipeline.notify_new_lead(db, lead, created_by=user.id,
+                                        origin=f"Desde Por aclarar de {user.full_name}")
+    note.status = InboxNoteStatus.processed
+    note.resolved_as = LEAD
+    note.resolved_entity_id = lead.id
+    note.updated_at = _updated_clock()
+    await db.commit()
+    await safe_refresh(db, note, log_context="lead_inbox_note")
     return _to_response(note, user)
 
 

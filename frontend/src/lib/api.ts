@@ -145,6 +145,7 @@ import type {
   LeadActivity,
   PipelineSummary,
   LeadReminder,
+  LeadFunnel,
   HoldedSyncResult,
   HoldedSyncStatus,
   HoldedSyncLog,
@@ -861,6 +862,10 @@ export const leadsApi = {
     api.get<PipelineSummary>("/leads/pipeline-summary").then((r) => r.data),
   reminders: () =>
     api.get<LeadReminder[]>("/leads/reminders").then((r) => r.data),
+  /** Conversión entre etapas, días en cada una y tasa de cierre (últimos `days` días). */
+  funnel: (days: number) => api.get<LeadFunnel>("/leads/funnel", { params: { days } }).then((r) => r.data),
+  /** Seguimientos de lead hasta ese día (Mi agenda). */
+  agenda: (date: string) => api.get<LeadReminder[]>("/leads/agenda", { params: { date } }).then((r) => r.data),
 }
 
 // --- Holded Integration ---
@@ -1126,6 +1131,8 @@ export const inboxApi = {
     api.post<InboxNote>(`/inbox/${id}/dismiss`).then((r) => r.data),
   suggest: (id: number) =>
     api.post<InboxNote>(`/inbox/${id}/suggest`).then((r) => r.data),
+  /** La nota pasa al Pipeline como lead "Nuevo" a nombre de quien la anotó. */
+  toLead: (id: number) => api.post<InboxNote>(`/inbox/${id}/lead`).then((r) => r.data),
   uploadAttachment: (noteId: number, file: File, onUploadProgress?: UploadProgressHandler) => {
     const fd = new FormData()
     fd.append("file", file)

@@ -167,6 +167,30 @@ admin_users, admin_settings
 - **Nomenclatura**: UI dice "Buffer de Ideas" / "Buffer", código interno sigue usando `growth` (evita migración DB)
 - **No confundir** con Pipeline/Leads (`/leads`) que es el CRM comercial
 
+## Pipeline (CRM)
+- **Reactivado el 28 oct 2026** (decisión de David, análisis de Ruk Lab): fuera de
+  los módulos ocultos `leads` (backend y `lib/hidden-modules.ts`). El Buffer
+  (`growth`) y Propuestas siguen ocultos. Permiso: módulo `growth` (leer/escribir);
+  quien no es admin sólo ve los leads que lleva.
+- **Historial de etapas** (`lead_status_history`, migración `lead_status_history_v1`,
+  rellena una fila por lead con su etapa actual): `services/lead_pipeline.record_status`
+  al crear, al cambiar de etapa y al convertir. Lo lee el **embudo**
+  (`GET /api/leads/funnel?days=`, tarjeta en `/leads`): de los leads creados en el
+  periodo, cuántos llegan a cada etapa (`STAGES`: nuevo → contactado → descubrimiento
+  → propuesta → negociación → ganado), cuántos pasan a la siguiente, días en cada
+  etapa (de los que salieron) y tasa de cierre (ganados / ganados + perdidos).
+- **Valor ponderado**: sólo leads abiertos (antes sumaba ganados y perdidos).
+- **Avisos**: lead nuevo → campana (`lead_new`) de admins activos y de quien lo
+  lleva, nunca de quien lo crea. Seguimiento vencido → incidencia
+  `lead_followup_due` (`incident_lead_conditions.py`, clave por lead y fecha) a quien
+  lo lleva o, sin dueño, a los admins. Mi agenda: "Seguimientos comerciales"
+  (`GET /api/leads/agenda?date=`).
+- **Entradas**: "Lead" en una nota de Por aclarar (`POST /api/inbox/{id}/lead`,
+  escritura de `growth`; empresa = primera línea) y formulario web
+  (`POST /api/leads/inbound`, cabecera `X-Lead-Token` = `LEADS_WEBHOOK_TOKEN`; sin
+  token configurado, o distinto, 404; 20/min por IP; origen "web", sin asignar).
+- Fuera a propósito: propuesta aceptada → ganado (Propuestas oculto, nunca usado).
+
 ## Semáforo SEO (tráfico orgánico por cliente)
 - **Datos**: nuestro Search Console (`gsc_daily` de `Client.gsc_url`), NO The
   Engine. Clics e impresiones se suman en la MISMA ventana que el estado del

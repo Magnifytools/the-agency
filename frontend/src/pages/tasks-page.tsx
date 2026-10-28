@@ -28,6 +28,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { NextMeeting } from "@/components/tasks/next-meeting"
 import { MyDayView } from "@/components/tasks/my-day-view"
 import { AgendaSubtasks } from "@/components/tasks/agenda-subtasks"
+import { AgendaLeadFollowups } from "@/components/tasks/agenda-lead-followups"
+import { isEnabled } from "@/lib/hidden-modules"
 import { AgendaHoursView, type HoursMode } from "@/components/tasks/agenda-hours-view"
 import { CarryoverReviewDialog } from "@/components/tasks/carryover-review-dialog"
 import { IncidentInbox } from "@/components/incidents/incident-inbox"
@@ -889,6 +891,9 @@ export default function TasksPage() {
               canWrite={canWriteTasks}
               onOpenTask={(taskId) => setAgendaParams({ task: String(taskId) })}
             />
+          )}
+          {agendaScope === "mine" && hasPermission?.("growth") && isEnabled("leads") && (
+            <AgendaLeadFollowups today={businessToday} userId={user?.id} />
           )}
           <MyDayView
             planned={agendaData(plannedAgenda)}
