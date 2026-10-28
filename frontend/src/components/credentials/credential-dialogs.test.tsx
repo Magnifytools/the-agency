@@ -7,7 +7,7 @@ import { CredentialImportDialog } from "./credential-import-dialog"
 import type { Credential } from "@/lib/credentials-api"
 
 const api = vi.hoisted(() => ({
-  list: vi.fn(), create: vi.fn(), update: vi.fn(), importMany: vi.fn(), shareableUsers: vi.fn(),
+  list: vi.fn(), create: vi.fn(), update: vi.fn(), importMany: vi.fn(), shareableUsers: vi.fn(), notes: vi.fn(),
 }))
 vi.mock("@/lib/credentials-api", () => ({ credentialsApi: api }))
 vi.mock("@/lib/api", () => ({ clientsApi: { listAll: vi.fn().mockResolvedValue([]) } }))
@@ -22,7 +22,7 @@ function wrap(node: ReactNode) {
 }
 
 const existing: Credential = {
-  id: 7, name: "WordPress Fit", url: null, username: "magnify", notes: null, client_id: null, client_name: null,
+  id: 7, name: "WordPress Fit", url: null, username: "magnify", has_notes: false, client_id: null, client_name: null,
   created_by: 1, created_by_name: "David", updated_at: "2026-10-20T08:00:00+00:00", can_manage: true, has_totp: true, shared_with: [],
 }
 
@@ -83,4 +83,22 @@ it("imports the marked rows of a 1Password CSV, skipping what already exists", a
     name: "Google Ads", url: "https://ads.google.com", username: "ads@magnify.ing", secret: "pw-1",
     totp: "otpauth://totp/G?secret=JBSWY3DPEHPK3PXP", notes: null, client_id: null,
   }], [2])
+})
+
+
+it("editing does not send the stored notes unless they are opened", async () => {
+  api.notes.mockResolvedValue("PIN 1234")
+  wrap(<CredentialFormDialog open onOpenChange={vi.fn()} credential={{ ...existing, has_notes: true }} />)
+  expect(screen.getByText("Tiene notas guardadas.")).toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
+  await waitFor(() => expect(api.update).toHaveBeenCalledTimes(1))
+  expect(api.update.mock.calls[0][1]).not.toHaveProperty("notes")
+
+  fireEvent.click(screen.getByRole("button", { name: "Ver y editar" }))
+  const notes = await screen.findByLabelText("Notas")
+  expect(notes).toHaveValue("PIN 1234")
+  fireEvent.change(notes, { target: { value: "PIN 5678" } })
+  fireEvent.click(screen.getByRole("button", { name: "Guardar" }))
+  await waitFor(() => expect(api.update).toHaveBeenCalledTimes(2))
+  expect(api.update.mock.calls[1][1]).toMatchObject({ notes: "PIN 5678" })
 })

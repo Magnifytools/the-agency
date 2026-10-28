@@ -136,7 +136,8 @@ class CredentialResponse(BaseModel):
     name: str
     url: Optional[str]
     username: Optional[str]
-    notes: Optional[str]
+    # Si tiene notas (cifradas; se leen aparte con /notes).
+    has_notes: bool
     client_id: Optional[int]
     client_name: Optional[str]
     created_by: Optional[int]
@@ -151,6 +152,28 @@ class CredentialResponse(BaseModel):
 
 class CredentialRevealResponse(BaseModel):
     secret: str
+
+
+class CredentialNotesResponse(BaseModel):
+    notes: str
+
+
+class CredentialExposure(BaseModel):
+    """Un acceso que una persona vio o todavía puede ver (salida de alguien)."""
+    id: int
+    name: str
+    url: Optional[str]
+    client_name: Optional[str]
+    last_seen_at: Optional[datetime]
+    times_seen: int
+    shared_with_them: bool
+    created_by_them: bool
+    secret_changed_at: datetime
+    needs_rotation: bool
+
+
+class CredentialRevokeResult(BaseModel):
+    removed: int
 
 
 class CredentialLogEntry(BaseModel):

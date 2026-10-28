@@ -17,8 +17,11 @@ from backend.schemas.credential import (
     CredentialImport,
     CredentialImportResult,
     CredentialTotpResponse,
+    CredentialExposure,
     CredentialLogEntry,
+    CredentialNotesResponse,
     CredentialResponse,
+    CredentialRevokeResult,
     CredentialRevealRequest,
     CredentialRevealResponse,
     CredentialSharesUpdate,
@@ -61,6 +64,32 @@ async def list_credentials(
     return await svc.serialize(db, user, credentials)
 
 
+@router.get("/exposure/{user_id}", response_model=list[CredentialExposure])
+async def credential_exposure(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """Salida de alguien (sólo admin): qué accesos vio o puede ver y cuáles hay
+    que rotar porque la contraseña no ha cambiado desde que los vio."""
+    if await db.get(User, user_id) is None:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return await svc.exposure(db, user_id)
+
+
+@router.post("/exposure/{user_id}/revoke-shares", response_model=CredentialRevokeResult)
+async def revoke_user_shares(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Le quita todos los accesos que tenía compartidos (cada uno con su registro)."""
+    person = await db.get(User, user_id)
+    if person is None:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return {"removed": await svc.revoke_shares(db, admin, person)}
+
+
 @router.get("/shareable-users", response_model=list[SharedUser])
 async def list_shareable_users(
     db: AsyncSession = Depends(get_db),
@@ -79,8 +108,8 @@ async def create_credential(
     targets = await svc.validate_share_targets(db, body.shared_user_ids)
     now = datetime.now(UTC)
     credential = Credential(
-        name=body.name, url=body.url, username=body.username, notes=body.notes,
-        secret_encrypted=svc.encrypt_secret(body.secret.get_secret_value()),
+        name=body.name, url=body.url, username=body.username, notes_encrypted=svc.encrypt_notes(body.notes),
+        secret_encrypted=svc.encrypt_secret(body.secret.get_secret_value()), secret_changed_at=now,
         totp_encrypted=svc.encrypt_totp(body.totp.get_secret_value() if body.totp else None),
         client_id=body.client_id, created_by=user.id, updated_by=user.id, created_at=now, updated_at=now,
     )
@@ -119,8 +148,8 @@ async def import_credentials(
             raise HTTPException(status_code=422, detail=f"Fila {index} («{item.name}»): {exc.detail}") from None
     created = [
         Credential(
-            name=item.name, url=item.url, username=item.username, notes=item.notes,
-            secret_encrypted=secret, totp_encrypted=totp_value, client_id=item.client_id,
+            name=item.name, url=item.url, username=item.username, notes_encrypted=svc.encrypt_notes(item.notes),
+            secret_encrypted=secret, secret_changed_at=now, totp_encrypted=totp_value, client_id=item.client_id,
             created_by=user.id, updated_by=user.id, created_at=now, updated_at=now,
         )
         for item, (secret, totp_value) in zip(body.items, encrypted)
@@ -148,12 +177,19 @@ async def update_credential(
         raise HTTPException(status_code=422, detail="El nombre no puede estar vacío")
     if "client_id" in sent:
         await svc.ensure_client(db, body.client_id)
-    for field in ("name", "url", "username", "notes", "client_id"):
+    for field in ("name", "url", "username", "client_id"):
         if field in sent and getattr(credential, field) != getattr(body, field):
             setattr(credential, field, getattr(body, field))
             changed.append(_FIELD_LABELS[field])
+    if "notes" in sent:
+        # Sólo se compara descifrando: el cifrado cambia en cada vuelta.
+        current = svc.decrypt(credential, credential.notes_encrypted) if credential.notes_encrypted else None
+        if (body.notes or None) != current:
+            credential.notes_encrypted = svc.encrypt_notes(body.notes)
+            changed.append(_FIELD_LABELS["notes"])
     if "secret" in sent and body.secret is not None:
         credential.secret_encrypted = svc.encrypt_secret(body.secret.get_secret_value())
+        credential.secret_changed_at = datetime.now(UTC)
         changed.append(_FIELD_LABELS["secret"])
     if "totp" in sent:
         new_totp = svc.encrypt_totp(body.totp.get_secret_value() if body.totp else None)
@@ -217,6 +253,21 @@ async def credential_totp(
     code = await svc.totp_code(db, user, credential)
     response.headers.update(_NO_STORE)
     return code
+
+
+@router.post("/{credential_id}/notes", response_model=CredentialNotesResponse)
+async def credential_notes(
+    credential_id: int,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_module(svc.MODULE)),
+):
+    """Las notas en claro. Como ver la contraseña: mismo límite y su fila en el registro."""
+    credential_reveal_limiter.check(user.id, _REVEALS_PER_MINUTE, 60)
+    credential = await svc.get_visible(db, user, credential_id)
+    notes = await svc.reveal_notes(db, user, credential)
+    response.headers.update(_NO_STORE)
+    return {"notes": notes}
 
 
 @router.get("/{credential_id}/log", response_model=list[CredentialLogEntry])
