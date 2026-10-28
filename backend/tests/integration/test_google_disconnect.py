@@ -135,7 +135,7 @@ async def test_desconectar_calendar_borra_solo_los_eventos_de_google_de_esa_pers
     resp = await member_client.post("/api/calendar/disconnect")
 
     assert resp.status_code == 200
-    assert resp.json() == {"ok": True, "google_revoked": True, "events_deleted": 2}
+    assert resp.json() == {"ok": True, "google_revoked": True, "events_deleted": 2, "blocks_calendar_deleted": False}
     _no_real_google_revoke.assert_awaited_once_with("cal-token")
     db_session.expire_all()
     titles = set((await db_session.scalars(select(Event.title))).all())

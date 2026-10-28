@@ -359,8 +359,6 @@ class User(TimestampMixin, Base):
     google_calendar_id = Column(String(200), nullable=True)     # "primary" or specific
     google_calendar_synced_at = Column(DateTime, nullable=True)  # last complete committed calendar reconciliation (UTC)
     google_calendar_connected = Column(Boolean, nullable=False, default=False, server_default="false")
-    # Calendario "The Agency" donde se publican sus bloques de trabajo (fase 4); NULL = no publica.
-    google_blocks_calendar_id = Column(String(300), nullable=True)
 
     tasks = relationship("Task", back_populates="assigned_user", lazy="selectin", foreign_keys="[Task.assigned_to]")
     permissions = relationship("UserPermission", back_populates="user", lazy="selectin", cascade="all, delete-orphan")
@@ -738,6 +736,19 @@ class TaskRecurrenceOccurrence(Base):
         Index("uq_task_recurrence_consumed", "template_id", "date", unique=True),
         Index("ix_task_recurrence_generated", "task_id"),
     )
+
+
+class UserBlocksCalendar(Base):
+    """Calendario "The Agency" donde una persona publica sus bloques de trabajo.
+
+    Fase 4 (``services/calendar_blocks_sync.py``): una fila por persona que lo
+    activó; sin fila no publica. Tabla aparte y no columna de ``users``.
+    """
+    __tablename__ = "user_blocks_calendars"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    calendar_id = Column(String(300), nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class TaskTimeBlock(TimestampMixin, Base):

@@ -1155,7 +1155,9 @@ admin_users, admin_settings
   `calendar.app.created` (`BLOCKS_SCOPE`; sólo deja tocar calendarios que crea
   la app). El callback (estado firmado con propósito `blocks`) comprueba que
   Google dio el permiso (`scope` del token; si no, `?calendar=blocks_denied`) y
-  crea el calendario secundario "The Agency" → `users.google_blocks_calendar_id`.
+  crea el calendario secundario "The Agency" → tabla `user_blocks_calendars`
+  (una fila por persona que publica; no es columna de `users` porque los tests
+  de pasos de esquema anteriores insertan usuarios con el ORM).
   Reconectar a secas sigue pidiendo los dos permisos a quien publica; si vuelve
   sin el de bloques, se olvida la publicación.
 - **Job `calendar_blocks`** (lock **22**, cada 60 s; el 21 es `extension_release`):

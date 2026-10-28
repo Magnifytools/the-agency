@@ -15,13 +15,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, delete, or_, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.deps import get_current_user
 from backend.config import settings
 from backend.db.database import get_db
-from backend.db.models import Event, EventType, User
-from backend.services.calendar_blocks_sync import create_blocks_calendar, delete_blocks_calendar, forget_blocks
+from backend.db.models import Event, EventType, User, UserBlocksCalendar
+from backend.services.calendar_blocks_sync import (
+    blocks_calendar_id, create_blocks_calendar, delete_blocks_calendar, forget_blocks,
+)
 from backend.services.google_calendar_service import (
     BLOCKS_SCOPE,
     SCOPES,
@@ -100,12 +103,13 @@ class NextMeetingResponse(BaseModel):
 
 @router.get("/auth-url")
 async def calendar_auth_url(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Get the Google OAuth2 authorization URL."""
     _require_google_config()
     # Reconectar no puede quitar el permiso de los bloques a quien los publica.
-    scopes = [*SCOPES, BLOCKS_SCOPE] if current_user.google_blocks_calendar_id else SCOPES
+    scopes = [*SCOPES, BLOCKS_SCOPE] if await blocks_calendar_id(db, current_user.id) else SCOPES
     url = get_auth_url(state=_sign_oauth_state(current_user.id), scopes=scopes)
     return {"url": url}
 
@@ -190,9 +194,10 @@ async def calendar_callback(
     user.google_calendar_connected = True
     user.google_calendar_synced_at = None
     granted = set(tokens.get("scope", "").split())
-    if user.google_blocks_calendar_id and BLOCKS_SCOPE not in granted:
+    publishing = await blocks_calendar_id(db, user_id)
+    if publishing and BLOCKS_SCOPE not in granted:
         # Reconectó sin el permiso de los bloques: dejan de publicarse.
-        await forget_blocks(db, user)
+        await forget_blocks(db, user_id)
 
     await db.commit()
     logger.info("Google Calendar connected for user_id=%s", user_id)
@@ -200,7 +205,7 @@ async def calendar_callback(
         return RedirectResponse(url="/settings?calendar=connected")
     if BLOCKS_SCOPE not in granted:
         return RedirectResponse(url="/settings?calendar=blocks_denied")
-    if user.google_blocks_calendar_id:
+    if publishing:
         return RedirectResponse(url="/settings?calendar=blocks_on")
     # Red fuera de la transacción: el token ya está guardado.
     encrypted = user.google_refresh_token
@@ -209,8 +214,9 @@ async def calendar_callback(
     except Exception as e:
         logger.error("Blocks calendar creation failed for user_id=%s (%s)", user_id, type(e).__name__)
         return RedirectResponse(url="/settings?calendar=error&reason=blocks_calendar")
-    user = await db.scalar(select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True))
-    user.google_blocks_calendar_id = calendar_id
+    # Si otra pestaña lo creó a la vez, se queda el primero.
+    await db.execute(insert(UserBlocksCalendar).values(user_id=user_id, calendar_id=calendar_id)
+                     .on_conflict_do_nothing(index_elements=["user_id"]))
     await db.commit()
     logger.info("Blocks calendar created for user_id=%s", user_id)
     return RedirectResponse(url="/settings?calendar=blocks_on")
@@ -235,11 +241,10 @@ async def calendar_blocks_disable(
 ):
     """Deja de publicar los bloques. Con ``delete_calendar``, borra además el
     calendario "The Agency" de su Google (si no, queda como estaba)."""
-    user = await db.scalar(select(User).where(User.id == current_user.id).with_for_update())
-    token, calendar_id = user.google_refresh_token, user.google_blocks_calendar_id
-    await forget_blocks(db, user)
+    token, calendar_id = current_user.google_refresh_token, await blocks_calendar_id(db, current_user.id)
+    await forget_blocks(db, current_user.id)
     await db.commit()
-    deleted = await _delete_blocks_calendar(token, calendar_id, user.id) if body.delete_calendar else False
+    deleted = await _delete_blocks_calendar(token, calendar_id, current_user.id) if body.delete_calendar else False
     return {"ok": True, "calendar_deleted": deleted}
 
 
@@ -247,6 +252,7 @@ async def calendar_blocks_disable(
 
 @router.get("/status", response_model=CalendarStatus)
 async def calendar_status(
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Check if user has Google Calendar connected."""
@@ -257,7 +263,7 @@ async def calendar_status(
         calendar_id=current_user.google_calendar_id,
         last_synced_at=utc_isoformat(current_user.google_calendar_synced_at),
         meeting_alerts=None,  # legacy preferences are history; effective policy lives in Avisos
-        blocks_calendar=bool(current_user.google_blocks_calendar_id),
+        blocks_calendar=bool(await blocks_calendar_id(db, current_user.id)),
     )
 
 
@@ -273,9 +279,9 @@ async def calendar_disconnect(
     borra antes el calendario "The Agency" (después ya no habría permiso)."""
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
-    encrypted, blocks_calendar_id = user.google_refresh_token, user.google_blocks_calendar_id
+    encrypted, blocks_calendar = user.google_refresh_token, await blocks_calendar_id(db, user.id)
     token = plain_refresh_token(user.google_refresh_token)
-    await forget_blocks(db, user)
+    await forget_blocks(db, user.id)
     user.google_refresh_token = None
     user.google_calendar_id = None
     user.google_calendar_connected = False
@@ -287,7 +293,7 @@ async def calendar_disconnect(
     )).rowcount or 0
     await db.commit()
     # Después del commit: la copia local desaparece aunque Google no conteste.
-    calendar_deleted = (await _delete_blocks_calendar(encrypted, blocks_calendar_id, user.id)
+    calendar_deleted = (await _delete_blocks_calendar(encrypted, blocks_calendar, user.id)
                         if body.delete_blocks_calendar else False)
     revoked = await revoke_token(token) if token else False
     if token and not revoked:

@@ -2,7 +2,7 @@
 
 Quien lo activa (Ajustes → Google Calendar) da el permiso ``calendar.app.created``
 y la app crea en su cuenta un calendario aparte, "The Agency"
-(``users.google_blocks_calendar_id``). Sólo se escribe ahí: nunca en sus otros
+(``user_blocks_calendars``). Sólo se escribe ahí: nunca en sus otros
 calendarios. Si algo va mal, se borra ese calendario y nada más.
 
 Cada minuto (job ``calendar_blocks``) se concilian sus bloques con los eventos
@@ -30,11 +30,11 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import noload
 
 from backend.config import settings
-from backend.db.models import Client, Task, TaskTimeBlock, User
+from backend.db.models import Client, Task, TaskTimeBlock, User, UserBlocksCalendar
 from backend.services.temporal import business_today, business_zone
 
 logger = logging.getLogger(__name__)
@@ -248,27 +248,32 @@ def _gone(error: Exception) -> bool:
 
 # ── Pasada de una persona ────────────────────────────────────────────────────
 
-async def forget_blocks(db, user: User) -> None:
+async def blocks_calendar_id(db, user_id: int) -> str | None:
+    """El calendario "The Agency" donde publica esa persona; None si no publica."""
+    return await db.scalar(select(UserBlocksCalendar.calendar_id).where(UserBlocksCalendar.user_id == user_id))
+
+
+async def forget_blocks(db, user_id: int) -> None:
     """Deja de publicar: olvida el calendario y la relación bloque ↔ evento.
 
-    ``update()`` masivo: fuera del Deshacer, como el resto de la conexión con
-    Google. ``updated_at`` se conserva para que no parezca un cambio del bloque.
+    ``delete()``/``update()`` masivos: fuera del Deshacer, como el resto de la
+    conexión con Google. ``updated_at`` se conserva para que no parezca un
+    cambio del bloque.
     """
-    user.google_blocks_calendar_id = None
+    await db.execute(delete(UserBlocksCalendar).where(UserBlocksCalendar.user_id == user_id))
     await db.execute(
-        update(TaskTimeBlock).where(TaskTimeBlock.user_id == user.id)
+        update(TaskTimeBlock).where(TaskTimeBlock.user_id == user_id)
         .values(google_event_id=None, google_event_updated=None, google_synced_at=None,
                 updated_at=TaskTimeBlock.updated_at)
     )
 
 
-async def _still_publishing(db, user_id: int, calendar_id: str) -> User | None:
-    """La persona, bloqueada, si sigue publicando en ESE calendario (no lo desactivó a mitad)."""
-    user = (await db.execute(
-        select(User).where(User.id == user_id).options(noload("*")).with_for_update()
-        .execution_options(populate_existing=True)
-    )).scalar_one_or_none()
-    return user if user is not None and user.google_blocks_calendar_id == calendar_id else None
+async def _still_publishing(db, user_id: int, calendar_id: str) -> bool:
+    """Si sigue publicando en ESE calendario (no lo desactivó a mitad). Bloquea la fila."""
+    current = await db.scalar(
+        select(UserBlocksCalendar.calendar_id).where(UserBlocksCalendar.user_id == user_id).with_for_update()
+    )
+    return current == calendar_id
 
 
 def window(today: date) -> tuple[datetime, datetime]:
@@ -294,10 +299,11 @@ async def sync_user(session_maker, user_id: int) -> dict:
     start, end = window(business_today())
     async with session_maker() as db:
         user = await db.get(User, user_id, options=[noload("*")])
+        calendar_id = await blocks_calendar_id(db, user_id)
         if user is None or not user.is_active or not user.google_calendar_connected \
-                or not user.google_refresh_token or not user.google_blocks_calendar_id:
+                or not user.google_refresh_token or not calendar_id:
             return {}
-        token, calendar_id = user.google_refresh_token, user.google_blocks_calendar_id
+        token = user.google_refresh_token
     try:
         events = await anyio.to_thread.run_sync(lambda: list_block_events(token, calendar_id, start, end))
     except Exception as error:
@@ -305,9 +311,8 @@ async def sync_user(session_maker, user_id: int) -> dict:
             raise
         # Borró el calendario "The Agency" en Google: deja de publicar.
         async with session_maker() as db:
-            user = await _still_publishing(db, user_id, calendar_id)
-            if user is not None:
-                await forget_blocks(db, user)
+            if await _still_publishing(db, user_id, calendar_id):
+                await forget_blocks(db, user_id)
                 await db.commit()
         return {"calendar_gone": 1}
     # Los bloques de la ventana y los que tienen evento en ella aunque se hayan
@@ -342,7 +347,7 @@ async def sync_user(session_maker, user_id: int) -> dict:
     applied = {"created": len(plan.create), "patched": len(plan.patch), "from_google": 0,
                "deleted_blocks": 0, "deleted_events": len(plan.delete_events)}
     async with session_maker() as db:
-        if await _still_publishing(db, user_id, calendar_id) is None:
+        if not await _still_publishing(db, user_id, calendar_id):
             return applied  # lo desactivó a mitad: no se resucita nada
         for block_id, (event_id, updated) in written.items():
             row = await _unchanged(db, block_id, seen[block_id])
@@ -381,10 +386,10 @@ async def sync_all(session_maker) -> dict:
     from backend.services.google_calendar_service import authorization_needs_reconnect
 
     async with session_maker() as db:
-        user_ids = (await db.execute(select(User.id).where(
-            User.is_active.is_(True), User.google_calendar_connected.is_(True),
-            User.google_blocks_calendar_id.is_not(None),
-        ))).scalars().all()
+        user_ids = (await db.execute(
+            select(User.id).join(UserBlocksCalendar, UserBlocksCalendar.user_id == User.id)
+            .where(User.is_active.is_(True), User.google_calendar_connected.is_(True))
+        )).scalars().all()
     failed = 0
     for user_id in user_ids:
         try:

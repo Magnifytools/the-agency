@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import delete, select
 
 from backend.api.routes import google_calendar as route
-from backend.db.models import Client, Task, TaskStatus, TaskTimeBlock, User
+from backend.db.models import Client, Task, TaskStatus, TaskTimeBlock, User, UserBlocksCalendar
 from backend.services import calendar_blocks_sync as sync
 from backend.services.google_calendar_service import BLOCKS_SCOPE, SCOPES
 from backend.tests.integration.test_scheduled_communications import fixture, client  # noqa: F401
@@ -115,7 +115,7 @@ async def _publishing(fixture, google, *, blocks=((datetime(2026, 10, 29, 10), d
     async with maker() as db:
         user = await db.get(User, ids["member"])
         user.google_refresh_token = "synthetic-grant"
-        user.google_blocks_calendar_id = sync.create_blocks_calendar("synthetic-grant")
+        db.add(UserBlocksCalendar(user_id=user.id, calendar_id=sync.create_blocks_calendar("synthetic-grant")))
         customer = Client(name="Fit")
         db.add(customer)
         await db.flush()
@@ -265,7 +265,7 @@ async def test_activar_pide_los_dos_permisos_y_crea_el_calendario(fixture, googl
         url = (await http.get("/api/calendar/auth-url")).json()["url"]
         assert BLOCKS_SCOPE in parse_qs(urlsplit(url).query)["scope"][0]
     async with maker() as db:
-        assert (await db.get(User, ids["member"])).google_blocks_calendar_id == "agency-cal"
+        assert await sync.blocks_calendar_id(db, ids["member"]) == "agency-cal"
 
 
 async def test_desactivar_puede_borrar_el_calendario(fixture, google, monkeypatch):
@@ -273,7 +273,7 @@ async def test_desactivar_puede_borrar_el_calendario(fixture, google, monkeypatc
     _, (block_id,), customer_id = await _publishing(fixture, google)
     await sync.sync_user(maker, ids["member"])
     async with maker() as db:
-        calendar_id = (await db.get(User, ids["member"])).google_blocks_calendar_id
+        calendar_id = await sync.blocks_calendar_id(db, ids["member"])
     before = (await _block(maker, block_id)).updated_at
     monkeypatch.setattr(route, "delete_blocks_calendar", lambda token, cal: google.calendars.discard(cal))
     async with client(fixture) as http:
@@ -283,7 +283,7 @@ async def test_desactivar_puede_borrar_el_calendario(fixture, google, monkeypatc
     row = await _block(maker, block_id)
     assert (row.google_event_id, row.google_synced_at, row.updated_at) == (None, None, before)
     async with maker() as db:
-        assert (await db.get(User, ids["member"])).google_blocks_calendar_id is None
+        assert await sync.blocks_calendar_id(db, ids["member"]) is None
     await _cleanup(maker, customer_id)
 
 
@@ -305,7 +305,7 @@ async def test_desconectar_borra_el_calendario_antes_de_revocar(fixture, google,
         body = (await http.post("/api/calendar/disconnect", json={"delete_blocks_calendar": True})).json()
     assert body["blocks_calendar_deleted"] is True and order == ["calendar", "revoke"]
     async with maker() as db:
-        assert (await db.get(User, ids["member"])).google_blocks_calendar_id is None
+        assert await sync.blocks_calendar_id(db, ids["member"]) is None
         assert (await db.execute(select(TaskTimeBlock.google_event_id).where(
             TaskTimeBlock.user_id == ids["member"], TaskTimeBlock.google_event_id.is_not(None)))).first() is None
     await _cleanup(maker, customer_id)
@@ -321,7 +321,7 @@ async def test_si_borra_el_calendario_en_google_deja_de_publicar(fixture, google
     monkeypatch.setattr(sync, "list_block_events", gone)
     assert await sync.sync_user(maker, ids["member"]) == {"calendar_gone": 1}
     async with maker() as db:
-        assert (await db.get(User, ids["member"])).google_blocks_calendar_id is None
+        assert await sync.blocks_calendar_id(db, ids["member"]) is None
     row = await _block(maker, block_id)
     assert row is not None and row.google_event_id is None  # el bloque sigue en Mi agenda
     await _cleanup(maker, customer_id)
@@ -338,7 +338,7 @@ async def test_desactivar_a_mitad_de_pasada_no_resucita_la_relacion(fixture, goo
         calls.append(func)
         if len(calls) == 2:  # tras escribir en Google y antes de guardar
             async with maker() as db:
-                await sync.forget_blocks(db, await db.get(User, ids["member"]))
+                await sync.forget_blocks(db, ids["member"])
                 await db.commit()
         return result
     monkeypatch.setattr(anyio.to_thread, "run_sync", run_sync_then_disable)
