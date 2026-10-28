@@ -1,7 +1,13 @@
 import { render, screen, fireEvent } from "@testing-library/react"
 import { MemoryRouter, useLocation } from "react-router-dom"
-import { expect, it, vi } from "vitest"
+import { afterEach, expect, it, vi } from "vitest"
+import { HIDDEN_MODULES, setRuntimeHiddenModules } from "@/lib/hidden-modules"
 import { useKeyboardShortcuts, resolveShortcuts, shortcutConflict } from "./use-keyboard-shortcuts"
+
+// El Pipeline está activo desde el 28 oct 2026; para probar un atajo de un
+// módulo oculto se oculta a mano y se restaura después.
+const hidePipeline = () => setRuntimeHiddenModules([...HIDDEN_MODULES, "leads"])
+afterEach(() => setRuntimeHiddenModules([...HIDDEN_MODULES]))
 
 function Harness() {
   useKeyboardShortcuts({ userOverrides: { goto_leads: "G+L" } })
@@ -52,6 +58,8 @@ it("normalizes invalid legacy bindings and detects active collisions", () => {
   expect(resolveShortcuts({ new_entry: "G" }).new_entry).toBe("N")
   expect(resolveShortcuts({ goto_dashboard: "G+A" }).goto_dashboard).toBe("G+D")
   expect(shortcutConflict("goto_dashboard", "G+A", { goto_tasks: "G+A" })).toBe("goto_tasks")
+  expect(shortcutConflict("goto_dashboard", "G+L", { goto_leads: "G+L" })).toBe("goto_leads")
+  hidePipeline()
   expect(shortcutConflict("goto_dashboard", "G+L", { goto_leads: "G+L" })).toBeNull()
 })
 
@@ -68,6 +76,7 @@ function NewEntryHarness({ onCapture, userOverrides = {} }: { onCapture: () => v
 }
 
 it("ignores a legacy shortcut to hidden Pipeline and navigates to active Trabajo", () => {
+  hidePipeline()
   render(<MemoryRouter initialEntries={["/settings"]}><Harness /></MemoryRouter>)
   fireEvent.keyDown(document, { key: "g" })
   fireEvent.keyDown(document, { key: "l" })
@@ -75,6 +84,13 @@ it("ignores a legacy shortcut to hidden Pipeline and navigates to active Trabajo
   fireEvent.keyDown(document, { key: "g" })
   fireEvent.keyDown(document, { key: "a" })
   expect(screen.getByRole("status")).toHaveTextContent("/tasks?view=tareas")
+})
+
+it("goes to the active Pipeline with its shortcut", () => {
+  render(<MemoryRouter initialEntries={["/settings"]}><Harness /></MemoryRouter>)
+  fireEvent.keyDown(document, { key: "g" })
+  fireEvent.keyDown(document, { key: "l" })
+  expect(screen.getByRole("status")).toHaveTextContent("/leads")
 })
 
 it("opens the global entry with N but does not interrupt typing", () => {

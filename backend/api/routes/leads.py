@@ -5,7 +5,9 @@ from datetime import datetime, date, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import secrets
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy import select, func as sa_func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -21,8 +23,11 @@ from backend.schemas.lead import (
     LeadCreate, LeadUpdate, LeadResponse, LeadDetailResponse,
     LeadActivityCreate, LeadActivityResponse,
     PipelineSummary, PipelineStageSummary,
-    LeadReminderResponse,
+    LeadReminderResponse, LeadFunnel, LeadInbound,
 )
+from backend.config import settings
+from backend.core.rate_limiter import public_link_limiter
+from backend.services import lead_pipeline
 
 router = APIRouter(prefix="/api/leads", tags=["leads"])
 
@@ -124,7 +129,11 @@ async def pipeline_summary(
         sa_func.coalesce(
             sa_func.sum(Lead.estimated_value * Lead.probability / 100), 0
         ).label("weighted")
-    ).where(Lead.probability.isnot(None), Lead.estimated_value.isnot(None))
+    ).where(
+        Lead.probability.isnot(None), Lead.estimated_value.isnot(None),
+        # Sólo lo que aún está en juego: ganados y perdidos ya no son "probables".
+        Lead.status.notin_(lead_pipeline.CLOSED),
+    )
     if current_user.role != UserRole.admin:
         wq = wq.where(Lead.assigned_to == current_user.id)
     wr = await db.execute(wq)
@@ -173,6 +182,80 @@ async def lead_reminders(
             days_until_followup=days,
         ))
     return reminders
+
+
+# --- Formulario web ---
+
+@router.post("/inbound", status_code=status.HTTP_201_CREATED)
+async def inbound_lead(
+    data: LeadInbound,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_lead_token: Optional[str] = Header(None),
+):
+    """Entrada pública para el formulario de la web: crea un lead "Nuevo" con
+    origen web, sin asignar, y avisa a los admins. Sin ``LEADS_WEBHOOK_TOKEN``
+    configurado, o con un token distinto, el mismo 404. 20/min por IP."""
+    client_ip = request.client.host if request.client else "unknown"
+    public_link_limiter.check(f"lead-inbound:{client_ip}", max_requests=20, window_seconds=60)
+    expected = settings.LEADS_WEBHOOK_TOKEN
+    if not expected or not x_lead_token or not secrets.compare_digest(x_lead_token, expected):
+        raise HTTPException(status_code=404, detail="Not Found")
+    name = next((v.strip() for v in (data.company, data.name, data.email) if v and v.strip()), None)
+    if name is None:
+        raise HTTPException(status_code=422, detail="Hace falta empresa, nombre o email")
+    notes = "\n\n".join(filter(None, [
+        (data.message or "").strip() or None,
+        f"Desde: {data.page_url.strip()}" if data.page_url and data.page_url.strip() else None,
+    ])) or None
+    lead = Lead(
+        company_name=name[:200],
+        contact_name=(data.name or "").strip() or None,
+        email=(data.email or "").strip() or None,
+        phone=(data.phone or "").strip() or None,
+        website=(data.website or "").strip() or None,
+        notes=notes, status=LeadStatus.new, source=LeadSource.website,
+    )
+    db.add(lead)
+    await db.flush()
+    lead_pipeline.record_status(db, lead, LeadStatus.new)
+    await lead_pipeline.notify_new_lead(db, lead, created_by=None, origin="Ha llegado por el formulario de la web")
+    await db.commit()
+    return {"id": lead.id}
+
+
+# --- Embudo y seguimientos ---
+
+@router.get("/funnel", response_model=LeadFunnel)
+async def lead_funnel(
+    days: int = Query(180, ge=7, le=730),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("growth")),
+):
+    """Conversión entre etapas, días en cada una y tasa de cierre de los leads
+    creados en los últimos ``days`` días (quien no es admin, sólo los suyos)."""
+    return await lead_pipeline.funnel(db, current_user, days=days)
+
+
+@router.get("/agenda", response_model=list[LeadReminderResponse])
+async def lead_agenda(
+    date_: date = Query(..., alias="date"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("growth")),
+):
+    """Seguimientos de lead de Mi agenda: los míos (y, si soy admin, los sin
+    asignar) con fecha hasta ese día, de leads abiertos."""
+    leads = await lead_pipeline.followups_due(db, current_user, date_)
+    assignees = {lead.assigned_to for lead in leads if lead.assigned_to}
+    names = dict((await db.execute(
+        select(User.id, User.full_name).where(User.id.in_(assignees))
+    )).all()) if assignees else {}
+    return [LeadReminderResponse(
+        id=lead.id, company_name=lead.company_name, contact_name=lead.contact_name,
+        next_followup_date=lead.next_followup_date, next_followup_notes=lead.next_followup_notes,
+        status=lead.status, assigned_user_name=names.get(lead.assigned_to),
+        days_until_followup=(lead.next_followup_date - date_).days,
+    ) for lead in leads]
 
 
 # --- CRUD ---
@@ -231,8 +314,15 @@ async def create_lead(
         current_website_traffic=data.current_website_traffic,
         next_followup_date=data.next_followup_date,
         next_followup_notes=data.next_followup_notes,
+        # Antes se perdían al crear: el formulario los manda y el embudo los usa.
+        estimated_close_date=data.estimated_close_date,
+        probability=data.probability,
     )
     db.add(lead)
+    await db.flush()
+    lead_pipeline.record_status(db, lead, lead.status)
+    await lead_pipeline.notify_new_lead(db, lead, created_by=current_user.id,
+                                        origin=f"Lo ha creado {current_user.full_name}")
     await db.commit()
     await safe_refresh(db, lead, log_context="leads")
     # Reload with relationship for response
@@ -310,6 +400,7 @@ async def update_lead(
             title=f"Estado cambiado: {_status_label(old_status.value)} → {_status_label(update_data['status'].value if hasattr(update_data['status'], 'value') else update_data['status'])}",
         )
         db.add(activity)
+        lead_pipeline.record_status(db, lead, LeadStatus(update_data["status"]))
 
     await db.commit()
     await safe_refresh(db, lead, log_context="leads")
@@ -426,6 +517,7 @@ async def convert_to_client(
 
     # Update lead
     lead.status = LeadStatus.won
+    lead_pipeline.record_status(db, lead, LeadStatus.won)
     lead.converted_client_id = client.id
     lead.converted_at = datetime.now(timezone.utc).replace(tzinfo=None)
 

@@ -10,8 +10,9 @@ import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import {
   CheckSquare, X, RefreshCw, Loader2, FolderKanban,
-  Users, Clock, Sparkles, ExternalLink, Paperclip, FileText, Image, Trash2, Lightbulb, Receipt,
+  Users, Clock, Sparkles, ExternalLink, Paperclip, FileText, Image, Trash2, Lightbulb, Receipt, Target,
 } from "lucide-react"
+import { isEnabled } from "@/lib/hidden-modules"
 import { toast } from "sonner"
 import { getErrorMessage, formatTimeAgo } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
@@ -69,6 +70,7 @@ export function InboxNoteCard({ note }: Props) {
   const canReadClients = hasPermission("clients")
   const canWriteTasks = hasPermission("tasks", true)
   const canWriteClients = hasPermission("clients", true)
+  const canWriteLeads = hasPermission("growth", true) && isEnabled("leads")
   const ai = note.ai_suggestion as AISuggestion | null
 
   const invalidateAll = () => {
@@ -144,6 +146,16 @@ export function InboxNoteCard({ note }: Props) {
       toast.success("Sugerencia enviada a los administradores")
     },
     onError: (err) => toast.error(getErrorMessage(err, "No se pudo enviar la sugerencia")),
+  })
+
+  const leadMutation = useMutation({
+    mutationFn: () => inboxApi.toLead(note.id),
+    onSuccess: () => {
+      invalidateAll()
+      queryClient.invalidateQueries({ queryKey: ["leads"] })
+      toast.success("Pasada al Pipeline como lead nuevo")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo crear el lead")),
   })
 
   const deleteMutation = useMutation({
@@ -223,7 +235,8 @@ export function InboxNoteCard({ note }: Props) {
               {note.status === "processed" && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
                   {note.resolved_as === "app_suggestion" ? "Sugerencia para la app"
-                    : note.resolved_as === "scope_request" ? "Petición extra" : "Procesado"}
+                    : note.resolved_as === "scope_request" ? "Petición extra"
+                    : note.resolved_as === "lead" ? "Lead en el Pipeline" : "Procesado"}
                 </span>
               )}
               {note.status === "dismissed" && (
@@ -366,6 +379,17 @@ export function InboxNoteCard({ note }: Props) {
               >
                 <Receipt className="w-3 h-3" />
                 Petición extra
+              </Button>}
+              {canWriteLeads && <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1.5 px-3"
+                title="Crea un lead en el Pipeline con la primera línea como empresa"
+                onClick={() => leadMutation.mutate()}
+                disabled={leadMutation.isPending}
+              >
+                <Target className="w-3 h-3" />
+                Lead
               </Button>}
               <Button
                 size="sm"

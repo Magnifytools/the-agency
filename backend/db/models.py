@@ -1332,6 +1332,21 @@ class Lead(TimestampMixin, Base):
     activities = relationship("LeadActivity", back_populates="lead", lazy="selectin", order_by="LeadActivity.created_at.desc()")
 
 
+class LeadStatusHistory(Base):
+    """Cada vez que un lead entra en una etapa (migración ``lead_status_history_v1``).
+
+    La lee el embudo del Pipeline (conversión entre etapas y días en cada una).
+    Se escribe al crear el lead y en cada cambio de etapa (``services/lead_pipeline``).
+    """
+    __tablename__ = "lead_status_history"
+    __table_args__ = (Index("ix_lead_status_history_lead", "lead_id", "entered_at"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    status = Column(Enum(LeadStatus), nullable=False)
+    entered_at = Column(DateTime, nullable=False, server_default=func.timezone("UTC", func.now()))
+
+
 class LeadActivity(TimestampMixin, Base):
     __tablename__ = "lead_activities"
 

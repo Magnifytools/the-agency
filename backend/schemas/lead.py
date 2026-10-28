@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 from datetime import datetime, date
 from decimal import Decimal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from backend.db.models import LeadStatus, LeadSource, LeadActivityType
 
 
@@ -132,3 +132,36 @@ class LeadReminderResponse(BaseModel):
     status: LeadStatus
     assigned_user_name: Optional[str] = None
     days_until_followup: int = 0
+
+
+class LeadFunnelStage(BaseModel):
+    status: LeadStatus
+    label: str
+    # Leads que llegaron a esta etapa o a una posterior.
+    reached: int
+    # De ellos, los que pasaron a la siguiente (en "won" siempre 0).
+    moved_on: int
+    conversion_pct: Optional[float] = None
+    # Media de días en la etapa de los que salieron de ella.
+    avg_days: Optional[float] = None
+
+
+class LeadFunnel(BaseModel):
+    days: int
+    total: int
+    stages: list[LeadFunnelStage]
+    won: int
+    lost: int
+    win_rate_pct: Optional[float] = None
+
+
+class LeadInbound(BaseModel):
+    """Lo que manda un formulario web. Hace falta empresa, nombre o email."""
+    company: Optional[str] = Field(None, max_length=200)
+    name: Optional[str] = Field(None, max_length=200)
+    email: Optional[str] = Field(None, max_length=200)
+    phone: Optional[str] = Field(None, max_length=50)
+    website: Optional[str] = Field(None, max_length=300)
+    message: Optional[str] = Field(None, max_length=5000)
+    # La página desde la que llegó (se apunta en las notas).
+    page_url: Optional[str] = Field(None, max_length=500)

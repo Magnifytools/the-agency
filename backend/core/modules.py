@@ -33,7 +33,6 @@ HIDDEN_MODULES: frozenset[str] = frozenset(
                           #              previsiones, asesor, importación, balance
         "holded",         # 26 — dos visitas en 77 días
         "proposals",      # 30, solo el listado: nunca se creó una propuesta
-        "leads",          # 37 — Pipeline
         "growth",         # 4 — Buffer de ideas
         "capacity",       # solo frontend
         "executive",      # solo frontend

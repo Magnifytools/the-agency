@@ -288,6 +288,27 @@ export interface LeadReminder {
   days_until_followup: number
 }
 
+export interface LeadFunnelStage {
+  status: LeadStatus
+  label: string
+  /** Leads que llegaron a esta etapa o a una posterior. */
+  reached: number
+  /** De ellos, los que pasaron a la siguiente. */
+  moved_on: number
+  conversion_pct: number | null
+  /** Media de días en la etapa de los que salieron de ella. */
+  avg_days: number | null
+}
+
+export interface LeadFunnel {
+  days: number
+  total: number
+  stages: LeadFunnelStage[]
+  won: number
+  lost: number
+  win_rate_pct: number | null
+}
+
 // --- Holded Integration ---
 
 export interface HoldedSyncLog {

@@ -1,15 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
-import { beforeEach, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import userEvent from "@testing-library/user-event"
 
 import { categoriesApi, holidaysApi, usersApi } from "@/lib/api"
+import { HIDDEN_MODULES, setRuntimeHiddenModules } from "@/lib/hidden-modules"
 import SettingsPage from "./settings-page"
 
 const auth = vi.hoisted(() => ({ isAdmin: false, user: { id: 12, role: "member", preferences: { shortcuts: { goto_leads: "G+Y" } } } }))
 
-beforeEach(() => { auth.isAdmin = false })
+// Estas pruebas tratan un atajo guardado de un módulo OCULTO. El Pipeline ya no
+// lo está (28 oct 2026), así que aquí se oculta a propósito.
+beforeEach(() => {
+  auth.isAdmin = false
+  setRuntimeHiddenModules([...HIDDEN_MODULES, "leads"])
+})
+afterEach(() => setRuntimeHiddenModules([...HIDDEN_MODULES]))
 
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ user: auth.user, isAdmin: auth.isAdmin, hasPermission: () => false, refreshUser: vi.fn() }),

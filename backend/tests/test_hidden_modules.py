@@ -110,7 +110,7 @@ class TestRoutersRegistrados:
         "prefijo",
         [
             "/api/reports", "/api/cfo", "/api/vault", "/api/automations",
-            "/api/leads", "/api/growth", "/api/proposals",
+            "/api/growth", "/api/proposals",
             "/api/holded", "/api/income", "/api/expenses", "/api/taxes",
             "/api/forecasts", "/api/billing", "/api/communications",
             "/api/invitations", "/api/investments",
@@ -127,6 +127,8 @@ class TestRoutersRegistrados:
             "/api/auth/me", "/api/clients", "/api/projects", "/api/tasks",
             "/api/time-entries", "/api/dashboard/overview", "/api/digests",
             "/api/dailys", "/api/inbox", "/api/users", "/api/notifications",
+            # leads: Pipeline, reactivado el 28 oct 2026 (CRM del análisis de Ruk Lab).
+            "/api/leads",
             # search: 0 llamadas pero es la paleta ⌘K del shell, se queda
             "/api/search",
             # pm: el panel "Asistente PM" vive dentro del dashboard

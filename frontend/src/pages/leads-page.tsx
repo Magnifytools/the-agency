@@ -1,5 +1,6 @@
 import { useState, useRef } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { LeadFunnelCard } from "@/components/leads/lead-funnel-card"
 import { leadsApi, usersApi } from "@/lib/api"
 import { useAuth } from "@/context/auth-context"
 import type { Lead, LeadCreate, LeadStatus, LeadSource } from "@/lib/types"
@@ -100,6 +101,7 @@ export default function LeadsPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["leads"] })
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
+      qc.invalidateQueries({ queryKey: ["lead-funnel"] })
     },
   })
 
@@ -109,6 +111,7 @@ export default function LeadsPage() {
       toast.success("Lead eliminado")
       qc.invalidateQueries({ queryKey: ["leads"] })
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
+      qc.invalidateQueries({ queryKey: ["lead-funnel"] })
       setDeleteLeadId(null)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al eliminar lead")),
@@ -120,6 +123,7 @@ export default function LeadsPage() {
       toast.success(`Lead convertido a cliente: ${data.client_name}`)
       qc.invalidateQueries({ queryKey: ["leads"] })
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
+      qc.invalidateQueries({ queryKey: ["lead-funnel"] })
       setShowConvertDialog(null)
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al convertir lead")),
@@ -176,6 +180,8 @@ export default function LeadsPage() {
           </Button>
         </div>
       </div>
+
+      <LeadFunnelCard />
 
       {/* Filters for table view */}
       {view === "table" && (
@@ -533,6 +539,7 @@ function CreateLeadDialog({
       toast.success("Lead creado")
       qc.invalidateQueries({ queryKey: ["leads"] })
       qc.invalidateQueries({ queryKey: ["pipeline-summary"] })
+      qc.invalidateQueries({ queryKey: ["lead-funnel"] })
       onOpenChange(false)
       setForm({ company_name: "" })
     },
