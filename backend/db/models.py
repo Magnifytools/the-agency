@@ -359,6 +359,8 @@ class User(TimestampMixin, Base):
     google_calendar_id = Column(String(200), nullable=True)     # "primary" or specific
     google_calendar_synced_at = Column(DateTime, nullable=True)  # last complete committed calendar reconciliation (UTC)
     google_calendar_connected = Column(Boolean, nullable=False, default=False, server_default="false")
+    # Calendario "The Agency" donde se publican sus bloques de trabajo (fase 4); NULL = no publica.
+    google_blocks_calendar_id = Column(String(300), nullable=True)
 
     tasks = relationship("Task", back_populates="assigned_user", lazy="selectin", foreign_keys="[Task.assigned_to]")
     permissions = relationship("UserPermission", back_populates="user", lazy="selectin", cascade="all, delete-orphan")
@@ -762,6 +764,11 @@ class TaskTimeBlock(TimestampMixin, Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     starts_at = Column(DateTime, nullable=False)
     ends_at = Column(DateTime, nullable=False)
+    # Publicación en Google Calendar (services/calendar_blocks_sync.py): su evento,
+    # el ``updated`` de Google en la última conciliación y cuándo se concilió.
+    google_event_id = Column(String(300), nullable=True)
+    google_event_updated = Column(String(40), nullable=True)
+    google_synced_at = Column(DateTime, nullable=True)
 
     task = relationship("Task", lazy="noload")
 

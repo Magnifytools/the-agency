@@ -1,0 +1,35 @@
+{
+  "version": "20261028_calendar_blocks_sync_v1",
+  "statements": [
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_blocks_calendar_id VARCHAR(300)",
+    "ALTER TABLE task_time_blocks ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(300)",
+    "ALTER TABLE task_time_blocks ADD COLUMN IF NOT EXISTS google_event_updated VARCHAR(40)",
+    "ALTER TABLE task_time_blocks ADD COLUMN IF NOT EXISTS google_synced_at TIMESTAMP"
+  ],
+  "columns": {
+    "users": {
+      "google_blocks_calendar_id": [
+        "varchar",
+        true,
+        300
+      ]
+    },
+    "task_time_blocks": {
+      "google_event_id": [
+        "varchar",
+        true,
+        300
+      ],
+      "google_event_updated": [
+        "varchar",
+        true,
+        40
+      ],
+      "google_synced_at": [
+        "timestamp",
+        true,
+        null
+      ]
+    }
+  }
+}

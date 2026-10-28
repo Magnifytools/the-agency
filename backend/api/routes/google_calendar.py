@@ -21,7 +21,10 @@ from backend.api.deps import get_current_user
 from backend.config import settings
 from backend.db.database import get_db
 from backend.db.models import Event, EventType, User
+from backend.services.calendar_blocks_sync import create_blocks_calendar, delete_blocks_calendar, forget_blocks
 from backend.services.google_calendar_service import (
+    BLOCKS_SCOPE,
+    SCOPES,
     authorization_needs_reconnect,
     connection_status,
     encrypt_refresh_token,
@@ -46,6 +49,16 @@ class CalendarStatus(BaseModel):
     calendar_id: str | None = None
     meeting_alerts: dict | None = None
     last_synced_at: str | None = None
+    # Bloques de trabajo publicados en su calendario "The Agency".
+    blocks_calendar: bool = False
+
+
+class BlocksDisable(BaseModel):
+    delete_calendar: bool = False
+
+
+class CalendarDisconnect(BaseModel):
+    delete_blocks_calendar: bool = False
 
 
 class MeetingAlertSettings(BaseModel):
@@ -90,31 +103,49 @@ async def calendar_auth_url(
     current_user: User = Depends(get_current_user),
 ):
     """Get the Google OAuth2 authorization URL."""
-    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
-        raise HTTPException(status_code=500, detail="Google Calendar no configurado en el servidor")
-    url = get_auth_url(state=_sign_oauth_state(current_user.id))
+    _require_google_config()
+    # Reconectar no puede quitar el permiso de los bloques a quien los publica.
+    scopes = [*SCOPES, BLOCKS_SCOPE] if current_user.google_blocks_calendar_id else SCOPES
+    url = get_auth_url(state=_sign_oauth_state(current_user.id), scopes=scopes)
     return {"url": url}
 
 
-def _sign_oauth_state(user_id: int) -> str:
+@router.get("/blocks/auth-url")
+async def calendar_blocks_auth_url(
+    current_user: User = Depends(get_current_user),
+):
+    """Permiso para publicar los bloques de trabajo (y leer reuniones, si aún no lo daba)."""
+    _require_google_config()
+    url = get_auth_url(state=_sign_oauth_state(current_user.id, "blocks"), scopes=[*SCOPES, BLOCKS_SCOPE])
+    return {"url": url}
+
+
+def _require_google_config() -> None:
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        raise HTTPException(status_code=500, detail="Google Calendar no configurado en el servidor")
+
+
+def _sign_oauth_state(user_id: int, purpose: str = "") -> str:
     """HMAC-signed, timestamped OAuth state (prevents account-link CSRF)."""
-    msg = f"{user_id}:{int(time.time())}"
+    msg = f"{user_id}:{int(time.time())}" + (f":{purpose}" if purpose else "")
     sig = hmac.new(settings.SECRET_KEY.encode(), msg.encode(), hashlib.sha256).hexdigest()[:32]
     return base64.urlsafe_b64encode(f"{msg}:{sig}".encode()).decode()
 
 
-def _verify_oauth_state(state: str, max_age: int = 600) -> int:
-    """Return the signed user_id, or raise ValueError if invalid/expired."""
+def _verify_oauth_state(state: str, max_age: int = 600) -> tuple[int, str]:
+    """Return the signed (user_id, purpose), or raise ValueError if invalid/expired."""
     raw = base64.urlsafe_b64decode(state.encode()).decode()
-    user_id_s, ts_s, sig = raw.split(":")
+    *parts, sig = raw.split(":")
+    if len(parts) not in (2, 3):
+        raise ValueError("bad state")
     expected = hmac.new(
-        settings.SECRET_KEY.encode(), f"{user_id_s}:{ts_s}".encode(), hashlib.sha256
+        settings.SECRET_KEY.encode(), ":".join(parts).encode(), hashlib.sha256
     ).hexdigest()[:32]
     if not hmac.compare_digest(sig, expected):
         raise ValueError("bad signature")
-    if time.time() - int(ts_s) > max_age:
+    if time.time() - int(parts[1]) > max_age:
         raise ValueError("expired")
-    return int(user_id_s)
+    return int(parts[0]), parts[2] if len(parts) == 3 else ""
 
 
 @router.get("/callback")
@@ -127,7 +158,7 @@ async def calendar_callback(
     """Handle Google OAuth2 callback. Redirects to settings page."""
     # Verify signed state BEFORE doing any work (prevents OAuth account-link CSRF)
     try:
-        user_id = _verify_oauth_state(state)
+        user_id, purpose = _verify_oauth_state(state)
     except (ValueError, TypeError, Exception):
         return RedirectResponse(url="/settings?calendar=error&reason=invalid_state")
 
@@ -158,10 +189,58 @@ async def calendar_callback(
     user.google_calendar_id = "primary"
     user.google_calendar_connected = True
     user.google_calendar_synced_at = None
+    granted = set(tokens.get("scope", "").split())
+    if user.google_blocks_calendar_id and BLOCKS_SCOPE not in granted:
+        # Reconectó sin el permiso de los bloques: dejan de publicarse.
+        await forget_blocks(db, user)
 
     await db.commit()
     logger.info("Google Calendar connected for user_id=%s", user_id)
-    return RedirectResponse(url="/settings?calendar=connected")
+    if purpose != "blocks":
+        return RedirectResponse(url="/settings?calendar=connected")
+    if BLOCKS_SCOPE not in granted:
+        return RedirectResponse(url="/settings?calendar=blocks_denied")
+    if user.google_blocks_calendar_id:
+        return RedirectResponse(url="/settings?calendar=blocks_on")
+    # Red fuera de la transacción: el token ya está guardado.
+    encrypted = user.google_refresh_token
+    try:
+        calendar_id = await anyio.to_thread.run_sync(lambda: create_blocks_calendar(encrypted))
+    except Exception as e:
+        logger.error("Blocks calendar creation failed for user_id=%s (%s)", user_id, type(e).__name__)
+        return RedirectResponse(url="/settings?calendar=error&reason=blocks_calendar")
+    user = await db.scalar(select(User).where(User.id == user_id).with_for_update().execution_options(populate_existing=True))
+    user.google_blocks_calendar_id = calendar_id
+    await db.commit()
+    logger.info("Blocks calendar created for user_id=%s", user_id)
+    return RedirectResponse(url="/settings?calendar=blocks_on")
+
+
+async def _delete_blocks_calendar(encrypted_token: str | None, calendar_id: str | None, user_id: int) -> bool:
+    if not encrypted_token or not calendar_id:
+        return False
+    try:
+        await anyio.to_thread.run_sync(lambda: delete_blocks_calendar(encrypted_token, calendar_id))
+        return True
+    except Exception as e:
+        logger.warning("Blocks calendar deletion failed for user_id=%s (%s)", user_id, type(e).__name__)
+        return False
+
+
+@router.post("/blocks/disable")
+async def calendar_blocks_disable(
+    body: BlocksDisable = BlocksDisable(),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Deja de publicar los bloques. Con ``delete_calendar``, borra además el
+    calendario "The Agency" de su Google (si no, queda como estaba)."""
+    user = await db.scalar(select(User).where(User.id == current_user.id).with_for_update())
+    token, calendar_id = user.google_refresh_token, user.google_blocks_calendar_id
+    await forget_blocks(db, user)
+    await db.commit()
+    deleted = await _delete_blocks_calendar(token, calendar_id, user.id) if body.delete_calendar else False
+    return {"ok": True, "calendar_deleted": deleted}
 
 
 # ── Status & Disconnect ────────────────────────────────────
@@ -178,20 +257,25 @@ async def calendar_status(
         calendar_id=current_user.google_calendar_id,
         last_synced_at=utc_isoformat(current_user.google_calendar_synced_at),
         meeting_alerts=None,  # legacy preferences are history; effective policy lives in Avisos
+        blocks_calendar=bool(current_user.google_blocks_calendar_id),
     )
 
 
 @router.post("/disconnect")
 async def calendar_disconnect(
+    body: CalendarDisconnect = CalendarDisconnect(),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Desconecta Google Calendar: borra el token, lo revoca en Google y borra
     los eventos importados de esa persona (son suyos y sólo servían para sus
-    avisos). Los eventos manuales se quedan."""
+    avisos). Los eventos manuales se quedan. Con ``delete_blocks_calendar``
+    borra antes el calendario "The Agency" (después ya no habría permiso)."""
     result = await db.execute(select(User).where(User.id == current_user.id))
     user = result.scalar_one()
+    encrypted, blocks_calendar_id = user.google_refresh_token, user.google_blocks_calendar_id
     token = plain_refresh_token(user.google_refresh_token)
+    await forget_blocks(db, user)
     user.google_refresh_token = None
     user.google_calendar_id = None
     user.google_calendar_connected = False
@@ -203,10 +287,13 @@ async def calendar_disconnect(
     )).rowcount or 0
     await db.commit()
     # Después del commit: la copia local desaparece aunque Google no conteste.
+    calendar_deleted = (await _delete_blocks_calendar(encrypted, blocks_calendar_id, user.id)
+                        if body.delete_blocks_calendar else False)
     revoked = await revoke_token(token) if token else False
     if token and not revoked:
         logger.warning("Calendar de user_id=%s desconectado sin confirmación de revocación en Google", user.id)
-    return {"ok": True, "google_revoked": revoked, "events_deleted": deleted}
+    return {"ok": True, "google_revoked": revoked, "events_deleted": deleted,
+            "blocks_calendar_deleted": calendar_deleted}
 
 
 # ── Alert Settings ──────────────────────────────────────────

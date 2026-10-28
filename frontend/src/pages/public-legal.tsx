@@ -8,11 +8,11 @@ import { Link } from "react-router-dom"
  * No se indexan (meta aquí + X-Robots-Tag en backend/main.py).
  *
  * Lo que cuentan debe coincidir con el código: gsc_service, gsc_detail_service,
- * ga4_service, google_calendar_service y sus rutas. Si cambia qué se guarda, se cambia aquí.
+ * ga4_service, google_calendar_service, calendar_blocks_sync y sus rutas. Si cambia qué se guarda, se cambia aquí.
  */
 
 const CONTACT = "david@magnify.ing"
-const UPDATED = "22 de octubre de 2026"
+const UPDATED = "28 de octubre de 2026"
 
 function LegalLayout({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -70,10 +70,16 @@ export function AboutPage() {
           <strong>Google Calendar</strong> (sólo lectura, opcional y personal): cada persona puede conectar
           su calendario para ver su próxima reunión y sus reuniones junto a sus bloques de trabajo en Mi agenda.
         </li>
+        <li>
+          <strong>Calendario «The Agency»</strong> (opcional y personal): quien lo active publica sus bloques
+          de trabajo en un calendario aparte que la app crea en su cuenta, y puede moverlos o borrarlos desde
+          Google.
+        </li>
       </ul>
       <p>
-        The Agency nunca escribe, modifica ni borra nada en las cuentas de Google. Lo único que pide a Google
-        es retirar su propio acceso cuando se desconecta una cuenta.
+        The Agency sólo escribe en Google en ese calendario «The Agency», y sólo si la persona lo activa:
+        nunca modifica ni borra nada en sus otros calendarios ni en Search Console o Analytics. Aparte de eso,
+        lo único que pide a Google es retirar su propio acceso cuando se desconecta una cuenta.
       </p>
       <p>
         Detalle completo en la <Link to="/privacidad">política de privacidad</Link>.
@@ -88,9 +94,11 @@ export function AboutPage() {
           up to 16 months) and Google Analytics data (including daily lead events per landing page and
           channel) (read-only) for our clients' websites to track their traffic and to add
           a block of figures to the monthly report each client receives. Each user may optionally connect
-          their own Google Calendar (read-only) to see their next meeting and their meetings next to their work blocks. The app never writes to, changes
-          or deletes anything in Google accounts; the only request it makes is to revoke its own access when
-          an account is disconnected. See the <Link to="/privacidad">privacy policy</Link>.
+          their own Google Calendar (read-only) to see their next meeting and their meetings next to their work blocks,
+          and may choose to publish their work blocks to a separate "The Agency" calendar that the app creates in
+          their account. That calendar is the only thing the app ever writes to in Google; it never changes or
+          deletes anything in other calendars, Search Console or Analytics. Otherwise, the only request it makes
+          is to revoke its own access when an account is disconnected. See the <Link to="/privacidad">privacy policy</Link>.
         </p>
       </div>
     </LegalLayout>
@@ -144,6 +152,17 @@ export function PrivacyPage() {
         en Mi agenda. No leemos asistentes, organizador, ubicación ni adjuntos. Sólo esa
         persona ve sus eventos dentro de la app. Cada evento importado se borra 30 días después de terminar.
       </p>
+      <h3>Calendario «The Agency» (permiso calendar.app.created)</h3>
+      <p>
+        Opcional y personal: sólo se pide a quien activa «Publicar mis bloques» en Ajustes. Con este permiso la
+        app crea en su cuenta un calendario aparte llamado «The Agency» y sólo puede ver y tocar ese
+        calendario, nunca los demás. En él escribe un evento por cada bloque de trabajo de esa persona, desde
+        el lunes de esta semana hasta cuatro semanas después: el título de la tarea, el nombre del cliente, un
+        enlace a la tarea en la app y la hora de inicio y fin. Cada minuto lee los eventos de ese calendario
+        (inicio, fin y si se han borrado) para aplicar en la app lo que la persona haya movido o borrado en
+        Google. De cada bloque guardamos sólo el identificador de su evento y cuándo cambió por última vez en
+        Google. Borrar un evento en Google borra el bloque, nunca la tarea.
+      </p>
 
       <h2>Para qué los usamos</h2>
       <ul>
@@ -153,6 +172,7 @@ export function PrivacyPage() {
         <li>Ver qué páginas de entrada y qué canales traen leads a cada cliente.</li>
         <li>Añadir un bloque de cifras al resumen mensual que enviamos a cada cliente y a la página de sólo lectura que el cliente puede abrir con su enlace privado: los totales del mes y, en los mensuales, las búsquedas y páginas que más visitas trajeron, las que están cerca de la primera página y la parte que llega con la marca.</li>
         <li>Enseñar a cada persona su próxima reunión y sus reuniones de la semana junto a sus bloques de trabajo, avisarla antes y, si su equipo lo tiene activado, incluir el título y la hora en su plan de la mañana, que puede publicarse en el canal interno del equipo.</li>
+        <li>Que quien lo active vea y mueva sus bloques de trabajo desde su propio Google Calendar.</li>
       </ul>
       <p>
         No usamos estos datos para publicidad, no los vendemos y no los usamos para entrenar modelos de
@@ -169,7 +189,8 @@ export function PrivacyPage() {
       <p>
         Las cifras de Search Console y Analytics las ven, dentro de la app, las personas con permiso de
         lectura sobre clientes o resúmenes, y el cliente al que pertenecen. Los eventos de calendario sólo los
-        ve su dueño. No compartimos los datos con terceros salvo con los proveedores que alojan la app
+        ve su dueño. El calendario «The Agency» está en la cuenta de Google de esa persona: lo ve ella y
+        quien ella decida en Google. No compartimos los datos con terceros salvo con los proveedores que alojan la app
         (Railway, servidor y base de datos PostgreSQL).
       </p>
 
@@ -205,6 +226,12 @@ export function PrivacyPage() {
           entrada. Si no lo elige, se conservan.
         </li>
         <li>Al desconectar Google Calendar se borran todos los eventos importados de esa persona.</li>
+        <li>
+          Al dejar de publicar los bloques o al desconectar Google Calendar, la persona puede elegir borrar
+          también el calendario «The Agency» de su Google (opción marcada por defecto). Si no lo elige, se
+          queda en su cuenta como estaba y ya no se actualiza. En los dos casos la app olvida qué evento
+          correspondía a cada bloque.
+        </li>
       </ul>
       <p>
         Si quieres que borremos otros datos, escríbenos a <a href={`mailto:${CONTACT}`}>{CONTACT}</a> y lo
@@ -247,6 +274,20 @@ export function PrivacyPage() {
           and time appear in their morning plan, which can be posted to the team's internal channel. We do not
           read attendees, organizer, location or attachments. Only that user sees their events in the app.
           Each imported event is deleted 30 days after it ends.
+        </p>
+        <p>
+          <strong>"The Agency" calendar (calendar.app.created)</strong>: optional and per user, requested only
+          when a user turns on "Publish my blocks" in Settings. With this permission the app creates a separate
+          calendar called "The Agency" in their account and can only see and change that calendar, never the
+          others. It writes one event per work block of that user, from Monday of the current week to four
+          weeks later: the task title, the client name, a link to the task in the app and the start and end
+          time. Every minute it reads the events of that calendar (start, end and whether they were deleted) to
+          apply in the app what the user moved or deleted in Google. For each block we only store its event
+          ID and when it last changed in Google. Deleting an event in Google deletes the block, never the
+          task. The calendar lives in the user's Google account and is visible to them and to whoever they
+          share it with in Google. When they stop publishing or disconnect Google Calendar they can choose to
+          also delete that calendar from Google (checked by default); otherwise it stays as it was and is no
+          longer updated.
         </p>
         <p>
           Search Console and Analytics figures are shown to app users with read access to clients or reports,

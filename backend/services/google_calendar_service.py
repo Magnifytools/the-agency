@@ -18,6 +18,9 @@ from backend.core.security import encrypt_vault_secret, decrypt_vault_secret
 logger = logging.getLogger(__name__)
 
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+# Publicar los bloques de trabajo (services/calendar_blocks_sync.py): sólo el
+# calendario que crea la app, nunca los demás. Se pide aparte, al activarlo.
+BLOCKS_SCOPE = "https://www.googleapis.com/auth/calendar.app.created"
 
 
 def authorization_needs_reconnect(error: Exception) -> bool:
@@ -52,14 +55,14 @@ def _client_config() -> dict:
     }
 
 
-def get_auth_url(state: str = "") -> str:
+def get_auth_url(state: str = "", scopes: list[str] | None = None) -> str:
     """Generate the Google OAuth2 authorization URL (no PKCE — server-side flow)."""
     from urllib.parse import urlencode
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
         "redirect_uri": settings.GOOGLE_REDIRECT_URI,
         "response_type": "code",
-        "scope": " ".join(SCOPES),
+        "scope": " ".join(scopes or SCOPES),
         "access_type": "offline",
         "prompt": "consent",
         "state": state,
@@ -88,10 +91,12 @@ def exchange_code(code: str) -> dict:
     return {
         "access_token": data.get("access_token"),
         "refresh_token": data.get("refresh_token"),
+        # Con el consentimiento por partes, la persona puede desmarcar un permiso.
+        "scope": data.get("scope", ""),
     }
 
 
-def _get_credentials(encrypted_refresh_token: str) -> Optional[Credentials]:
+def _get_credentials(encrypted_refresh_token: str, scopes: list[str] | None = None) -> Optional[Credentials]:
     """Build Credentials from an encrypted refresh token."""
     try:
         refresh_token = decrypt_vault_secret(encrypted_refresh_token) if encrypted_refresh_token.startswith("v1:") else encrypted_refresh_token
@@ -105,7 +110,7 @@ def _get_credentials(encrypted_refresh_token: str) -> Optional[Credentials]:
         token_uri="https://oauth2.googleapis.com/token",
         client_id=settings.GOOGLE_CLIENT_ID,
         client_secret=settings.GOOGLE_CLIENT_SECRET,
-        scopes=SCOPES,
+        scopes=scopes or SCOPES,
     )
 
 

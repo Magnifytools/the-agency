@@ -1149,6 +1149,43 @@ admin_users, admin_settings
 - Tests: `chrome-extension/tests/desktop-notices.test.cjs` y
   `backend/tests/integration/test_desktop_notices.py`.
 
+## Google Calendar: bloques de trabajo publicados (fase 4)
+- **Opt-in por persona** (Ajustes → Google Calendar → "Publicar mis bloques"):
+  `GET /api/calendar/blocks/auth-url` pide `calendar.readonly` +
+  `calendar.app.created` (`BLOCKS_SCOPE`; sólo deja tocar calendarios que crea
+  la app). El callback (estado firmado con propósito `blocks`) comprueba que
+  Google dio el permiso (`scope` del token; si no, `?calendar=blocks_denied`) y
+  crea el calendario secundario "The Agency" → `users.google_blocks_calendar_id`.
+  Reconectar a secas sigue pidiendo los dos permisos a quien publica; si vuelve
+  sin el de bloques, se olvida la publicación.
+- **Job `calendar_blocks`** (lock **22**, cada 60 s; el 21 es `extension_release`):
+  `services/calendar_blocks_sync.py`. Ventana: lunes de esta semana + 35 días,
+  más los bloques cuyo evento sale en ella. `plan_sync` (pura) decide; la red
+  va sin transacción y después se guarda sólo si el bloque no cambió entretanto
+  (`updated_at` igual; si no, la siguiente pasada). Columnas de
+  `task_time_blocks` (migración `calendar_blocks_sync_v1`): `google_event_id`,
+  `google_event_updated` (el `updated` de Google en la última conciliación) y
+  `google_synced_at`, escrito con el mismo `now()` que `updated_at`: "cambió en
+  la app" = `updated_at > google_synced_at`; "cambió en Google" = `updated`
+  distinto del guardado. Los dos → gana el último.
+- **Reglas**: sólo se tocan eventos con `extendedProperties.private.agency_block_id`.
+  Evento borrado en Google → se borra el bloque (nunca la tarea). Bloque borrado
+  → se borra el evento. Bloque recuperado con ⌘Z (su `updated_at` es nuevo) →
+  evento nuevo. Un cambio en Google que un bloque no admite (todo el día, otro
+  día, > 12 h) se deshace. Un evento que no sale en la lista se pide con
+  `events.get` antes de dar el bloque por borrado (movido fuera de la ventana).
+- **Dejar de publicar** (`POST /api/calendar/blocks/disable {delete_calendar}`)
+  y **desconectar** (`{delete_blocks_calendar}`, antes de revocar): la casilla
+  "Borrar también el calendario «The Agency»" viene marcada. Los dos olvidan la
+  relación bloque ↔ evento con un `update()` masivo (fuera del Deshacer, sin
+  tocar `updated_at`). El job no tiene actor: lo que trae de Google no entra en
+  el Deshacer de nadie.
+- **Producción necesita**: añadir el scope `calendar.app.created` en la pantalla
+  de consentimiento de Google Cloud (proyecto `agency-492805`). /privacidad y
+  /acerca ya lo cuentan (es lo único que la app escribe en Google).
+- Tests: `tests/test_calendar_blocks_sync.py` (plan) y
+  `tests/integration/test_calendar_blocks_sync.py` (Google falso en memoria).
+
 ## Extensión de Chrome: descarga
 - Ajustes → "Extensión de Chrome" (`components/settings/extension-section.tsx`):
   botón "Descargar extensión" con la versión desplegada y pasos para instalar
