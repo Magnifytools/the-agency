@@ -67,7 +67,11 @@ export function CredentialFormDialog({ open, onOpenChange, credential, fixedClie
   const [totpMode, setTotpMode] = useState<"keep" | "change" | "remove">(credential?.has_totp ? "keep" : "change")
   const [totp, setTotp] = useState("")
   const canReadQr = typeof window !== "undefined" && "BarcodeDetector" in window
-  const [notes, setNotes] = useState(credential?.notes ?? "")
+  // Las notas guardadas no vienen en la lista: al editar se piden (queda en el
+  // registro) sólo si se quieren ver o cambiar; si no, no se envían.
+  const [notes, setNotes] = useState("")
+  const [notesLoaded, setNotesLoaded] = useState(!credential?.has_notes)
+  const [loadingNotes, setLoadingNotes] = useState(false)
   const [clientId, setClientId] = useState<number | null>(fixedClientId ?? credential?.client_id ?? null)
   const canPickClient = fixedClientId === undefined && hasPermission("clients")
 
@@ -79,7 +83,8 @@ export function CredentialFormDialog({ open, onOpenChange, credential, fixedClie
 
   const save = useMutation({
     mutationFn: () => {
-      const data: CredentialInput = { name: name.trim(), url: empty(url), username: empty(username), notes: empty(notes), client_id: clientId }
+      const data: CredentialInput = { name: name.trim(), url: empty(url), username: empty(username), client_id: clientId }
+      if (notesLoaded) data.notes = editing ? notes.trim() : empty(notes)
       if (secret) data.secret = secret
       if (totpMode === "remove") data.totp = ""
       else if (totpMode === "change" && totp.trim()) data.totp = totp.trim()
@@ -94,6 +99,19 @@ export function CredentialFormDialog({ open, onOpenChange, credential, fixedClie
     },
     onError: (e) => toast.error(getErrorMessage(e)),
   })
+
+  const loadNotes = async () => {
+    if (!credential) return
+    setLoadingNotes(true)
+    try {
+      setNotes(await credentialsApi.notes(credential.id))
+      setNotesLoaded(true)
+    } catch (e) {
+      toast.error(getErrorMessage(e, "No se pudieron abrir las notas"))
+    } finally {
+      setLoadingNotes(false)
+    }
+  }
 
   const generate = (next: { length?: number; symbols?: boolean } = {}) => {
     const options = { length: next.length ?? length, symbols: next.symbols ?? symbols }
@@ -236,8 +254,17 @@ export function CredentialFormDialog({ open, onOpenChange, credential, fixedClie
           )}
           <div className="space-y-1">
             <Label htmlFor="credential-notes">Notas</Label>
-            <Textarea id="credential-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} maxLength={5000} />
-            <p className="text-[11px] text-muted-foreground">Las notas no se cifran: no pongas aquí contraseñas ni códigos.</p>
+            {notesLoaded ? (
+              <Textarea id="credential-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} maxLength={5000} />
+            ) : (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Tiene notas guardadas.</span>
+                <Button type="button" size="sm" variant="outline" disabled={loadingNotes} onClick={() => void loadNotes()}>
+                  Ver y editar
+                </Button>
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">Se guardan cifradas, como la contraseña. Abrirlas queda en el registro.</p>
           </div>
         </DialogContent>
         <DialogFooter>
@@ -322,6 +349,7 @@ const ACTION_LABELS: Record<CredentialLogAction, string> = {
   share: "Cambió con quién se comparte",
   delete: "Lo borró",
   totp: "Pidió el código 2FA",
+  notes: "Abrió las notas",
 }
 
 function formatInstant(value: string) {

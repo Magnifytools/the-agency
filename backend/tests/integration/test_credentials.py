@@ -293,3 +293,81 @@ async def test_import_is_all_or_nothing_and_names_the_bad_row(admin_client, db_s
 async def test_import_needs_write_access(reader):
     r = await reader.post("/api/credentials/import", json={"source": "csv", "items": [{"name": "x", "secret": "pw"}]})
     assert r.status_code == 403
+
+
+# ── Notas cifradas ───────────────────────────────────────────────────
+
+NOTES = "Códigos de recuperación: 1111-2222 3333-4444"
+
+
+async def test_notes_are_encrypted_and_only_come_out_logged(admin_client, reader, db_session):
+    created = await _create(admin_client, notes=NOTES)
+    assert created["has_notes"] is True and "notes" not in created
+    raw = await db_session.scalar(text("SELECT notes FROM credentials"))
+    assert raw.startswith("v1:") and "1111" not in raw
+    listed = (await admin_client.get("/api/credentials")).json()
+    assert NOTES not in str(listed)
+
+    assert (await reader.post(f"/api/credentials/{created['id']}/notes")).status_code == 404
+    await admin_client.put(f"/api/credentials/{created['id']}/shares", json={"user_ids": [reader.test_user.id]})
+    r = await reader.post(f"/api/credentials/{created['id']}/notes")
+    assert r.status_code == 200 and r.json() == {"notes": NOTES}
+    assert r.headers["cache-control"] == "no-store"
+    actions = list(await db_session.scalars(select(CredentialAccessLog.action).where(
+        CredentialAccessLog.user_id == reader.test_user.id)))
+    assert actions == ["notes"]
+
+    without = await _create(admin_client, name="Sin notas", notes="   ")
+    assert without["has_notes"] is False
+    assert (await admin_client.post(f"/api/credentials/{without['id']}/notes")).status_code == 404
+
+
+async def test_editing_notes_logs_only_real_changes(admin_client, db_session):
+    created = await _create(admin_client, notes=NOTES)
+    same = await admin_client.patch(f"/api/credentials/{created['id']}", json={"notes": NOTES})
+    assert same.status_code == 200
+    assert await db_session.scalar(select(CredentialAccessLog.id).where(CredentialAccessLog.action == "update")) is None
+    cleared = await admin_client.patch(f"/api/credentials/{created['id']}", json={"notes": ""})
+    assert cleared.json()["has_notes"] is False
+    assert await db_session.scalar(select(CredentialAccessLog.detail).where(
+        CredentialAccessLog.action == "update")) == "Cambió: notas"
+
+
+async def test_plaintext_notes_cannot_be_written_to_the_column(db_session):
+    with pytest.raises(Exception, match="ck_credentials_notes_encrypted"):
+        await db_session.execute(text(
+            "INSERT INTO credentials (name, secret_encrypted, notes) VALUES ('x', 'v1:x', 'PIN 1234')"))
+
+
+# ── Salida de alguien ────────────────────────────────────────────────
+
+
+async def test_exposure_lists_what_someone_saw_and_what_to_rotate(admin_client, reader, db_session):
+    seen = await _create(admin_client, name="Visto")
+    rotated = await _create(admin_client, name="Visto y rotado")
+    only_shared = await _create(admin_client, name="Sólo compartido")
+    await _create(admin_client, name="Ajeno")
+    for credential in (seen, rotated, only_shared):
+        await admin_client.put(f"/api/credentials/{credential['id']}/shares", json={"user_ids": [reader.test_user.id]})
+    await reader.post(f"/api/credentials/{seen['id']}/reveal", json={"purpose": "copy"})
+    await reader.post(f"/api/credentials/{rotated['id']}/reveal", json={})
+    time.sleep(0.01)
+    await admin_client.patch(f"/api/credentials/{rotated['id']}", json={"secret": "nueva-clave"})
+
+    assert (await reader.get(f"/api/credentials/exposure/{reader.test_user.id}")).status_code == 403
+    r = await admin_client.get(f"/api/credentials/exposure/{reader.test_user.id}")
+    assert r.status_code == 200, r.text
+    rows = {row["name"]: row for row in r.json()}
+    assert set(rows) == {"Visto", "Visto y rotado", "Sólo compartido"}
+    assert rows["Visto"]["needs_rotation"] is True and rows["Visto"]["times_seen"] == 1
+    assert rows["Visto y rotado"]["needs_rotation"] is False
+    assert rows["Sólo compartido"]["needs_rotation"] is False and rows["Sólo compartido"]["last_seen_at"] is None
+    assert all(row["shared_with_them"] for row in rows.values())
+
+    revoked = await admin_client.post(f"/api/credentials/exposure/{reader.test_user.id}/revoke-shares")
+    assert revoked.json() == {"removed": 3}
+    assert (await reader.get("/api/credentials")).json() == []
+    assert await db_session.scalar(select(CredentialShare.credential_id)) is None
+    details = set(await db_session.scalars(select(CredentialAccessLog.detail).where(
+        CredentialAccessLog.action == "share", CredentialAccessLog.detail.like("Quitado a:%"))))
+    assert details == {f"Quitado a: {reader.test_user.full_name}"}

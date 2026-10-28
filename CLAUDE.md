@@ -1333,9 +1333,20 @@ admin_users, admin_settings
   Ningún listado lo devuelve: sólo `POST /api/credentials/{id}/reveal`
   (`purpose` reveal|copy), 30/min por usuario, `Cache-Control: no-store`, que
   apunta quién y cuándo ANTES de devolverlo. El front no lo guarda en la caché de
-  TanStack y lo oculta a los 30 s. Las notas NO se cifran.
+  TanStack y lo oculta a los 30 s.
+- **Notas cifradas** (migración `credentials_notes_v1`, que cifró las que había en
+  claro): columna `notes` con CHECK `v1:%`, atributo ORM `notes_encrypted`. El
+  listado sólo dice `has_notes`; se leen con `POST /api/credentials/{id}/notes`
+  (mismo límite y `no-store` que ver la contraseña, fila `notes` en el registro).
+  Al editar no se envían salvo que se abran ("Ver y editar"); "" las borra.
+- **Salida de alguien** (sólo admin, botón en `/credentials`):
+  `GET /api/credentials/exposure/{user_id}` da los accesos que vio (reveal, copy,
+  totp o notes) o que todavía tiene compartidos o creó; `needs_rotation` = los vio
+  y `secret_changed_at` (último cambio de contraseña, misma migración) no es
+  posterior. `POST /exposure/{user_id}/revoke-shares` le quita todos los
+  compartidos con una fila `share` en cada uno; los que creó siguen a su nombre.
 - **Registro**: `credential_access_log` (reveal, copy, create, update, share,
-  delete; detalle de qué cambió o con quién). Sobrevive al borrado del acceso
+  delete, totp, notes; detalle de qué cambió o con quién). Sobrevive al borrado del acceso
   (`credential_id` a NULL + `credential_name`). Lo ve sólo un admin.
 - **Fuera del Deshacer** a propósito: no está en `change_journal._SPECS` (el
   snapshot llevaría el secreto a `change_logs` y un undo podría resucitar una

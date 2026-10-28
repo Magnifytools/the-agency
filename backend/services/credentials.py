@@ -16,6 +16,11 @@ Reglas (decididas por David):
 - La clave del autenticador (2FA) sigue las mismas reglas que la contraseña:
   cifrada (``totp_encrypted``) y sólo sale convertida en código por
   ``totp_code``, que también deja su fila en el registro.
+- Las notas también van cifradas (``notes_encrypted``): suelen llevar códigos
+  de recuperación o PIN. Los listados sólo dicen si hay (``has_notes``); se
+  leen con ``reveal_notes``, que deja una fila "notes".
+- ``secret_changed_at`` es el último cambio de contraseña. ``exposure`` lo
+  compara con lo que una persona vio para decir qué hay que rotar cuando se va.
 """
 from __future__ import annotations
 
@@ -69,6 +74,13 @@ def encrypt_secret(raw: str) -> str:
         raise HTTPException(status_code=422, detail="La contraseña no puede estar vacía")
     if len(raw) > MAX_SECRET_LENGTH:
         raise HTTPException(status_code=422, detail=f"La contraseña no puede pasar de {MAX_SECRET_LENGTH} caracteres")
+    return encrypt_vault_secret(raw)
+
+
+def encrypt_notes(raw: Optional[str]) -> Optional[str]:
+    """Las notas cifradas. Vacías → None (no se guarda un cifrado de nada)."""
+    if raw is None or not raw.strip():
+        return None
     return encrypt_vault_secret(raw)
 
 
@@ -167,13 +179,23 @@ def log(db: AsyncSession, credential: Credential, user: User, action: str, detai
 
 async def reveal_secret(db: AsyncSession, user: User, credential: Credential, purpose: str) -> str:
     """Descifra, apunta quién y cuándo, confirma, y sólo entonces devuelve."""
-    secret = _decrypt(credential, credential.secret_encrypted)
+    secret = decrypt(credential, credential.secret_encrypted)
     log(db, credential, user, purpose)
     await db.commit()
     return secret
 
 
-def _decrypt(credential: Credential, value: str) -> str:
+async def reveal_notes(db: AsyncSession, user: User, credential: Credential) -> str:
+    """Las notas en claro, con su fila "notes" en el registro antes de devolverlas."""
+    if not credential.notes_encrypted:
+        raise HTTPException(status_code=404, detail="Este acceso no tiene notas")
+    notes = decrypt(credential, credential.notes_encrypted)
+    log(db, credential, user, "notes")
+    await db.commit()
+    return notes
+
+
+def decrypt(credential: Credential, value: str) -> str:
     try:
         return decrypt_vault_secret(value)
     except ValueError:
@@ -187,7 +209,7 @@ async def totp_code(db: AsyncSession, user: User, credential: Credential) -> dic
     if not credential.totp_encrypted:
         raise HTTPException(status_code=404, detail="Este acceso no tiene código 2FA")
     try:
-        config = totp.parse(_decrypt(credential, credential.totp_encrypted))
+        config = totp.parse(decrypt(credential, credential.totp_encrypted))
     except totp.TotpError:
         raise HTTPException(status_code=500, detail="La clave 2FA guardada no es válida. Vuelve a ponerla.") from None
     log(db, credential, user, "totp")
@@ -218,7 +240,7 @@ async def serialize(db: AsyncSession, user: User, credentials: list[Credential])
         "name": c.name,
         "url": c.url,
         "username": c.username,
-        "notes": c.notes,
+        "has_notes": bool(c.notes_encrypted),
         "client_id": c.client_id,
         "client_name": clients.get(c.client_id),
         "created_by": c.created_by,
@@ -228,3 +250,68 @@ async def serialize(db: AsyncSession, user: User, credentials: list[Credential])
         "has_totp": bool(c.totp_encrypted),
         "shared_with": shares.get(c.id, []),
     } for c in credentials]
+
+
+# Lo que cuenta como "lo vio": ver o copiar la contraseña, pedir el código 2FA
+# o abrir las notas. Crear o editar no cuenta (quien lo hace ya la conoce y lo
+# dice el propio registro).
+SEEN_ACTIONS = ("reveal", "copy", "totp", "notes")
+
+
+async def exposure(db: AsyncSession, person_id: int) -> list[dict]:
+    """Accesos que existen hoy y que esa persona vio o todavía puede ver.
+
+    ``needs_rotation``: los vio y la contraseña no ha cambiado desde la última
+    vez. Quien sólo los tiene compartidos sin haberlos abierto no obliga a
+    rotar: basta con quitarle el acceso.
+    """
+    from sqlalchemy import func
+
+    seen = (
+        select(
+            CredentialAccessLog.credential_id.label("credential_id"),
+            func.max(CredentialAccessLog.at).label("last_seen_at"),
+            func.count().label("times"),
+        )
+        .where(CredentialAccessLog.user_id == person_id, CredentialAccessLog.action.in_(SEEN_ACTIONS),
+               CredentialAccessLog.credential_id.is_not(None))
+        .group_by(CredentialAccessLog.credential_id)
+        .subquery()
+    )
+    shared = exists().where(CredentialShare.credential_id == Credential.id, CredentialShare.user_id == person_id)
+    rows = (await db.execute(
+        select(Credential, Client.name, seen.c.last_seen_at, seen.c.times, shared.label("shared"))
+        .outerjoin(seen, seen.c.credential_id == Credential.id)
+        .outerjoin(Client, Client.id == Credential.client_id)
+        .where(or_(seen.c.credential_id.is_not(None), shared, Credential.created_by == person_id))
+        .order_by(seen.c.last_seen_at.desc().nulls_last(), Credential.name)
+    )).all()
+    return [{
+        "id": credential.id,
+        "name": credential.name,
+        "url": credential.url,
+        "client_name": client_name,
+        "last_seen_at": last_seen_at,
+        "times_seen": times or 0,
+        "shared_with_them": bool(is_shared),
+        "created_by_them": credential.created_by == person_id,
+        "secret_changed_at": credential.secret_changed_at,
+        "needs_rotation": last_seen_at is not None and credential.secret_changed_at <= last_seen_at,
+    } for credential, client_name, last_seen_at, times, is_shared in rows]
+
+
+async def revoke_shares(db: AsyncSession, admin: User, person: User) -> int:
+    """Quita a esa persona de todos los accesos compartidos, con su fila "share"
+    en el registro de cada uno. Los que creó siguen siendo suyos: un admin los
+    reasigna o los borra."""
+    credentials = list(await db.scalars(
+        select(Credential).join(CredentialShare, CredentialShare.credential_id == Credential.id)
+        .where(CredentialShare.user_id == person.id).order_by(Credential.id).with_for_update(of=Credential)
+    ))
+    if not credentials:
+        return 0
+    await db.execute(delete(CredentialShare).where(CredentialShare.user_id == person.id))
+    for credential in credentials:
+        log(db, credential, admin, "share", share_detail([], [person.full_name]))
+    await db.commit()
+    return len(credentials)
