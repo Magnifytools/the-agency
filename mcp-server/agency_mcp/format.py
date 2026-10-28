@@ -337,3 +337,61 @@ def web_status_line(s: dict[str, Any]) -> str | None:
     if changes:
         parts.append(f"cambios sin revisar: {severity_counts(changes)}")
     return "Web: " + " · ".join(parts) if parts else None
+
+
+GSC_METRICS = ("clicks", "impressions", "ctr", "position")
+
+
+def _cell(value: Any) -> str:
+    """Valor tal cual (sin redondear ni formato local); sin tabuladores ni saltos."""
+    if value is None:
+        return ""
+    return str(value).replace("\t", " ").replace("\n", " ")
+
+
+def gsc_query(r: dict[str, Any]) -> str:
+    """Respuesta de /gsc/query -> cabecera, totales y filas en tabla separada por tabuladores."""
+    totals = r.get("totals") or {}
+    out = [
+        f"property: {r['property']}",
+        f"start_date: {r['start_date']} · end_date: {r['end_date']} (inclusivos)",
+        f"search_type: {r.get('search_type')} · data_state: {r['data_state']}"
+        f" · data_available_until: {r.get('data_available_until') or 'sin datos en los últimos días'}",
+        "totals (Google, sin dimensiones; incluye lo anonimizado): "
+        + " · ".join(f"{m} {_cell(totals.get(m)) or '-'}" for m in GSC_METRICS),
+        f"row_count: {r['row_count']} · has_more: {str(r['has_more']).lower()}"
+        f" · next_start_row: {r['next_start_row'] if r.get('next_start_row') is not None else '-'}",
+        "",
+    ]
+    dims = r.get("dimensions") or []
+    if not r.get("rows"):
+        out.append("(ninguna fila para ese periodo y filtros)")
+        return "\n".join(out)
+    out.append("\t".join([*dims, *GSC_METRICS]))
+    for row in r["rows"]:
+        keys = row.get("keys") or {}
+        out.append("\t".join([*(_cell(keys.get(d)) for d in dims), *(_cell(row.get(m)) for m in GSC_METRICS)]))
+    return "\n".join(out)
+
+
+GSC_PROPERTY_ERROR = {
+    "no_access": "ninguna cuenta conectada la ve",
+    "reconnect_required": "la cuenta que la ve necesita reconectarse",
+    "rate_limited": "Google limita las consultas ahora mismo",
+    "google_error": "Google no respondió bien",
+}
+
+
+def gsc_properties(r: dict[str, Any]) -> str:
+    out = [f"Propiedades de Search Console del cliente #{r['client_id']} {r.get('client_name')}:"]
+    for p in r.get("properties") or []:
+        line = (f"- {p['property']} · type: {p['type']} · is_default: {str(p['is_default']).lower()}"
+                f" · permission_level: {p.get('permission_level') or '-'}"
+                f" · data_available_until: {p.get('data_available_until') or '-'}")
+        if p.get("error"):
+            line += f" ({GSC_PROPERTY_ERROR.get(p['error'], p['error'])})"
+        out.append(line)
+    if r.get("reconnect_required"):
+        out.append("Cuentas de Google que necesitan reconectarse (Ajustes → Search Console): "
+                   + ", ".join(r["reconnect_required"]))
+    return "\n".join(out)

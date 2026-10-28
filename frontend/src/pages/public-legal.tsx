@@ -8,7 +8,8 @@ import { Link } from "react-router-dom"
  * No se indexan (meta aquí + X-Robots-Tag en backend/main.py).
  *
  * Lo que cuentan debe coincidir con el código: gsc_service, gsc_detail_service,
- * ga4_service, google_calendar_service, calendar_blocks_sync y sus rutas. Si cambia qué se guarda, se cambia aquí.
+ * ga4_service, google_calendar_service, calendar_blocks_sync, gsc_live (consultas en vivo desde
+ * el MCP) y sus rutas. Si cambia qué se guarda o adónde va, se cambia aquí.
  */
 
 const CONTACT = "david@magnify.ing"
@@ -60,6 +61,7 @@ export function AboutPage() {
           <strong>Search Console</strong> (sólo lectura): importa cada día los clics, impresiones y posición
           media de las webs de nuestros clientes, y el detalle por búsqueda y página de los últimos 120 días
           (más un total mensual por búsqueda de hasta 16 meses), para seguir su tráfico y añadir un bloque de cifras al resumen mensual que reciben.
+          Además, el equipo puede consultar Search Console en el momento desde su asistente Claude, sin que se guarde nada.
         </li>
         <li>
           <strong>Google Analytics</strong> (sólo lectura): importa cada día las visitas, las conversiones
@@ -93,7 +95,8 @@ export function AboutPage() {
           (including per-query and per-page detail for the last 120 days and monthly per-query totals for
           up to 16 months) and Google Analytics data (including daily lead events per landing page and
           channel) (read-only) for our clients' websites to track their traffic and to add
-          a block of figures to the monthly report each client receives. Each user may optionally connect
+          a block of figures to the monthly report each client receives. Our team can also query Search
+          Console on demand from their Claude assistant; those answers are not stored. Each user may optionally connect
           their own Google Calendar (read-only) to see their next meeting and their meetings next to their work blocks,
           and may choose to publish their work blocks to a separate "The Agency" calendar that the app creates in
           their account. That calendar is the only thing the app ever writes to in Google; it never changes or
@@ -134,6 +137,13 @@ export function PrivacyPage() {
         Google ya muestra agregadas y anonimizadas en Search Console: no identifican a ninguna persona. No
         guardamos países ni dispositivos.
       </p>
+      <p>
+        Además, una persona del equipo con permiso de lectura sobre clientes puede hacer preguntas sobre la
+        web de un cliente desde su asistente Claude (de Anthropic), conectado a The Agency con su propio
+        usuario. Para contestarlas, The Agency consulta Search Console en ese momento (clics, impresiones,
+        CTR y posición por fecha, búsqueda, página, país, dispositivo o tipo de resultado, de los últimos 16
+        meses) y pasa la respuesta de Google a Claude. Esas consultas no se guardan en The Agency.
+      </p>
       <h3>Google Analytics (permiso analytics.readonly)</h3>
       <p>
         Con las mismas cuentas, guardamos por propiedad y día: visitas (sesiones), conversiones (eventos
@@ -170,13 +180,18 @@ export function PrivacyPage() {
         <li>Ver en la ficha qué búsquedas, páginas y secciones ganan o pierden tráfico y cuánto viene de la marca.</li>
         <li>Ver cómo ha evolucionado la posición de cada búsqueda en los últimos meses.</li>
         <li>Ver qué páginas de entrada y qué canales traen leads a cada cliente.</li>
+        <li>Contestar las preguntas que el equipo hace desde su asistente Claude sobre el tráfico de Google de un cliente, consultando Search Console en ese momento.</li>
         <li>Añadir un bloque de cifras al resumen mensual que enviamos a cada cliente y a la página de sólo lectura que el cliente puede abrir con su enlace privado: los totales del mes y, en los mensuales, las búsquedas y páginas que más visitas trajeron, las que están cerca de la primera página y la parte que llega con la marca.</li>
         <li>Enseñar a cada persona su próxima reunión y sus reuniones de la semana junto a sus bloques de trabajo, avisarla antes y, si su equipo lo tiene activado, incluir el título y la hora en su plan de la mañana, que puede publicarse en el canal interno del equipo.</li>
         <li>Que quien lo active vea y mueva sus bloques de trabajo desde su propio Google Calendar.</li>
       </ul>
       <p>
         No usamos estos datos para publicidad, no los vendemos y no los usamos para entrenar modelos de
-        inteligencia artificial. Las cifras de Google se pintan con código: no se envían a ningún servicio de IA.
+        inteligencia artificial. Las cifras de Google que guardamos se pintan con código en la app, los
+        resúmenes y el enlace del cliente. Sólo llegan a un servicio de IA cuando una persona del equipo
+        pregunta desde su asistente Claude: el resumen de tráfico que ya enseña la ficha del cliente y las
+        consultas a Search Console descritas arriba. Ni Analytics ni el detalle guardado por búsqueda y
+        página se envían a ningún servicio de IA.
       </p>
       <p>
         El uso y la transferencia a cualquier otra aplicación de la información recibida de las APIs de Google
@@ -191,7 +206,8 @@ export function PrivacyPage() {
         lectura sobre clientes o resúmenes, y el cliente al que pertenecen. Los eventos de calendario sólo los
         ve su dueño. El calendario «The Agency» está en la cuenta de Google de esa persona: lo ve ella y
         quien ella decida en Google. No compartimos los datos con terceros salvo con los proveedores que alojan la app
-        (Railway, servidor y base de datos PostgreSQL).
+        (Railway, servidor y base de datos PostgreSQL) y con Anthropic, proveedor de Claude, en las preguntas
+        que el equipo hace desde su asistente.
       </p>
 
       <h2>Cómo los protegemos</h2>
@@ -256,7 +272,12 @@ export function PrivacyPage() {
           with the same Search Console data, imported once from our previous tool; they are kept while the
           site is linked to an active client. With each monthly report we also store that month's top
           searches and pages, the searches close to the first page (up to five of each) and how many clicks
-          came with and without the brand, so a delivered report does not change. No countries or devices.
+          came with and without the brand, so a delivered report does not change. No countries or devices are stored. In addition, a team member
+          with read access to clients can ask about a client's website from their Claude assistant (by
+          Anthropic), connected to The Agency with their own user. To answer, The Agency queries Search
+          Console at that moment (clicks, impressions, CTR and position by date, query, page, country, device
+          or search appearance, for the last 16 months) and passes Google's response to Claude. Those queries
+          are not stored in The Agency.
         </p>
         <p>
           <strong>Google Analytics (analytics.readonly)</strong>: per property and day, sessions, key events,
@@ -294,9 +315,13 @@ export function PrivacyPage() {
           added to the monthly report sent to that client (totals and, in monthly reports, that month's top
           searches and pages, near-first-page searches and brand share), and shown on the client's private
           read-only page.
-          We do not use Google data for advertising, do not sell it, and do not use it to train AI models;
-          Google figures are rendered by code and are not sent to any AI service. Data is shared only with our
-          hosting providers (Railway, PostgreSQL database).
+          We do not use Google data for advertising, do not sell it, and do not use it to train AI models.
+          Stored Google figures are rendered by code. They reach an AI service only when a team member asks
+          from their Claude assistant: the traffic summary already shown on the client's page and the live
+          Search Console queries described above. Analytics data and the stored per-query and per-page detail
+          are never sent to any AI service. Data is shared only with our hosting providers (Railway,
+          PostgreSQL database) and with Anthropic, Claude's provider, for the questions our team asks from
+          their assistant.
         </p>
         <p>
           The Agency's use and transfer to any other app of information received from Google APIs will adhere

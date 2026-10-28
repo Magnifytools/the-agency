@@ -775,3 +775,127 @@ async def test_sin_sugerencias_lo_dice(fake, agency):
     fake.route("GET", "/api/suggestions", [])
     _, text = await call(agency, "list_suggestions")
     assert text == "No hay sugerencias pendientes."
+
+
+# ── Search Console en vivo ─────────────────────────────────────────────
+
+GSC_PAGE = "https://cigarraldecaravantes.com/restaurante/"
+GSC_RESULT = {
+    "property": "sc-domain:cigarraldecaravantes.com", "start_date": "2026-09-01", "end_date": "2026-09-30",
+    "search_type": "web", "data_state": "final", "data_available_until": "2026-10-25",
+    "dimensions": ["date"],
+    "rows": [{"keys": {"date": "2026-09-01"}, "clicks": 200, "impressions": 4000, "ctr": 0.05, "position": 3.25},
+             {"keys": {"date": "2026-09-02"}, "clicks": 156, "impressions": 3101, "ctr": 0.05030635278942276,
+              "position": 4.1}],
+    "totals": {"clicks": 356, "impressions": 7101, "ctr": 0.05013378397408816, "position": 3.6},
+    "row_count": 2, "has_more": False, "next_start_row": None,
+}
+
+
+async def test_gsc_query_manda_los_parametros_y_devuelve_tabla(fake, agency):
+    fake.route("POST", "/api/clients/28/gsc/query", GSC_RESULT)
+
+    is_error, text = await call(agency, "gsc_query", {
+        "client_id": 28, "start_date": "2026-09-01", "end_date": "2026-09-30", "dimensions": ["date"],
+        "filters": [{"dimension": "page", "operator": "equals", "expression": GSC_PAGE}],
+    })
+
+    assert not is_error, text
+    sent = json.loads(fake.last("POST", "/api/clients/28/gsc/query").content)
+    assert sent == {
+        "start_date": "2026-09-01", "end_date": "2026-09-30", "dimensions": ["date"], "search_type": "web",
+        "filters": [{"dimension": "page", "operator": "equals", "expression": GSC_PAGE}],
+        "aggregation_type": "auto", "data_state": "final", "row_limit": 1000, "start_row": 0, "property": None,
+    }
+    lines = text.splitlines()
+    header = lines.index("date\tclicks\timpressions\tctr\tposition")
+    # Sin redondear ni formato local; ctr en decimal.
+    assert lines[header + 1] == "2026-09-01\t200\t4000\t0.05\t3.25"
+    assert lines[header + 2] == "2026-09-02\t156\t3101\t0.05030635278942276\t4.1"
+    assert sum(int(line.split("\t")[1]) for line in lines[header + 1:]) == 356
+    assert "clicks 356 · impressions 7101 · ctr 0.05013378397408816 · position 3.6" in text
+    assert "property: sc-domain:cigarraldecaravantes.com" in text
+    assert "data_available_until: 2026-10-25" in text
+    assert "row_count: 2 · has_more: false · next_start_row: -" in text
+
+
+async def test_gsc_query_pagina_y_sin_filas_lo_dice(fake, agency):
+    fake.route("POST", "/api/clients/28/gsc/query", {
+        **GSC_RESULT, "dimensions": ["query", "country"], "rows": [
+            {"keys": {"query": "bodas\ttoledo", "country": "esp"}, "clicks": 3, "impressions": 9,
+             "ctr": 0.3333333333333333, "position": None}],
+        "row_count": 1, "has_more": True, "next_start_row": 11})
+
+    _, text = await call(agency, "gsc_query", {
+        "client_id": 28, "start_date": "2026-09-01", "end_date": "2026-09-30",
+        "dimensions": ["query", "country"], "row_limit": 1, "start_row": 10, "data_state": "all",
+        "search_type": "image", "aggregation_type": "byPage", "property": "https://cigarraldecaravantes.com/"})
+
+    sent = json.loads(fake.last("POST", "/api/clients/28/gsc/query").content)
+    assert (sent["row_limit"], sent["start_row"], sent["data_state"]) == (1, 10, "all")
+    assert (sent["search_type"], sent["aggregation_type"]) == ("image", "byPage")
+    assert sent["property"] == "https://cigarraldecaravantes.com/"
+    assert "query\tcountry\tclicks\timpressions\tctr\tposition\nbodas toledo\tesp\t3\t9\t0.3333333333333333\t" in text
+    assert "has_more: true · next_start_row: 11" in text
+
+    fake.route("POST", "/api/clients/28/gsc/query", {**GSC_RESULT, "rows": [], "row_count": 0})
+    _, text = await call(agency, "gsc_query", {"client_id": 28, "start_date": "2026-09-01", "end_date": "2026-09-30"})
+    assert "(ninguna fila para ese periodo y filtros)" in text
+
+
+@pytest.mark.parametrize("args, message", [
+    ({"dimensions": ["date", "query", "page", "country"]}, "dimensions"),
+    ({"dimensions": ["query", "query"]}, "Cada dimensión sólo puede ir una vez"),
+    ({"dimensions": ["hour"]}, "dimensions"),
+    ({"filters": [{"dimension": "date", "operator": "equals", "expression": "x"}]}, "filters"),
+    ({"row_limit": 25001}, "row_limit"),
+    ({"start_date": "2026-02-30"}, "Fecha no válida"),
+])
+async def test_gsc_query_valida_antes_de_llamar(fake, agency, args, message):
+    is_error, text = await call(agency, "gsc_query", {
+        "client_id": 28, "start_date": "2026-09-01", "end_date": "2026-09-30", **args})
+
+    assert is_error and message in text
+    assert not [r for r in fake.requests if r.url.path.endswith("/gsc/query")]
+
+
+@pytest.mark.parametrize("status, detail", [
+    (409, {"code": "no_property", "message": "El cliente #28 Cigarral no tiene propiedad de Search Console"}),
+    (422, {"code": "out_of_range", "message": "Search Console sólo guarda 16 meses: start_date tiene que ser 2025-06-29 o posterior."}),
+    (403, {"code": "no_access", "message": "La cuenta conectada no tiene permiso sobre sc-domain:x.com."}),
+    (403, "Sin acceso de lectura al módulo: clients. Pide a un administrador que te dé acceso."),
+])
+async def test_gsc_query_errores_claros(fake, agency, status, detail):
+    fake.route("POST", "/api/clients/28/gsc/query", httpx.Response(status, json={"detail": detail}))
+
+    is_error, text = await call(agency, "gsc_query", {"client_id": 28, "start_date": "2025-01-01", "end_date": "2025-01-31"})
+
+    assert is_error
+    assert (detail["message"] if isinstance(detail, dict) else detail) in text
+
+
+async def test_gsc_properties(fake, agency):
+    fake.route("GET", "/api/clients/28/gsc/properties", {
+        "client_id": 28, "client_name": "Cigarral de Caravantes", "reconnect_required": ["seo@bisiesto.es"],
+        "properties": [
+            {"property": "sc-domain:cigarraldecaravantes.com", "type": "domain", "is_default": True,
+             "permission_level": "siteFullUser", "data_available_until": "2026-10-25", "error": None},
+            {"property": "https://blog.cigarraldecaravantes.com/", "type": "url_prefix", "is_default": False,
+             "permission_level": None, "data_available_until": None, "error": "no_access"},
+        ]})
+
+    is_error, text = await call(agency, "gsc_properties", {"client_id": 28})
+
+    assert not is_error, text
+    assert ("- sc-domain:cigarraldecaravantes.com · type: domain · is_default: true"
+            " · permission_level: siteFullUser · data_available_until: 2026-10-25") in text
+    assert "https://blog.cigarraldecaravantes.com/ · type: url_prefix · is_default: false" in text
+    assert "(ninguna cuenta conectada la ve)" in text
+    assert "necesitan reconectarse (Ajustes → Search Console): seo@bisiesto.es" in text
+
+
+async def test_gsc_son_de_lectura(agency):
+    async with Client(build_server(agency)) as client:
+        tools = {t.name: t for t in (await client.list_tools()).tools}
+    for name in ("gsc_query", "gsc_properties"):
+        assert tools[name].annotations.read_only_hint is True

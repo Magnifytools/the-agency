@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from agency_mcp import format as fmt
 from agency_mcp.client import AgencyClient, AgencyError
@@ -26,6 +26,9 @@ from agency_mcp.client import AgencyClient, AgencyError
 DEFAULT_URL = "https://agency.magnifytools.com"
 KEYCHAIN_SERVICE = "the-agency-mcp"
 
+GscDimension = Literal["date", "query", "page", "country", "device", "searchAppearance"]
+GscFilterDimension = Literal["query", "page", "country", "device", "searchAppearance"]
+GscOperator = Literal["equals", "notEquals", "contains", "notContains", "includingRegex", "excludingRegex"]
 TaskStatus = Literal["backlog", "pending", "in_progress", "waiting", "in_review", "advanced", "completed"]
 Priority = Literal["urgent", "high", "medium", "low"]
 ClearableField = Literal[
@@ -42,6 +45,8 @@ PUBLISH = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentH
 DAILY_AI_TIMEOUT = 90.0
 # El borrador de una tarea genera más texto: el backend corta a 100 s.
 DRAFT_AI_TIMEOUT = 120.0
+# Search Console en vivo: tres llamadas a Google, con reintentos ante 429/5xx.
+GSC_TIMEOUT = 90.0
 
 INSTRUCTIONS = """\
 The Agency es la herramienta interna de gestión de la agencia (Magnify): clientes,
@@ -52,6 +57,13 @@ Todo cambio se puede deshacer desde la web (⌘Z); no hay herramientas de borrad
 """
 
 DateStr = Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$", description="Fecha AAAA-MM-DD")]
+
+
+class GscFilter(BaseModel):
+    dimension: GscFilterDimension
+    operator: GscOperator
+    expression: Annotated[str, Field(min_length=1, max_length=4096,
+                                     description="Valor a comparar (URL completa para page, código ISO de 3 letras para country)")]
 
 
 def _opt_date(value: str | None) -> str | None:
@@ -432,6 +444,52 @@ def build_server(client: AgencyClient, *, timezone: str = "Europe/Madrid") -> MC
             out.append(f"(Hay más de {len(critical.get('changes') or [])} cambios críticos; la lista está recortada.)")
         out.append(f"Sin revisar en total: {fmt.severity_counts(critical.get('counts_pending') or {})}")
         return "\n".join(out)
+
+    @mcp.tool(annotations=READ)
+    async def gsc_properties(client_id: int) -> str:
+        """Propiedades de Search Console de un cliente: la principal (is_default) y
+        las de su mismo dominio que vea alguna cuenta de Google conectada, con su tipo
+        (domain o url_prefix), el permiso de la cuenta y el último día con datos finales.
+        Úsala antes de gsc_query si quieres consultar una propiedad que no es la principal."""
+        return fmt.gsc_properties(await call(
+            client.request("GET", f"/api/clients/{client_id}/gsc/properties", timeout=GSC_TIMEOUT)))
+
+    @mcp.tool(annotations=READ)
+    async def gsc_query(
+        client_id: int,
+        start_date: Annotated[str, Field(description="Primer día AAAA-MM-DD, incluido. Como mucho 16 meses atrás.")],
+        end_date: Annotated[str, Field(description="Último día AAAA-MM-DD, incluido.")],
+        dimensions: Annotated[list[GscDimension] | None,
+                              Field(max_length=3, description="Hasta 3. Sin dimensiones, sólo totales.")] = None,
+        search_type: Literal["web", "image", "video", "news", "discover", "googleNews"] = "web",
+        filters: Annotated[list[GscFilter] | None, Field(max_length=20,
+                           description="Se combinan con AND. No se filtra por date: el periodo ya la acota.")] = None,
+        aggregation_type: Literal["auto", "byPage", "byProperty"] = "auto",
+        data_state: Annotated[Literal["final", "all"],
+                              Field(description="final: datos consolidados; all: incluye los últimos días aún provisionales")] = "final",
+        row_limit: Annotated[int, Field(ge=1, le=25000)] = 1000,
+        start_row: Annotated[int, Field(ge=0, description="Para paginar: el next_start_row de la respuesta anterior")] = 0,
+        property: Annotated[str | None, Field(description="Sólo si el cliente tiene varias (ver gsc_properties). Por defecto, la principal.")] = None,
+    ) -> str:
+        """Search Console de un cliente en vivo (searchanalytics.query de Google) para
+        cualquier periodo de los 16 meses: clics, impresiones, CTR y posición por fecha,
+        consulta, página, país, dispositivo o aparición en búsqueda, con filtros.
+        Devuelve las filas como tabla separada por tabuladores y los totales del mismo
+        filtro y periodo pedidos a Google sin dimensiones (no la suma de filas: Google
+        omite las consultas anonimizadas, así que totals.clicks es la cifra de la
+        interfaz de Search Console). Números sin redondear; ctr en decimal (0.047).
+        Si has_more es true, repite con start_row = next_start_row."""
+        start, end = _opt_date(start_date), _opt_date(end_date)
+        dims = list(dimensions or [])
+        if len(set(dims)) != len(dims):
+            raise ToolError("Cada dimensión sólo puede ir una vez.")
+        body = {
+            "start_date": start, "end_date": end, "dimensions": dims, "search_type": search_type,
+            "filters": [f.model_dump() for f in filters or []], "aggregation_type": aggregation_type,
+            "data_state": data_state, "row_limit": row_limit, "start_row": start_row, "property": property,
+        }
+        result = await call(client.post(f"/api/clients/{client_id}/gsc/query", body, timeout=GSC_TIMEOUT))
+        return fmt.gsc_query(result)
 
     # ── Escritura ────────────────────────────────────────────────────────
 

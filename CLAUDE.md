@@ -551,7 +551,11 @@ admin_users, admin_settings
   inbox, search, projects, users, auth/me, dailys + reparse + send-discord,
   clients/{id}/status (incluidos sus bloques `uptime` y `web_changes`),
   digests + external-delivery-events, web/uptime, clients/{id}/web/uptime-targets,
-  web/changes, suggestions), revisa `mcp-server/agency_mcp/server.py` y `format.py`.
+  web/changes, suggestions, clients/{id}/gsc/properties + gsc/query), revisa
+  `mcp-server/agency_mcp/server.py` y `format.py`.
+- **Search Console en vivo** (`gsc_query`, `gsc_properties`, sólo lectura): ver
+  "Search Console en vivo (MCP)". Es lo único de Search Console que el MCP saca
+  aparte del tráfico de `client_overview`.
 - **Sugerencias**: `list_suggestions` (sólo lectura) lee las del botón "Sugerencias o
   fallos" para revisarlas desde Claude; cerrarlas sigue siendo cosa de la web.
 - **Webs**: `web_status` (sólo lectura) junta disponibilidad y cambios sin
@@ -644,14 +648,44 @@ admin_users, admin_settings
   clasificar" = total − suma de consultas. (2) Las impresiones por página NO
   suman el total de la propiedad (una búsqueda que enseña dos páginas cuenta en
   las dos): el total sale siempre de `gsc_daily`.
-- **El detalle no va a la IA**: ni al generador de resúmenes, ni a borradores,
-  ni al asesor, ni al MCP. Sí sale, pintado con código, en el resumen mensual y
-  en el enlace del cliente (ver "Informe mensual: foto del mes"). Lo vigila
-  `test_el_detalle_de_search_console_no_llega_a_la_ia` (`tests/test_gsc_detail.py`).
-  Si lo cambias, cambia antes la política.
+- **El detalle GUARDADO no va a la IA**: ni al generador de resúmenes, ni a
+  borradores, ni al asesor, ni al MCP (el MCP pregunta a Google en vivo: ver
+  "Search Console en vivo (MCP)"). Sí sale, pintado con código, en el resumen
+  mensual y en el enlace del cliente (ver "Informe mensual: foto del mes"). Lo
+  vigila `test_el_detalle_de_search_console_no_llega_a_la_ia`
+  (`tests/test_gsc_detail.py`). Si lo cambias, cambia antes la política.
 - El PDF ya no es el de The Engine (congelado; el enlace se quitó el 21 oct
   2026): ver "PDF del resumen". Su `report-data` tampoco se usa: traga errores
   como ceros y no pondera la posición.
+
+## Search Console en vivo (MCP)
+- **Qué es**: `searchanalytics.query` de Google a demanda para cualquier periodo
+  de los 16 meses y cualquier combinación de dimensiones (date, query, page,
+  country, device, searchAppearance), con filtros AND. Lo guardado no sirve (120
+  días, sin país ni dispositivo), así que NO lee `gsc_*_daily` ni
+  `gsc_query_monthly` y NO guarda nada. `services/gsc_live.py` →
+  `api/routes/client_gsc.py`: `GET /api/clients/{id}/gsc/properties` y
+  `POST /api/clients/{id}/gsc/query` (POST por la lista de filtros; no cambia
+  nada). Lectura de `clients`, mismo 404 que `/{id}/status`, 60/min por persona
+  (`gsc_live_limiter`). MCP: `gsc_query` y `gsc_properties` (annotations READ).
+- **Propiedades del cliente**: la de `Client.gsc_url` (principal, siempre primera)
+  y las que vea alguna cuenta conectada en su mismo dominio o un subdominio
+  (`_belongs`). Por propiedad, la cuenta con más permiso (`_PERMISSION_RANK`);
+  `sites.list` se reutiliza 5 min. `property` sólo admite una de esas.
+- **Totales**: segunda llamada SIN dimensiones con los mismos filtros, tipo y
+  agregación (nunca sumar filas: Google omite lo anonimizado). Tercera llamada:
+  último día con datos del `data_state` pedido (`data_available_until`). Las tres
+  en paralelo, en hilos, sin transacción abierta.
+- **Errores**: `{"code", "message"}` en `detail`. 409 `no_property` /
+  `not_connected` / `reconnect_required`; 403 `no_access`; 422 `invalid_dates` /
+  `out_of_range` (16 meses = `BACKFILL_DAYS`) / `unknown_property` /
+  `invalid_query` (el 400 de Google con su mensaje); 429 `rate_limited`; 502
+  `google_error`. Reintentos ante 429/5xx: `execute(num_retries=4)` (espera
+  exponencial de googleapiclient).
+- **Privacidad**: es lo único de Search Console que llega a la IA, y lo dice
+  `/privacidad` (28 oct 2026). La guardia `test_el_detalle_de_search_console_no_llega_a_la_ia`
+  cubre también `gsc_live.py` y `client_gsc.py`: si un día leen lo guardado, falla.
+  Tests: `tests/test_gsc_live.py` y los `gsc_*` de `mcp-server/tests/test_server.py`.
 
 ## Control SEO por cliente
 
