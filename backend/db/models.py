@@ -2179,6 +2179,7 @@ class Credential(Base):
     __table_args__ = (
         CheckConstraint("secret_encrypted LIKE 'v1:%'", name="ck_credentials_secret_encrypted"),
         CheckConstraint("totp_encrypted IS NULL OR totp_encrypted LIKE 'v1:%'", name="ck_credentials_totp_encrypted"),
+        CheckConstraint("notes IS NULL OR notes LIKE 'v1:%'", name="ck_credentials_notes_encrypted"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -2189,7 +2190,11 @@ class Credential(Base):
     # Clave del autenticador (2FA) como enlace otpauth:// normalizado, cifrada
     # igual que la contraseña. Sólo sale convertida en código (`/totp`).
     totp_encrypted = Column(Text, nullable=True)
-    notes = Column(Text, nullable=True)
+    # Notas cifradas como la contraseña (columna "notes"; migración
+    # `credentials_notes_v1`). Sólo salen por `/notes`, que deja rastro.
+    notes_encrypted = Column("notes", Text, nullable=True)
+    # Último cambio de contraseña: la salida de alguien lo compara con lo que vio.
+    secret_changed_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     client_id = Column(Integer, ForeignKey("clients.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -2211,7 +2216,7 @@ class CredentialAccessLog(Base):
     __tablename__ = "credential_access_log"
     __table_args__ = (
         CheckConstraint(
-            "action IN ('reveal','copy','create','update','share','delete','totp')",
+            "action IN ('reveal','copy','create','update','share','delete','totp','notes')",
             name="ck_credential_access_log_action",
         ),
     )

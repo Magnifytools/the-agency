@@ -6,7 +6,8 @@ export interface Credential {
   name: string
   url: string | null
   username: string | null
-  notes: string | null
+  /** Tiene notas (cifradas); se leen aparte con `notes`. */
+  has_notes: boolean
   client_id: number | null
   client_name: string | null
   created_by: number | null
@@ -28,7 +29,8 @@ export interface CredentialInput {
   name: string
   url: string | null
   username: string | null
-  notes: string | null
+  /** Al editar, sin enviar no cambian; "" las borra. */
+  notes?: string | null
   client_id: number | null
   /** Al crear es obligatoria; al editar, sólo si se cambia. */
   secret?: string
@@ -59,7 +61,7 @@ export interface CredentialImportItem {
   client_id: number | null
 }
 
-export type CredentialLogAction = "reveal" | "copy" | "create" | "update" | "share" | "delete" | "totp"
+export type CredentialLogAction = "reveal" | "copy" | "create" | "update" | "share" | "delete" | "totp" | "notes"
 
 export interface CredentialLogEntry {
   id: number
@@ -68,6 +70,21 @@ export interface CredentialLogEntry {
   user_name: string | null
   detail: string | null
   at: string
+}
+
+/** Un acceso que una persona vio o todavía puede ver (salida de alguien). */
+export interface CredentialExposure {
+  id: number
+  name: string
+  url: string | null
+  client_name: string | null
+  last_seen_at: string | null
+  times_seen: number
+  shared_with_them: boolean
+  created_by_them: boolean
+  secret_changed_at: string
+  /** La vio y la contraseña no ha cambiado desde entonces. */
+  needs_rotation: boolean
 }
 
 export const credentialsApi = {
@@ -82,6 +99,12 @@ export const credentialsApi = {
   /** Cada llamada queda registrada (quién y cuándo). No se cachea en TanStack a propósito. */
   reveal: (id: number, purpose: "reveal" | "copy") =>
     api.post<{ secret: string }>(`/credentials/${id}/reveal`, { purpose }).then((r) => r.data.secret),
+  /** Las notas en claro. Queda registrado, como ver la contraseña. */
+  notes: (id: number) => api.post<{ notes: string }>(`/credentials/${id}/notes`).then((r) => r.data.notes),
+  /** Sólo admin: qué vio o puede ver alguien que se va, y qué hay que rotar. */
+  exposure: (userId: number) => api.get<CredentialExposure[]>(`/credentials/exposure/${userId}`).then((r) => r.data),
+  revokeShares: (userId: number) =>
+    api.post<{ removed: number }>(`/credentials/exposure/${userId}/revoke-shares`).then((r) => r.data),
   /** Código 2FA de ahora y el siguiente. Queda registrado, como ver la contraseña. */
   totp: (id: number) => api.post<CredentialTotp>(`/credentials/${id}/totp`).then((r) => r.data),
   /** Todo o nada: si una fila está mal no se guarda ninguna (el error dice cuál). */

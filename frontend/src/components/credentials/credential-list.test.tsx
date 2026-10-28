@@ -8,7 +8,7 @@ import type { Credential } from "@/lib/credentials-api"
 
 const api = vi.hoisted(() => ({
   list: vi.fn(), reveal: vi.fn(), log: vi.fn(), remove: vi.fn(), update: vi.fn(), create: vi.fn(),
-  setShares: vi.fn(), shareableUsers: vi.fn(), totp: vi.fn(),
+  setShares: vi.fn(), shareableUsers: vi.fn(), totp: vi.fn(), notes: vi.fn(),
 }))
 const auth = vi.hoisted(() => ({ isAdmin: false, write: false }))
 vi.mock("@/lib/credentials-api", () => ({ credentialsApi: api }))
@@ -22,7 +22,7 @@ vi.mock("@/context/auth-context", () => ({
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const wp: Credential = {
-  id: 7, name: "WordPress Fit", url: "fit.example/wp-admin", username: "magnify", notes: null,
+  id: 7, name: "WordPress Fit", url: "fit.example/wp-admin", username: "magnify", has_notes: false,
   client_id: 3, client_name: "Fit Generation", created_by: 2, created_by_name: "David",
   updated_at: "2026-10-20T08:00:00+00:00", can_manage: false, has_totp: false, shared_with: [],
 }
@@ -130,4 +130,25 @@ it("only entries with a 2FA key offer the code; it counts down, rolls to the nex
   await act(async () => { vi.advanceTimersByTime(30_000) })
   expect(screen.queryByTestId("totp-7")).not.toBeInTheDocument()
   expect(screen.getByRole("button", { name: "Ver código 2FA de WordPress Fit" })).toBeInTheDocument()
+})
+
+
+it("opens the encrypted notes on demand and hides them again", async () => {
+  api.list.mockResolvedValue([{ ...wp, has_notes: true }])
+  api.notes.mockResolvedValue("PIN 1234")
+  setup()
+  await screen.findByText("WordPress Fit")
+  expect(screen.queryByText("PIN 1234")).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "Ver notas de WordPress Fit" }))
+  expect(await screen.findByText("PIN 1234")).toBeInTheDocument()
+  expect(api.notes).toHaveBeenCalledWith(7)
+  fireEvent.click(screen.getByRole("button", { name: "Ocultar notas de WordPress Fit" }))
+  expect(screen.queryByText("PIN 1234")).not.toBeInTheDocument()
+})
+
+it("offers no notes button when there are none", async () => {
+  api.list.mockResolvedValue([wp])
+  setup()
+  await screen.findByText("WordPress Fit")
+  expect(screen.queryByRole("button", { name: /notas/ })).not.toBeInTheDocument()
 })

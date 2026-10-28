@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { CredentialSecret } from "./credential-secret"
 import { CredentialTotp } from "./credential-totp"
+import { CredentialNotes } from "./credential-notes"
 import {
   CREDENTIALS_KEY,
   CredentialFormDialog,
@@ -109,7 +110,7 @@ export function CredentialList({ q, clientId, showClient = true }: {
                     </>
                   )}
                 </p>
-                {c.notes && <p className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-2">{c.notes}</p>}
+                {c.has_notes && <CredentialNotes credentialId={c.id} name={c.name} />}
               </div>
               <div className="min-w-0 text-sm">
                 {c.username ? (
