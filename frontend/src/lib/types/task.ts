@@ -43,6 +43,7 @@ export interface Task {
   is_recurring: boolean
   recurrence_pattern: string | null
   recurrence_day: number | null
+  recurrence_weekdays?: number[] | null
   recurrence_end_date: string | null
   recurrence_anchor_date?: string | null
   recurrence_paused_at?: string | null
@@ -87,6 +88,13 @@ export interface ChecklistItem {
   updated_at: string
 }
 
+/** Subtarea que me toca en una tarea que lleva otra persona (Mi agenda). */
+export interface AgendaSubtask extends ChecklistItem {
+  task_title: string
+  task_assignee_name: string | null
+  client_name: string | null
+}
+
 export interface TaskCreate {
   title: string
   description?: string | null
@@ -109,6 +117,7 @@ export interface TaskCreate {
   is_recurring?: boolean
   recurrence_pattern?: string | null
   recurrence_day?: number | null
+  recurrence_weekdays?: number[] | null
   recurrence_end_date?: string | null
   recurrence_anchor_date?: string | null
   recurrence_paused?: boolean

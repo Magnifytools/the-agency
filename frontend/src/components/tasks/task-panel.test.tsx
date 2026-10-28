@@ -480,6 +480,21 @@ describe("TaskPanel", () => {
     expect(screen.getByLabelText("Día")).toHaveValue(1);
   });
 
+  it("creates a template for several weekdays with only the chosen days", async () => {
+    mocks.create.mockResolvedValue({ ...task, title: "Nueva plantilla" });
+    setup();
+    await userEvent.type(screen.getByLabelText("Título"), "Nueva plantilla");
+    await userEvent.click(screen.getByLabelText("Repetir tarea"));
+    await userEvent.selectOptions(screen.getByLabelText("Patrón"), "weekdays");
+    expect(screen.getByLabelText("Lunes")).toBeChecked();
+    await userEvent.click(screen.getByLabelText("Jueves"));
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+    expect(mocks.create.mock.calls[0][0]).toMatchObject({
+      recurrence_pattern: "weekdays", recurrence_day: null, recurrence_weekdays: [0, 3],
+    });
+  });
+
   it("requires a legacy calendar comparison before saving an explicit biweekly anchor", async () => {
     mocks.recurrencePreview.mockResolvedValue({ state: "active", reason: null, label: "Calendario", next_dates: ["2026-10-07"] });
     setup({ taskId: 9 });

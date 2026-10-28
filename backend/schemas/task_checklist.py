@@ -35,3 +35,10 @@ class ChecklistItemResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AgendaSubtaskResponse(ChecklistItemResponse):
+    """Subtarea que me toca dentro de una tarea que lleva otra persona."""
+    task_title: str
+    task_assignee_name: Optional[str] = None
+    client_name: Optional[str] = None

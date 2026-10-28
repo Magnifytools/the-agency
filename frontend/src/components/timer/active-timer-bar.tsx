@@ -10,7 +10,8 @@ import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import type { Task, Client, TimeEntry } from "@/lib/types"
 import { invalidateTaskChange, invalidateTimeChange, projectKeys, taskKeys } from "@/lib/query-keys"
-import { elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
+import { LONG_TIMER_SECONDS, elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
+import { LongTimerDialog } from "@/components/timer/long-timer-dialog"
 import { useAuth } from "@/context/auth-context"
 import { useBusinessDate } from "@/hooks/use-business-date"
 
@@ -120,6 +121,8 @@ function TimerBar() {
   const [selectedTaskId, setSelectedTaskId] = useState<string>("")
   const [recentlyCreatedTask, setRecentlyCreatedTask] = useState<Task | null>(null)
   const [reminderShown, setReminderShown] = useState(false)
+  // Segundos contados al pulsar Detener, si eran muchos: se pregunta antes.
+  const [longStopSeconds, setLongStopSeconds] = useState<number | null>(null)
   const businessToday = useBusinessDate()
 
   // Post-stop assignment dialog
@@ -242,7 +245,7 @@ function TimerBar() {
         timer.accumulated_seconds || 0,
         timer.is_paused || false,
       )
-      if (secs > 14400 && !reminderShown) {
+      if (secs > LONG_TIMER_SECONDS && !reminderShown) {
         toast.warning("Llevas más de 4 horas con el cronómetro en marcha. ¿Sigue corriendo?")
         setReminderShown(true)
       }
@@ -264,8 +267,9 @@ function TimerBar() {
   })
 
   const stopMutation = useMutation({
-    mutationFn: (timerId: number) => timerApi.stop(timerId),
+    mutationFn: ({ timerId, minutes }: { timerId: number; minutes?: number }) => timerApi.stop(timerId, { minutes }),
     onSuccess: (entry: TimeEntry) => {
+      setLongStopSeconds(null)
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       invalidateTimeChange(queryClient)
       if (!entry.task_id) {
@@ -278,6 +282,7 @@ function TimerBar() {
       }
     },
     onError: (err) => {
+      setLongStopSeconds(null)
       resyncTimer()
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 404) {
@@ -555,7 +560,11 @@ function TimerBar() {
           <Button
             size="sm"
             variant="secondary"
-              onClick={() => stopMutation.mutate(timer.id)}
+            onClick={() => {
+              const seconds = elapsedSeconds(timer.started_at, timer.accumulated_seconds || 0, timer.is_paused || false)
+              if (seconds >= LONG_TIMER_SECONDS) setLongStopSeconds(seconds)
+              else stopMutation.mutate({ timerId: timer.id })
+            }}
             disabled={stopMutation.isPending}
             className="bg-background text-foreground hover:bg-background/90 font-semibold min-h-9"
           >
@@ -563,6 +572,15 @@ function TimerBar() {
           </Button>
         </div>
       </div>
+
+      {longStopSeconds !== null && (
+        <LongTimerDialog
+          seconds={longStopSeconds}
+          pending={stopMutation.isPending}
+          onStop={(minutes) => stopMutation.mutate({ timerId: timer.id, minutes })}
+          onCancel={() => setLongStopSeconds(null)}
+        />
+      )}
 
       {/* Post-stop Assignment Dialog */}
       <Dialog open={showAssignDialog} onOpenChange={(open) => {

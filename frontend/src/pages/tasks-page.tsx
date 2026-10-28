@@ -27,6 +27,7 @@ import { TimeLogDialog } from "@/components/timer/time-log-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { NextMeeting } from "@/components/tasks/next-meeting"
 import { MyDayView } from "@/components/tasks/my-day-view"
+import { AgendaSubtasks } from "@/components/tasks/agenda-subtasks"
 import { AgendaHoursView, type HoursMode } from "@/components/tasks/agenda-hours-view"
 import { CarryoverReviewDialog } from "@/components/tasks/carryover-review-dialog"
 import { IncidentInbox } from "@/components/incidents/incident-inbox"
@@ -880,6 +881,15 @@ export default function TasksPage() {
             <Button variant="outline" className="mt-3" onClick={() => { plannedAgenda.refetch(); carryoverAgenda.refetch(); unplannedAgenda.refetch(); followupsAgenda.refetch(); completedAgenda.refetch() }}>Reintentar</Button>
           </div>
         ) : (
+          <>
+          {agendaScope === "mine" && (
+            <AgendaSubtasks
+              today={businessToday}
+              userId={user?.id}
+              canWrite={canWriteTasks}
+              onOpenTask={(taskId) => setAgendaParams({ task: String(taskId) })}
+            />
+          )}
           <MyDayView
             planned={agendaData(plannedAgenda)}
             carryover={agendaData(carryoverAgenda)}
@@ -903,6 +913,7 @@ export default function TasksPage() {
             onReviewCarryover={setCarryoverTask}
             canWrite={canWriteTasks}
           />
+          </>
         )
       )}
 
@@ -984,11 +995,7 @@ export default function TasksPage() {
                       </div>
                     </TableCell>
                     <TableCell className="min-w-64 text-sm">
-                      {t.recurrence_pattern === "daily" && "Diaria (L-V)"}
-                      {t.recurrence_pattern === "weekly" && `Semanal · ${["Lun", "Mar", "Mié", "Jue", "Vie"][t.recurrence_day ?? 0]}`}
-                      {t.recurrence_pattern === "biweekly" && `Cada dos semanas · ${["Lun", "Mar", "Mié", "Jue", "Vie"][t.recurrence_day ?? 0]}`}
-                      {t.recurrence_pattern === "monthly" && `Mensual · Día ${t.recurrence_day}`}
-                      {t.recurrence_summary && <><p className="mt-1 text-xs text-muted-foreground">{t.recurrence_summary.label}{t.recurrence_summary.reason ? ` · ${t.recurrence_summary.reason}` : ""}</p>{t.recurrence_summary.next_dates.length > 0 && <p className="mt-1 text-xs text-muted-foreground">Próximas: {t.recurrence_summary.next_dates.join(" · ")}</p>}</>}
+                      {t.recurrence_summary && <><p>{t.recurrence_summary.label}</p>{t.recurrence_summary.reason && <p className="mt-1 text-xs text-muted-foreground">{t.recurrence_summary.reason}</p>}{t.recurrence_summary.next_dates.length > 0 && <p className="mt-1 text-xs text-muted-foreground">Próximas: {t.recurrence_summary.next_dates.join(" · ")}</p>}</>}
                     </TableCell>
                     <TableCell>{t.client_name ?? <span className="text-muted-foreground">Sin cliente</span>}</TableCell>
                     <TableCell>{t.assigned_user_name}</TableCell>

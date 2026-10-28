@@ -25,13 +25,19 @@ from backend.services.incident_project_conditions import (
 from backend.services.incident_report_conditions import (
     REPORT_CONDITIONS, collect_report_conditions, report_visibility_clause,
 )
+from backend.services.incident_timer_conditions import (
+    TIMER_CONDITIONS, collect_timer_conditions, timer_visibility_clause,
+)
 from backend.services.incident_web_conditions import (
     WEB_CONDITIONS, collect_web_conditions, web_visibility_clause,
 )
 from backend.services.temporal import as_utc_instant, business_today, utc_now_naive
 
 TASK_CONDITIONS = ("task_overdue", "task_waiting_followup")
-SUPPORTED_CONDITIONS = TASK_CONDITIONS + PROJECT_CONDITIONS + REPORT_CONDITIONS + CLIENT_CONDITIONS + WEB_CONDITIONS
+SUPPORTED_CONDITIONS = (
+    TASK_CONDITIONS + PROJECT_CONDITIONS + REPORT_CONDITIONS + CLIENT_CONDITIONS
+    + WEB_CONDITIONS + TIMER_CONDITIONS
+)
 OPEN_STATES = ("active", "snoozed", "dismissed")
 
 
@@ -92,6 +98,7 @@ def visible_incident_clause(user_id: int, *, current_only: bool = False):
             report_visibility_clause(user_id, current_only=current_only),
             client_visibility_clause(user_id, current_only=current_only),
             web_visibility_clause(user_id, current_only=current_only),
+            timer_visibility_clause(user_id, current_only=current_only),
         ),
     )
 
@@ -150,6 +157,7 @@ async def reconcile_recipient(db, user_id: int, *, now: datetime | None = None):
         candidates.update(await collect_report_conditions(db, user_id, now))
         candidates.update(await collect_client_conditions(db, user_id, now))
         candidates.update(await collect_web_conditions(db, user_id, now))
+        candidates.update(await collect_timer_conditions(db, user_id, now))
     legacy_sources = [and_(
         Notification.type == condition.kind,
         Notification.entity_type == condition.entity_type,

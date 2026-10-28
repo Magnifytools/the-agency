@@ -301,10 +301,11 @@ async def test_reconciliation_reads_stay_bounded_for_many_conditions(db_session,
     finally:
         event.remove(engine.sync_engine, "before_cursor_execute", capture)
     assert result == {"created": 0, "changed": 0}
-    # A fixed budget covers task/project/report/client/web collectors, regardless
-    # of count (13: the web collector reads outages, critical web changes, host
-    # expiry dates and robots/sitemap state).
-    assert len(statements) <= 13
+    # A fixed budget covers task/project/report/client/web/timer collectors,
+    # regardless of count (14: the web collector reads outages, critical web
+    # changes, host expiry dates and robots/sitemap state; the timer one, the
+    # running timers).
+    assert len(statements) <= 14
     assert len(await notifications(db_session, admin_user.id)) == 35
 
 

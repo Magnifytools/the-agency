@@ -10,6 +10,7 @@ lo que es compartido por todo el equipo.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import date
 
 from sqlalchemy import or_, select
@@ -49,6 +50,23 @@ async def holidays_for(db: AsyncSession, user: User | None, start: date, end: da
     for holiday in rows:
         holidays.setdefault(holiday.date, holiday)
     return holidays
+
+
+@dataclass(frozen=True)
+class HolidayCalendar:
+    """Festivos de un tramo cargados de una vez, para repartirlos por persona
+    sin una consulta por tarea (recurrencias en listas y en el generador)."""
+    rows: tuple[CompanyHoliday, ...] = ()
+
+    def for_user(self, user: User | None) -> frozenset[date]:
+        return frozenset(holiday.date for holiday in self.rows if applies_to(holiday, user))
+
+
+async def load_calendar(db: AsyncSession, start: date, end: date) -> HolidayCalendar:
+    rows = (await db.scalars(select(CompanyHoliday).where(
+        CompanyHoliday.date >= start, CompanyHoliday.date <= end,
+    ).order_by(CompanyHoliday.date, CompanyHoliday.id))).all()
+    return HolidayCalendar(tuple(rows))
 
 
 async def is_working_day(db: AsyncSession, day: date, user: User | None) -> bool:

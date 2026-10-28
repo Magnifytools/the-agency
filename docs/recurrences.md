@@ -6,15 +6,38 @@ borrar sin modificar la regla de la plantilla.
 
 ## Calendarios
 
-- Diaria: de lunes a viernes.
+- Diaria: de lunes a viernes. No se crea en los festivos de quien la lleva.
 - Semanal: el día elegido, de lunes a viernes.
+- Varios días a la semana: los días elegidos, de lunes a viernes
+  (`recurrence_weekdays`, sólo con esta regla).
 - Cada dos semanas: el primer día elegido a partir de la fecha indicada, y después cada catorce días.
 - Mensual: el día elegido, entre el 1 y el 28.
+- Trimestral: el día elegido (1-28) cada tres meses, contando desde el mes de
+  la fecha de inicio; sin fecha, enero, abril, julio y octubre.
+- Último día hábil del mes: el último día que no es fin de semana ni festivo.
 
-La fecha de fin es inclusiva. Una pausa conserva el calendario y las tareas ya
-creadas. Al reanudar, la siguiente reconciliación comprueba si corresponde crear
-la tarea de hoy; no recupera fechas pasadas. El proceso corre al arrancar y cada
-cinco minutos, usando la fecha civil de la agencia.
+## Fines de semana y festivos
+
+La fecha de la regla es la fecha *nominal*. Si cae en sábado, domingo o en un
+festivo de quien lleva la plantilla (`holidays.applies_to`: nacionales, de su
+comunidad y de su localidad; sin responsable, sólo los nacionales), la tarea se
+crea el siguiente día hábil (`work_date`). `recurrence_occurrence_date` sigue
+siendo la nominal y el recibo se guarda con ella. Si un festivo empuja una
+fecha sobre la siguiente (lunes festivo con lunes y martes), es UNA tarea con
+dos recibos. Las próximas fechas que enseña la app ya vienen movidas.
+
+## Recuperación
+
+El proceso corre al arrancar y cada cinco minutos, usando la fecha civil de la
+agencia. Si algún día no llegó a correr, la siguiente pasada crea lo que faltó
+de los últimos 7 días (`CATCH_UP_DAYS`), cada tarea con su día (sale como
+pendiente de días anteriores). Nunca recupera fechas anteriores a
+`recurrence_since`, que se pone al crear la regla, al cambiarla y al reanudar:
+así una pausa conserva el calendario y las tareas ya creadas, pero al reanudar
+no rellena las fechas pausadas. Las plantillas anteriores a esta regla tienen
+`recurrence_since` vacío y sólo crean lo de hoy hasta que se editan.
+
+La fecha de fin es inclusiva.
 
 Las plantillas bisemanales antiguas sin fecha de referencia mantienen su regla
 histórica de semanas ISO pares. Cambiar a un calendario con fecha de referencia

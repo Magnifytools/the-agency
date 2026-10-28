@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 
 from datetime import datetime
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, Field, field_serializer
 from backend.services.temporal import utc_isoformat
 
 
@@ -51,6 +51,9 @@ class TimerStopRequest(BaseModel):
     # Older extension versions omit this; current clients must identify the
     # timer they displayed so a stale Stop cannot end a newer timer.
     timer_id: Optional[int] = None
+    # Corrección de quien se dejó el cronómetro encendido: los minutos que
+    # trabajó de verdad, en vez de lo contado (que se recorta a 8 h).
+    minutes: Optional[int] = Field(None, ge=1, le=720)
 
 
 class ActiveTimerResponse(BaseModel):

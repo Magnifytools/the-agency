@@ -49,6 +49,7 @@ from backend.startup.digest_seo_detail_schema import MIGRATION as DIGEST_SEO_DET
 from backend.startup.credentials_totp_schema import MIGRATION as CREDENTIALS_TOTP_MIGRATION
 from backend.startup.task_sort_rank_schema import MIGRATION as TASK_SORT_RANK_MIGRATION
 from backend.startup.task_time_blocks_schema import MIGRATION as TASK_TIME_BLOCKS_MIGRATION
+from backend.startup.task_recurrence_rules_schema import MIGRATION as TASK_RECURRENCE_RULES_MIGRATION
 from backend.startup.alert_settings_notify_retirement_schema import (
     MIGRATION as ALERT_SETTINGS_NOTIFY_RETIREMENT_MIGRATION,
 )
@@ -71,6 +72,7 @@ MIGRATIONS = (
     CREDENTIALS_TOTP_MIGRATION,
     TASK_SORT_RANK_MIGRATION, TASK_TIME_BLOCKS_MIGRATION,
     ALERT_SETTINGS_NOTIFY_RETIREMENT_MIGRATION,
+    TASK_RECURRENCE_RULES_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

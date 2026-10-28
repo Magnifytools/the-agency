@@ -35,7 +35,7 @@ UPDATABLE_TASK_FIELDS = {
     "actual_minutes", "start_date", "due_date", "client_id", "category_id",
     "assigned_to", "project_id", "phase_id", "depends_on", "scheduled_date",
     "waiting_for", "follow_up_date", "is_recurring", "recurrence_pattern",
-    "recurrence_day", "recurrence_end_date",
+    "recurrence_day", "recurrence_end_date", "recurrence_weekdays",
     "link_url", "recurrence_anchor_date", "recurrence_paused",
     "procedure_text", "procedure_url", "sort_rank",
 }
@@ -75,6 +75,12 @@ async def create_contact(db: AsyncSession, client_id: int, data: dict) -> Client
     return contact
 
 
+_RULE_FIELDS = (
+    "is_recurring", "recurrence_pattern", "recurrence_day",
+    "recurrence_weekdays", "recurrence_anchor_date",
+)
+
+
 def _prepare_recurrence(data: dict, *, existing: Task | None = None) -> None:
     preserves_legacy_biweekly = bool(
         existing and existing.is_recurring and existing.recurrence_pattern == "biweekly"
@@ -85,6 +91,14 @@ def _prepare_recurrence(data: dict, *, existing: Task | None = None) -> None:
     day = data.get("recurrence_day", existing.recurrence_day if existing else None)
     anchor = data.get("recurrence_anchor_date", existing.recurrence_anchor_date if existing else None)
     end = data.get("recurrence_end_date", existing.recurrence_end_date if existing else None)
+    weekdays = data.get("recurrence_weekdays", existing.recurrence_weekdays if existing else None)
+    if pattern != "weekdays" and weekdays is not None:
+        # Sólo la regla "varios días" los usa: no se guardan días sueltos.
+        weekdays = None
+        data["recurrence_weekdays"] = None
+    elif weekdays is not None:
+        weekdays = sorted(weekdays) if all(isinstance(value, int) for value in weekdays) else weekdays
+        data["recurrence_weekdays"] = weekdays
     if (
         existing and existing.is_recurring and existing.recurrence_pattern == "biweekly"
         and existing.recurrence_anchor_date is not None
@@ -97,15 +111,24 @@ def _prepare_recurrence(data: dict, *, existing: Task | None = None) -> None:
     try:
         validate_recurrence_rule(
             is_recurring=is_recurring, pattern=pattern, day=day,
-            anchor_date=anchor, end_date=end,
+            anchor_date=anchor, end_date=end, weekdays=weekdays,
         )
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    resumed = False
     if "recurrence_paused" in data:
         paused = data.pop("recurrence_paused")
         if paused is None:
             raise HTTPException(422, "Indica si quieres pausar o reanudar la recurrencia")
         data["recurrence_paused_at"] = utc_now_naive() if paused else None
+        resumed = not paused and existing is not None and existing.recurrence_paused_at is not None
+    # Suelo de la recuperación: lo que se pierda desde hoy se recupera; lo de
+    # antes de una pausa o de la regla anterior, no.
+    rule_changed = existing is None or any(
+        field in data and data[field] != getattr(existing, field) for field in _RULE_FIELDS
+    )
+    if is_recurring and (rule_changed or resumed):
+        data["recurrence_since"] = business_today()
 
 
 def _validate_procedure(data: dict, *, existing: Task | None = None) -> None:

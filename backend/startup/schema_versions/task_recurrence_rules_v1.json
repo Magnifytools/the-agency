@@ -1,0 +1,11 @@
+{
+  "version": "20261028_task_recurrence_rules_v1",
+  "statements": [
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_weekdays JSONB",
+    "ALTER TABLE tasks ADD COLUMN IF NOT EXISTS recurrence_since DATE"
+  ],
+  "columns": {
+    "recurrence_weekdays": "jsonb",
+    "recurrence_since": "date"
+  }
+}

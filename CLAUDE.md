@@ -315,6 +315,13 @@ admin_users, admin_settings
   cuando hay uno en marcha) y el ▶ de cada tarea. Horas y Visión general ya no
   tienen arranque propio; no lo vuelvas a añadir.
 - En la interfaz se dice **cronómetro**, nunca "timer".
+- **Cronómetro olvidado**: al parar, lo contado se recorta a 8 h
+  (`TIMER_CAP_MINUTES`). Pasadas 4 h la campana avisa (incidencia
+  `timer_running_long` en `services/incident_timer_conditions.py`, sólo a quien
+  lo tiene; crítica a las 8 h, el nivel va en la huella) y al pulsar Detener
+  (barra o ▶ de la tarea) sale `LongTimerDialog`: "¿Se quedó encendido?", con
+  las horas reales. `POST /api/timer/stop` acepta `minutes` (1-720); sin él,
+  lo contado. Se resuelve solo al parar.
 
 ## Visión general, Tareas y navegación
 - **Visión general** no repite Mi agenda: quien no es admin ve sus horas de la
@@ -470,6 +477,27 @@ admin_users, admin_settings
 - Copia, no lectura en vivo: editar la plantilla sólo cambia las futuras.
 - Sólo se escribe en la plantilla (`_validate_procedure` en `domain_writes.py`);
   en la repetición se muestra en lectura. Detalle en `docs/recurrences.md`.
+
+## Recurrencia fiable (28 oct 2026)
+- Reglas: diaria, semanal, **varios días** (`recurrence_weekdays`, sólo con esa
+  regla), cada dos semanas, mensual, **trimestral** (desde el mes de la fecha de
+  inicio; sin ella, ene/abr/jul/oct) y **último día hábil del mes**. Migración
+  `task_recurrence_rules_v1`.
+- Fecha que cae en fin de semana o festivo de quien lleva la plantilla → se crea
+  el siguiente día hábil; la diaria se salta el festivo. La identidad sigue
+  siendo la fecha nominal. Las próximas fechas de la API (`_task_responses`,
+  vista previa con `assigned_to`) ya vienen movidas: una lectura de festivos por
+  petición (`holidays.load_calendar`).
+- Si el job no corrió algún día, recupera lo de los últimos 7 días, nunca antes
+  de `recurrence_since` (alta, cambio de regla o reanudar). Detalle en
+  `docs/recurrences.md`.
+
+## Subtareas en Mi agenda
+- `GET /api/tasks/agenda/subtasks?date=`: subtareas asignadas a mí, sin hacer,
+  con fecha hasta hoy o sin fecha, de tareas abiertas que lleva otra persona (o
+  nadie). Sección "Subtareas que te tocan" arriba de Mi agenda
+  (`agenda-subtasks.tsx`): marcarla hecha (escritura en `tasks`) y abrir la tarea.
+  Las de mis propias tareas ya salen con su tarea.
 
 ## Borrador con IA desde el procedimiento (fase 3)
 - En una repetición con procedimiento escrito, "Generar borrador" del panel llama

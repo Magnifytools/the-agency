@@ -42,7 +42,7 @@ async def test_upgrade_twice_preserves_tasks_without_backfill(engine):
     await deployment_schema.check_deployment_ready(engine)
     async with engine.connect() as conn:
         after = await conn.scalar(text(
-            "SELECT to_jsonb(t)-'procedure_text'-'procedure_url'-'sort_rank' FROM tasks t WHERE id=1"
+            "SELECT to_jsonb(t)-'procedure_text'-'procedure_url'-'sort_rank'-'recurrence_weekdays'-'recurrence_since' FROM tasks t WHERE id=1"
         ))
         assert after == before
         row = (await conn.execute(text(

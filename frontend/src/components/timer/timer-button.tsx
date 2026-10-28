@@ -7,7 +7,8 @@ import { Play, Square } from "lucide-react"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { invalidateTimeChange } from "@/lib/query-keys"
-import { elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
+import { LONG_TIMER_SECONDS, elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
+import { LongTimerDialog } from "@/components/timer/long-timer-dialog"
 
 interface TimerButtonProps {
   taskId: number
@@ -24,6 +25,7 @@ export function TimerButton({ taskId, taskTitle }: TimerButtonProps) {
 function PermittedTimerButton({ taskId, taskTitle }: TimerButtonProps) {
   const queryClient = useQueryClient()
   const [elapsed, setElapsed] = useState("")
+  const [longStopSeconds, setLongStopSeconds] = useState<number | null>(null)
 
   const timerQuery = useQuery({
     queryKey: ["active-timer"],
@@ -73,13 +75,15 @@ function PermittedTimerButton({ taskId, taskTitle }: TimerButtonProps) {
   })
 
   const stopMutation = useMutation({
-    mutationFn: (timerId: number) => timerApi.stop(timerId),
+    mutationFn: ({ timerId, minutes }: { timerId: number; minutes?: number }) => timerApi.stop(timerId, { minutes }),
     onSuccess: () => {
+      setLongStopSeconds(null)
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       invalidateTimeChange(queryClient)
       toast.success("Cronómetro parado")
     },
     onError: (err) => {
+      setLongStopSeconds(null)
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       toast.error(getErrorMessage(err, "No se pudo parar el cronómetro"))
     },
@@ -94,13 +98,25 @@ function PermittedTimerButton({ taskId, taskTitle }: TimerButtonProps) {
         <Button
           variant="destructive"
           size="icon"
-          onClick={() => stopMutation.mutate(timer!.id)}
+          onClick={() => {
+            const seconds = elapsedSeconds(timer!.started_at, timer!.accumulated_seconds || 0, timer!.is_paused || false)
+            if (seconds >= LONG_TIMER_SECONDS) setLongStopSeconds(seconds)
+            else stopMutation.mutate({ timerId: timer!.id })
+          }}
           disabled={stopMutation.isPending}
           title="Parar el cronómetro"
           aria-label={taskTitle ? `Parar el cronómetro de ${taskTitle}` : "Parar el cronómetro"}
         >
           <Square className="h-4 w-4" />
         </Button>
+        {longStopSeconds !== null && (
+          <LongTimerDialog
+            seconds={longStopSeconds}
+            pending={stopMutation.isPending}
+            onStop={(minutes) => stopMutation.mutate({ timerId: timer!.id, minutes })}
+            onCancel={() => setLongStopSeconds(null)}
+          />
+        )}
       </div>
     )
   }
