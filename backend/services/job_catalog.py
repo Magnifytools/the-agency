@@ -93,4 +93,11 @@ def job_definitions() -> tuple[JobDefinition, ...]:
         # Lock 20. Diario (00:01 de Madrid y al arrancar); repetirlo no duplica avisos.
         JobDefinition(JobSpec("due_tomorrow", 20, 86400, daily=True), "Avisar de lo que vence mañana",
                       "Avisa en la campana a cada responsable de sus tareas abiertas con fecha límite mañana."),
+        # Lock 22 (el 21 es ``extension_release``). Cada 60 s: bloques de trabajo ↔
+        # el calendario "The Agency" de quien lo activó (services/calendar_blocks_sync.py).
+        JobDefinition(JobSpec("calendar_blocks", 22, 60, timeout_seconds=150, retry_seconds=60),
+                      "Publicar bloques de trabajo en Google Calendar",
+                      "Concilia los bloques de trabajo con el calendario \"The Agency\" de cada persona que lo activó, en los dos sentidos.",
+                      None if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET
+                      else "Google OAuth no está configurado."),
     )

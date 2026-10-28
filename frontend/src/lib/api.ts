@@ -1151,9 +1151,15 @@ export const calendarApi = {
   getAuthUrl: () =>
     api.get<{ url: string }>("/calendar/auth-url").then((r) => r.data),
   getStatus: () =>
-    api.get<{ connected: boolean; connection_status: "connected" | "disconnected" | "reconnect_required"; calendar_id: string | null; last_synced_at: string | null; meeting_alerts: { minutes_before: number; discord_dm: boolean; extension: boolean } | null }>("/calendar/status").then((r) => r.data),
-  disconnect: () =>
-    api.post<{ ok: boolean; google_revoked: boolean; events_deleted: number }>("/calendar/disconnect").then((r) => r.data),
+    api.get<{ connected: boolean; connection_status: "connected" | "disconnected" | "reconnect_required"; calendar_id: string | null; last_synced_at: string | null; meeting_alerts: { minutes_before: number; discord_dm: boolean; extension: boolean } | null; blocks_calendar: boolean }>("/calendar/status").then((r) => r.data),
+  /** Con ``deleteBlocksCalendar`` borra antes el calendario "The Agency" de su Google. */
+  disconnect: (deleteBlocksCalendar = false) =>
+    api.post<{ ok: boolean; google_revoked: boolean; events_deleted: number; blocks_calendar_deleted: boolean }>("/calendar/disconnect", { delete_blocks_calendar: deleteBlocksCalendar }).then((r) => r.data),
+  /** Permiso para publicar los bloques de trabajo en un calendario propio, "The Agency". */
+  getBlocksAuthUrl: () =>
+    api.get<{ url: string }>("/calendar/blocks/auth-url").then((r) => r.data),
+  disableBlocks: (deleteCalendar: boolean) =>
+    api.post<{ ok: boolean; calendar_deleted: boolean }>("/calendar/blocks/disable", { delete_calendar: deleteCalendar }).then((r) => r.data),
   updateAlerts: (data: { minutes_before: number; discord_dm: boolean; extension: boolean }) =>
     api.put("/calendar/alerts", data).then((r) => r.data),
   sync: () =>

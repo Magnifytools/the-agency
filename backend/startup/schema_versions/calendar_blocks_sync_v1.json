@@ -1,0 +1,45 @@
+{
+  "version": "20261028_calendar_blocks_sync_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS user_blocks_calendars (\n user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,\n calendar_id VARCHAR(300) NOT NULL,\n created_at TIMESTAMP NOT NULL DEFAULT now()\n)",
+    "ALTER TABLE task_time_blocks ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(300)",
+    "ALTER TABLE task_time_blocks ADD COLUMN IF NOT EXISTS google_event_updated VARCHAR(40)",
+    "ALTER TABLE task_time_blocks ADD COLUMN IF NOT EXISTS google_synced_at TIMESTAMP"
+  ],
+  "columns": {
+    "user_blocks_calendars": {
+      "user_id": [
+        "int4",
+        false,
+        null
+      ],
+      "calendar_id": [
+        "varchar",
+        false,
+        300
+      ],
+      "created_at": [
+        "timestamp",
+        false,
+        null
+      ]
+    },
+    "task_time_blocks": {
+      "google_event_id": [
+        "varchar",
+        true,
+        300
+      ],
+      "google_event_updated": [
+        "varchar",
+        true,
+        40
+      ],
+      "google_synced_at": [
+        "timestamp",
+        true,
+        null
+      ]
+    }
+  }
+}
