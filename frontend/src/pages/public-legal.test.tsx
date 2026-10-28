@@ -41,7 +41,7 @@ it("la política cuenta lo que hace desconectar y la retención del calendario",
 it("la política cuenta el detalle por consulta y página de Search Console y su retención", () => {
   renderPage(<PrivacyPage />)
   const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
-  expect(text).toContain("Actualizada el 22 de octubre de 2026")
+  expect(text).toContain("Actualizada el 28 de octubre de 2026")
   expect(text).toContain("durante 120 días, guardamos esas mismas cifras por día para cada búsqueda (consulta) y cada página")
   expect(text).toContain("agregadas y anonimizadas en Search Console: no identifican a ninguna persona")
   expect(text).toContain("No guardamos países ni dispositivos")
@@ -61,7 +61,7 @@ it("la política cuenta el detalle por consulta y página de Search Console y su
 it("la política cuenta el total mensual por búsqueda (historial de posiciones) y su retención", () => {
   renderPage(<PrivacyPage />)
   const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
-  expect(text).toContain("Actualizada el 22 de octubre de 2026")
+  expect(text).toContain("Actualizada el 28 de octubre de 2026")
   expect(text).toContain("Pasados esos 120 días, de cada búsqueda sólo conservamos un total por mes (clics, impresiones y posición media), durante un máximo de 16 meses y mientras la web esté asociada a un cliente activo")
   expect(text).toContain("El total mensual por búsqueda se conserva como mucho 16 meses y se borra antes si la web deja de estar asociada a un cliente activo")
   expect(text).toContain("el borrado incluye el detalle por búsqueda y página, el total mensual por búsqueda")
@@ -98,4 +98,23 @@ it("la página de inicio menciona el detalle por búsqueda y página", () => {
   expect(text).toContain("per-query and per-page detail for the last 120 days")
   expect(text).toContain("y los leads por página de entrada y canal")
   expect(text).toContain("including daily lead events per landing page and channel")
+})
+
+it("la política cuenta el calendario «The Agency» de los bloques de trabajo", () => {
+  renderPage(<PrivacyPage />)
+  const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
+  expect(text).toContain("Calendario «The Agency» (permiso calendar.app.created)")
+  expect(text).toContain("sólo puede ver y tocar ese calendario, nunca los demás")
+  expect(text).toContain("el título de la tarea, el nombre del cliente, un enlace a la tarea en la app y la hora de inicio y fin")
+  expect(text).toContain("Borrar un evento en Google borra el bloque, nunca la tarea")
+  expect(text).toContain("puede elegir borrar también el calendario «The Agency» de su Google")
+  expect(text).toContain("can only see and change that calendar, never the others")
+})
+
+it("la página de inicio ya no dice que la app nunca escribe en Google", () => {
+  renderPage(<AboutPage />)
+  const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
+  expect(text).toContain("sólo escribe en Google en ese calendario «The Agency», y sólo si la persona lo activa")
+  expect(text).not.toContain("nunca escribe, modifica ni borra nada en las cuentas de Google")
+  expect(text).not.toContain("The app never writes to")
 })

@@ -250,6 +250,17 @@ async def _publish_checks_once():
         raise JobFailure("partial_failure")
 
 
+async def _calendar_blocks_once():
+    """Bloques de trabajo ↔ Google Calendar (services/calendar_blocks_sync.py)."""
+    from backend.db.database import async_session
+    from backend.services.calendar_blocks_sync import sync_all
+    from backend.services.job_runtime import JobFailure
+
+    result = await sync_all(async_session)
+    if result["failed"]:
+        raise JobFailure("partial_failure")
+
+
 # ── Retention cleanup ───────────────────────────────────────
 
 async def _retention_cleanup_once():
@@ -394,6 +405,7 @@ def start_background_tasks() -> list[asyncio.Task]:
         "web_health": ("web-health", _web_health_once),
         "publish_checks": ("publish-checks", _publish_checks_once),
         "due_tomorrow": ("due-tomorrow", _due_tomorrow_once),
+        "calendar_blocks": ("calendar-blocks", _calendar_blocks_once),
     }
 
     for key, (task_name, operation) in operations.items():

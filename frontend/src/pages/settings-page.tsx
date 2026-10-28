@@ -13,6 +13,7 @@ import { OperationalUsagePanel } from "@/components/admin/operational-usage"
 import { SearchConsoleSection } from "@/components/settings/search-console-section"
 import { Ga4Section } from "@/components/settings/ga4-section"
 import { ExtensionSection } from "@/components/settings/extension-section"
+import { BlocksCalendarCheckbox, CalendarBlocksPanel } from "@/components/settings/calendar-blocks-panel"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Button } from "@/components/ui/button"
 
@@ -717,11 +718,21 @@ export function CalendarSection() {
     } else if (calendarParam === "cancelled") {
       toast.info("Conexión de Google Calendar cancelada")
       window.history.replaceState({}, "", "/settings")
+    } else if (calendarParam === "blocks_on") {
+      toast.success("Bloques publicados en tu calendario «The Agency» de Google. Aparecen en un minuto")
+      window.history.replaceState({}, "", "/settings")
+      void invalidateCalendarViews(queryClient)
+    } else if (calendarParam === "blocks_denied") {
+      toast.info("Google no dio permiso para el calendario «The Agency»: los bloques siguen sin publicar")
+      window.history.replaceState({}, "", "/settings")
+      void invalidateCalendarViews(queryClient)
     } else if (calendarParam === "error") {
-      toast.error("Error al conectar Google Calendar")
+      toast.error(params.get("reason") === "blocks_calendar"
+        ? "Google Calendar conectado, pero no se pudo crear el calendario «The Agency». Vuelve a intentarlo"
+        : "Error al conectar Google Calendar")
       window.history.replaceState({}, "", "/settings")
     }
-  }, [calendarParam, queryClient])
+  }, [calendarParam, params, queryClient])
 
   const connectMut = useMutation({
     mutationFn: async () => {
@@ -731,10 +742,17 @@ export function CalendarSection() {
     onError: () => toast.error("Error al obtener URL de autorización"),
   })
 
+  // Con bloques publicados, desconectar pregunta antes qué hacer con su calendario.
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+  const [deleteBlocksCalendar, setDeleteBlocksCalendar] = useState(true)
+  const disconnect = () => (status?.blocks_calendar ? setConfirmDisconnect(true) : disconnectMut.mutate(false))
+
   const disconnectMut = useMutation({
     mutationFn: calendarApi.disconnect,
-    onSuccess: (result) => {
+    onSuccess: (result, deletedBlocks) => {
+      setConfirmDisconnect(false)
       void invalidateCalendarViews(queryClient)
+      if (deletedBlocks && !result.blocks_calendar_deleted) toast.warning("Google no borró el calendario «The Agency»: bórralo tú desde Google Calendar")
       if (result.google_revoked) toast.success("Google Calendar desconectado: acceso revocado en Google y reuniones importadas borradas")
       else toast.warning("Google Calendar desconectado y reuniones importadas borradas, pero Google no confirmó la revocación: retira el acceso en myaccount.google.com/permissions")
     },
@@ -781,7 +799,7 @@ export function CalendarSection() {
                 {syncMut.isPending ? "Sincronizando…" : "Sincronizar ahora"}
               </button>
               <button
-                onClick={() => disconnectMut.mutate()}
+                onClick={disconnect}
                 disabled={disconnectMut.isPending}
                 className="px-3 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
               >
@@ -792,6 +810,7 @@ export function CalendarSection() {
 
           <p className="text-sm text-muted-foreground">Última sincronización completa: {status?.last_synced_at ? new Date(status.last_synced_at).toLocaleString("es-ES", { timeZone: "Europe/Madrid" }) : "Pendiente"}. Los avisos de Google esperan una sincronización reciente.</p>
           <p className="text-sm"><a href="#notifications" className="underline">Configurar Avisos</a>: conectar el calendario no activa ningún envío.</p>
+          <CalendarBlocksPanel active={Boolean(status.blocks_calendar)} />
         </div>
       ) : status?.connection_status === "reconnect_required" ? (
         <div className="space-y-3">
@@ -807,7 +826,7 @@ export function CalendarSection() {
             {connectMut.isPending ? "Redirigiendo…" : "Reconectar Google Calendar"}
           </button>
           <button
-            onClick={() => disconnectMut.mutate()}
+            onClick={disconnect}
             disabled={disconnectMut.isPending}
             className="ml-3 px-3 py-2 text-sm border border-border rounded-xl hover:bg-muted/50 disabled:opacity-50"
           >
@@ -823,6 +842,16 @@ export function CalendarSection() {
           {connectMut.isPending ? "Redirigiendo…" : "Conectar Google Calendar"}
         </button>
       )}
+      <ConfirmDialog
+        open={confirmDisconnect}
+        onOpenChange={setConfirmDisconnect}
+        title="¿Desconectar Google Calendar?"
+        description="Se borra el permiso y se revoca en Google. Las reuniones importadas se borran y tus bloques dejan de publicarse (se quedan en Mi agenda)."
+        confirmLabel="Desconectar"
+        onConfirm={() => disconnectMut.mutate(deleteBlocksCalendar)}
+      >
+        <BlocksCalendarCheckbox checked={deleteBlocksCalendar} onChange={setDeleteBlocksCalendar} />
+      </ConfirmDialog>
     </div>
   )
 }

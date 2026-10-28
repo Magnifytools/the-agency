@@ -738,6 +738,19 @@ class TaskRecurrenceOccurrence(Base):
     )
 
 
+class UserBlocksCalendar(Base):
+    """Calendario "The Agency" donde una persona publica sus bloques de trabajo.
+
+    Fase 4 (``services/calendar_blocks_sync.py``): una fila por persona que lo
+    activó; sin fila no publica. Tabla aparte y no columna de ``users``.
+    """
+    __tablename__ = "user_blocks_calendars"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    calendar_id = Column(String(300), nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
 class TaskTimeBlock(TimestampMixin, Base):
     """Bloque de trabajo con hora: "trabajo en la tarea X de 10:00 a 11:30".
 
@@ -762,6 +775,11 @@ class TaskTimeBlock(TimestampMixin, Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     starts_at = Column(DateTime, nullable=False)
     ends_at = Column(DateTime, nullable=False)
+    # Publicación en Google Calendar (services/calendar_blocks_sync.py): su evento,
+    # el ``updated`` de Google en la última conciliación y cuándo se concilió.
+    google_event_id = Column(String(300), nullable=True)
+    google_event_updated = Column(String(40), nullable=True)
+    google_synced_at = Column(DateTime, nullable=True)
 
     task = relationship("Task", lazy="noload")
 
