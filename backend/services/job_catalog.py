@@ -90,6 +90,9 @@ def job_definitions() -> tuple[JobDefinition, ...]:
                       "Cuando se completa una tarea con enlace a la web del cliente, comprueba que la página responde, es indexable y tiene canonical, title y description.",
                       None if settings.PUBLISH_CHECK_ENABLED
                       else "La revisión tras publicar está apagada (PUBLISH_CHECK_ENABLED)."),
+        # Lock 21. Al arrancar (cada despliegue) y a diario; un aviso por persona y versión.
+        JobDefinition(JobSpec("extension_release", 21, 86400, daily=True), "Avisar de extensión nueva",
+                      "Cuando se despliega una versión nueva de la extensión de Chrome, avisa en la campana a cada persona activa."),
         # Lock 20. Diario (00:01 de Madrid y al arrancar); repetirlo no duplica avisos.
         JobDefinition(JobSpec("due_tomorrow", 20, 86400, daily=True), "Avisar de lo que vence mañana",
                       "Avisa en la campana a cada responsable de sus tareas abiertas con fecha límite mañana."),

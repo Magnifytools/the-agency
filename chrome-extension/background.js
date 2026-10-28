@@ -213,7 +213,8 @@ function _meetingMessage(occurrence, agencyTimeZone) {
 async function checkUpcomingMeetings(token) {
   try {
     const res = await fetch(`${API_URL}/api/communication-schedules/extension-upcoming`, {
-      headers: { Authorization: `Bearer ${token}` },
+      // Con la versión, el servidor sólo añade "hay una versión nueva" si esta es antigua.
+      headers: { Authorization: `Bearer ${token}`, "X-Agency-Extension-Version": chrome.runtime.getManifest().version },
     });
     if (!res.ok) return;
     const data = await res.json();
@@ -314,6 +315,12 @@ async function checkDesktopNotices(token) {
 }
 
 chrome.notifications.onClicked?.addListener((notificationId) => {
+  // "Hay una versión nueva" llega por el canal de reuniones: abre dónde se descarga.
+  if (notificationId.startsWith("agency-meeting:") && notificationId.includes(":extension-update-")) {
+    chrome.tabs.create({ url: `${API_URL}/settings#extension` });
+    chrome.notifications.clear(notificationId);
+    return;
+  }
   if (!notificationId.startsWith("agency-notice:")) return;
   const link = notificationId.slice(notificationId.indexOf("|") + 1);
   // Sólo rutas de la propia app.

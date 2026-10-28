@@ -13,7 +13,7 @@ function setup({ prefs, store = {} } = {}) {
   const noop = () => {};
   const context = vm.createContext({
     chrome: {
-      runtime: { onInstalled: { addListener: noop }, onStartup: { addListener: noop }, onMessage: { addListener: noop } },
+      runtime: { getManifest: () => ({ version: '2.4.0' }), onInstalled: { addListener: noop }, onStartup: { addListener: noop }, onMessage: { addListener: noop } },
       contextMenus: { create: noop, onClicked: { addListener: noop } },
       storage: {
         local: {
@@ -126,4 +126,28 @@ test('la insignia cuenta alertas en rojo y, sin ellas, las notas por aclarar', a
   h.respond((url) => ({ count: url.includes('/incidents/') ? 0 : 5 }));
   await h.run('updateBadge("session-a")');
   assert.deepEqual([h.state.badges.at(-1), h.state.colors.at(-1)], ['5', '#6366f1']);
+});
+
+test('el aviso de versión nueva llega por el canal de reuniones y abre la descarga', async () => {
+  const h = setup();
+  let headers;
+  h.context.fetch = async (url, init) => {
+    headers = init.headers;
+    return { ok: true, json: async () => ({ user_id: 2, timezone: 'Europe/Madrid', occurrences: [
+      { occurrence_id: 'extension-update-2.5.0', title: 'Hay una versión nueva de la extensión (2.5.0)', content: 'Descárgala en The Agency → Ajustes → Extensión de Chrome.', start_time: null },
+    ] }) };
+  };
+  await h.run('checkUpcomingMeetings("session-a")');
+  assert.equal(headers['X-Agency-Extension-Version'], '2.4.0');
+  assert.equal(h.state.notifications.length, 1);
+  assert.equal(h.state.notifications[0].message, 'Descárgala en The Agency → Ajustes → Extensión de Chrome.');
+  // Una sola vez por instalación y versión.
+  await h.run('checkUpcomingMeetings("session-a")');
+  assert.equal(h.state.notifications.length, 1);
+
+  h.listeners.click(h.state.notifications[0].id);
+  assert.deepEqual(h.state.tabs, ['https://agency.magnifytools.com/settings#extension']);
+  // Un aviso de reunión normal no abre nada.
+  h.listeners.click('agency-meeting:2:55');
+  assert.equal(h.state.tabs.length, 1);
 });
