@@ -577,7 +577,7 @@ async def get_client_summary(
     if can_read_tasks:
         # Task titles and task-derived totals belong to the tasks module.
         from sqlalchemy.orm import selectinload
-        from backend.api.routes.tasks import _task_to_response
+        from backend.api.routes.tasks import _task_responses
 
         tasks_result = await db.execute(
             select(Task).options(
@@ -591,7 +591,7 @@ async def get_client_summary(
             ).order_by(Task.created_at.desc())
         )
         tasks = tasks_result.scalars().unique().all()
-        task_responses = [_task_to_response(task) for task in tasks]
+        task_responses = await _task_responses(db, tasks)
         total_tasks = len(tasks)
         total_estimated = sum(task.estimated_minutes or 0 for task in tasks)
         total_actual = sum(task.actual_minutes or 0 for task in tasks)

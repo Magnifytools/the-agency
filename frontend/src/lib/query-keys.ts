@@ -6,6 +6,9 @@ export const taskKeys = {
   list: (filters: readonly unknown[]) => ["tasks", "list", ...filters] as const,
   agenda: (section: string, date: string, userId: number | undefined, timezoneOffset: number, scope: "mine" | "team" = "mine") =>
     ["tasks", "agenda", section, date, userId, timezoneOffset, scope] as const,
+  /** Subtareas que me tocan en tareas de otros (Mi agenda). Sin fecha = todas. */
+  subtasks: (date?: string, userId?: number) =>
+    (date === undefined ? ["tasks", "agenda-subtasks"] : ["tasks", "agenda-subtasks", date, userId]) as QueryKey,
   recurring: () => ["tasks", "recurring"] as const,
   project: (projectId: number) => ["tasks", "project", projectId] as const,
   assigned: (scope: string, ...filters: readonly unknown[]) => ["tasks", "assigned", scope, ...filters] as const,

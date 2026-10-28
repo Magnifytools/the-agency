@@ -53,6 +53,7 @@ class TaskCreate(BaseModel):
     is_recurring: bool = False
     recurrence_pattern: Optional[str] = None
     recurrence_day: Optional[int] = None
+    recurrence_weekdays: Optional[list[int]] = Field(None, max_length=5)
     recurrence_end_date: Optional[date] = None
     recurrence_anchor_date: Optional[date] = None
     link_url: Optional[str] = None
@@ -86,6 +87,7 @@ class TaskUpdate(BaseModel):
     is_recurring: Optional[bool] = None
     recurrence_pattern: Optional[str] = None
     recurrence_day: Optional[int] = None
+    recurrence_weekdays: Optional[list[int]] = Field(None, max_length=5)
     recurrence_end_date: Optional[date] = None
     recurrence_anchor_date: Optional[date] = None
     recurrence_paused: Optional[bool] = None
@@ -115,9 +117,12 @@ class RecurrencePreviewRequest(BaseModel):
     is_recurring: bool = True
     recurrence_pattern: Optional[str] = None
     recurrence_day: Optional[int] = None
+    recurrence_weekdays: Optional[list[int]] = Field(None, max_length=5)
     recurrence_end_date: Optional[date] = None
     recurrence_anchor_date: Optional[date] = None
     recurrence_paused: bool = False
+    # Quien llevará la plantilla: sus festivos mueven las próximas fechas.
+    assigned_to: Optional[int] = None
     client_id: Optional[int] = None
     project_id: Optional[int] = None
     phase_id: Optional[int] = None
@@ -186,6 +191,7 @@ class TaskResponse(BaseModel):
     is_recurring: bool = False
     recurrence_pattern: Optional[str] = None
     recurrence_day: Optional[int] = None
+    recurrence_weekdays: Optional[list[int]] = Field(None, max_length=5)
     recurrence_end_date: Optional[date] = None
     recurrence_anchor_date: Optional[date] = None
     recurrence_paused_at: Optional[datetime] = None

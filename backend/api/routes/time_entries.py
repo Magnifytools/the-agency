@@ -41,6 +41,7 @@ from backend.services.time_budget import (
 )
 from backend.services.task_lifecycle import stamp_task_status
 from backend.services.temporal import as_utc_instant, business_today, business_zone
+from backend.services.incident_timer_conditions import TIMER_CAP_MINUTES
 from backend.services.time_entry_dates import manual_time_entry_date, time_entry_civil_period
 from backend.services.time_writes import (
     create_manual_time_entry,
@@ -672,7 +673,7 @@ async def start_timer(
             elapsed = accumulated
         else:
             elapsed = accumulated + (now_stop - sa).total_seconds()
-        active.minutes = max(1, min(480, round(elapsed / 60)))
+        active.minutes = max(1, min(TIMER_CAP_MINUTES, round(elapsed / 60)))
         active.paused_at = None
         active.accumulated_seconds = 0
         await db.flush()
@@ -791,7 +792,8 @@ async def stop_timer(
         elapsed = accumulated
     else:
         elapsed = accumulated + (now - sa).total_seconds()
-    entry.minutes = max(1, min(480, round(elapsed / 60)))  # Cap at 8 hours
+    # Lo contado se recorta a 8 h; quien se lo dejó encendido puede decir lo real.
+    entry.minutes = body.minutes or max(1, min(TIMER_CAP_MINUTES, round(elapsed / 60)))
     entry.paused_at = None
     entry.accumulated_seconds = 0
     if body.notes:

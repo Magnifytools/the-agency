@@ -683,8 +683,14 @@ class Task(TimestampMixin, Base):
 
     # Recurring task fields
     is_recurring = Column(Boolean, nullable=False, default=False, server_default="false")
-    recurrence_pattern = Column(String(20), nullable=True)  # daily|weekly|biweekly|monthly
-    recurrence_day = Column(Integer, nullable=True)  # 0-4 for weekly, 1-28 for monthly
+    # daily|weekly|weekdays|biweekly|monthly|quarterly|last_business_day
+    recurrence_pattern = Column(String(20), nullable=True)
+    recurrence_day = Column(Integer, nullable=True)  # 0-4 weekly/biweekly, 1-28 monthly/quarterly
+    # Days 0-4 of the "weekdays" pattern (several days a week); NULL otherwise.
+    recurrence_weekdays = Column(JSONB, nullable=True)
+    # Catch-up floor: the generator never fills dates before it. Set when the
+    # rule starts, changes or resumes; NULL (older templates) = only today.
+    recurrence_since = Column(Date, nullable=True)
     recurrence_end_date = Column(Date, nullable=True)
     # NULL preserves the historical ISO-even-week calendar. Never backfill it.
     recurrence_anchor_date = Column(Date, nullable=True)

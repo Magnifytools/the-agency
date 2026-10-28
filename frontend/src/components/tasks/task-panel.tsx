@@ -28,6 +28,7 @@ import {
   usersApi,
 } from "@/lib/api";
 import type { RecurrenceSummary, Task, TaskCreate, TaskPriority, TaskStatus } from "@/lib/types";
+import { RECURRENCE_PATTERNS, WEEKDAY_LABELS, ruleForPattern, toggleWeekday } from "@/lib/recurrence";
 import { invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys";
 import { getErrorMessage } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
@@ -97,6 +98,7 @@ const EMPTY: TaskCreate = {
   is_recurring: false,
   recurrence_pattern: null,
   recurrence_day: null,
+  recurrence_weekdays: null,
   recurrence_end_date: null,
   recurrence_anchor_date: null,
   link_url: null,
@@ -131,6 +133,7 @@ function fromTask(task?: Task, defaults?: Defaults): TaskCreate {
     is_recurring: task.is_recurring,
     recurrence_pattern: task.recurrence_pattern,
     recurrence_day: task.recurrence_day,
+    recurrence_weekdays: task.recurrence_weekdays ?? null,
     recurrence_end_date: task.recurrence_end_date,
     recurrence_anchor_date: task.recurrence_anchor_date,
     link_url: task.link_url,
@@ -270,19 +273,23 @@ export function TaskPanel({
     setDraft((current) => ({ ...current, [key]: value }));
   };
   const recurrencePaused = !!taskQuery.data?.recurrence_paused_at;
-  const recurrenceDraftKey = JSON.stringify({
+  // La misma clave para la vista previa y para la comparación del calendario antiguo.
+  const recurrenceKey = (anchor: string | null | undefined) => JSON.stringify({
     contextKey,
     open,
     is_recurring: draft.is_recurring,
     recurrence_pattern: draft.recurrence_pattern,
     recurrence_day: draft.recurrence_day,
-    recurrence_anchor_date: draft.recurrence_anchor_date,
+    recurrence_weekdays: draft.recurrence_weekdays,
+    recurrence_anchor_date: anchor,
     recurrence_end_date: draft.recurrence_end_date,
+    assigned_to: draft.assigned_to,
     client_id: draft.client_id,
     project_id: draft.project_id,
     phase_id: draft.phase_id,
     recurrencePaused,
   });
+  const recurrenceDraftKey = recurrenceKey(draft.recurrence_anchor_date);
   const recurrenceSummary = recurrencePreview?.key === recurrenceDraftKey
     ? recurrencePreview.summary
     : taskQuery.data?.recurrence_summary;
@@ -321,8 +328,10 @@ export function TaskPanel({
         is_recurring: !!draft.is_recurring,
         recurrence_pattern: draft.recurrence_pattern,
         recurrence_day: draft.recurrence_day,
+        recurrence_weekdays: draft.recurrence_weekdays,
         recurrence_end_date: draft.recurrence_end_date,
         recurrence_paused: recurrencePaused,
+        assigned_to: draft.assigned_to,
         client_id: draft.client_id,
         project_id: draft.project_id,
         phase_id: draft.phase_id,
@@ -373,19 +382,7 @@ export function TaskPanel({
     },
     onMutate: () => legacySourceKey,
     onSuccess: ({ current, proposed }, _variables, sourceKey) => {
-      const proposedKey = JSON.stringify({
-        contextKey,
-        open,
-        is_recurring: draft.is_recurring,
-        recurrence_pattern: draft.recurrence_pattern,
-        recurrence_day: draft.recurrence_day,
-        recurrence_anchor_date: draft.recurrence_anchor_date ?? businessToday,
-        recurrence_end_date: draft.recurrence_end_date,
-        client_id: draft.client_id,
-        project_id: draft.project_id,
-        phase_id: draft.phase_id,
-        recurrencePaused,
-      });
+      const proposedKey = recurrenceKey(draft.recurrence_anchor_date ?? businessToday);
       if (sourceKey === legacySourceKey) setLegacyComparison({ key: proposedKey, sourceKey, current, proposed, anchor: draft.recurrence_anchor_date ?? businessToday });
     },
     onError: (error) => toast.error(getErrorMessage(error, "No se pudo comparar los calendarios")),
@@ -456,13 +453,19 @@ export function TaskPanel({
         due_date: string | null;
       }>;
     }) => tasksApi.checklist.update(taskId!, itemId, data),
-    onSuccess: () => void checklistQuery.refetch(),
+    onSuccess: () => {
+      void checklistQuery.refetch();
+      void queryClient.invalidateQueries({ queryKey: taskKeys.subtasks() });
+    },
     onError: (error) =>
       toast.error(getErrorMessage(error, "No se pudo actualizar el checklist")),
   });
   const deleteChecklist = useMutation({
     mutationFn: (itemId: number) => tasksApi.checklist.delete(taskId!, itemId),
-    onSuccess: () => void checklistQuery.refetch(),
+    onSuccess: () => {
+      void checklistQuery.refetch();
+      void queryClient.invalidateQueries({ queryKey: taskKeys.subtasks() });
+    },
     onError: (error) =>
       toast.error(getErrorMessage(error, "No se pudo eliminar del checklist")),
   });
@@ -1104,14 +1107,9 @@ export function TaskPanel({
                       { setRecurrencePreview(null); setDraft((current) => ({
                         ...current,
                         is_recurring: event.target.checked,
-                        recurrence_pattern: event.target.checked
-                          ? (current.recurrence_pattern ?? "weekly")
-                          : null,
-                        recurrence_day: event.target.checked
-                          ? (current.recurrence_pattern === "monthly"
-                            ? Math.min(Math.max(current.recurrence_day ?? 1, 1), 28)
-                            : Math.min(Math.max(current.recurrence_day ?? 0, 0), 4))
-                          : null,
+                        ...(event.target.checked
+                          ? ruleForPattern(current, current.recurrence_pattern ?? "weekly")
+                          : { recurrence_pattern: null, recurrence_day: null, recurrence_weekdays: null }),
                         recurrence_end_date: event.target.checked
                           ? current.recurrence_end_date
                           : null,
@@ -1143,10 +1141,7 @@ export function TaskPanel({
                           const pattern = e.target.value;
                           setDraft((current) => ({
                             ...current,
-                            recurrence_pattern: pattern,
-                            recurrence_day: pattern === "monthly"
-                              ? Math.min(Math.max(current.recurrence_day ?? 1, 1), 28)
-                              : Math.min(Math.max(current.recurrence_day ?? 0, 0), 4),
+                            ...ruleForPattern(current, pattern),
                             recurrence_anchor_date: pattern === "biweekly" && !(taskQuery.data?.is_recurring && taskQuery.data.recurrence_pattern === "biweekly" && !taskQuery.data.recurrence_anchor_date) && !current.recurrence_anchor_date
                               ? businessToday
                               : current.recurrence_anchor_date,
@@ -1154,15 +1149,31 @@ export function TaskPanel({
                         }}
                         disabled={!canOperate}
                       >
-                        <option value="daily">Diaria</option>
-                        <option value="weekly">Semanal</option>
-                        <option value="biweekly">Cada dos semanas</option>
-                        <option value="monthly">Mensual</option>
+                        {RECURRENCE_PATTERNS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                       </Select>
                     </div>
                     <div>
+                      {draft.recurrence_pattern === "weekdays" ? (
+                        <fieldset>
+                          <legend className="text-sm font-medium">Días</legend>
+                          <div className="flex flex-wrap gap-1 pt-1.5">
+                            {WEEKDAY_LABELS.map((label, day) => (
+                              <label key={label} className="flex items-center gap-1 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={draft.recurrence_weekdays?.includes(day) ?? false}
+                                  onChange={() => change("recurrence_weekdays", toggleWeekday(draft.recurrence_weekdays, day))}
+                                  disabled={!canOperate}
+                                  aria-label={label}
+                                />
+                                {label.slice(0, 2)}
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                      ) : <>
                       <Label htmlFor="task-panel-recurrence-day">Día</Label>
-                      {draft.recurrence_pattern === "monthly" ? <Input
+                      {draft.recurrence_pattern === "monthly" || draft.recurrence_pattern === "quarterly" ? <Input
                         id="task-panel-recurrence-day"
                         type="number"
                         min="1"
@@ -1174,10 +1185,11 @@ export function TaskPanel({
                         id="task-panel-recurrence-day"
                         value={String(draft.recurrence_day ?? 0)}
                         onChange={(e) => change("recurrence_day", Number(e.target.value))}
-                        disabled={!canOperate || draft.recurrence_pattern === "daily"}
+                        disabled={!canOperate || draft.recurrence_pattern === "daily" || draft.recurrence_pattern === "last_business_day"}
                       >
-                        <option value="0">Lunes</option><option value="1">Martes</option><option value="2">Miércoles</option><option value="3">Jueves</option><option value="4">Viernes</option>
+                        {WEEKDAY_LABELS.map((label, day) => <option key={label} value={day}>{label}</option>)}
                       </Select>}
+                      </>}
                     </div>
                     <div>
                       <Label htmlFor="task-panel-recurrence-end">
@@ -1213,6 +1225,21 @@ export function TaskPanel({
                           Plantilla antigua: mantiene el calendario actual. Compara las próximas fechas antes de cambiarlo.
                         </p>
                       )}
+                    </div>
+                  )}
+                  {draft.recurrence_pattern === "quarterly" && (
+                    <div>
+                      <Label htmlFor="task-panel-recurrence-quarter">Empieza en el mes de</Label>
+                      <Input
+                        id="task-panel-recurrence-quarter"
+                        type="date"
+                        value={draft.recurrence_anchor_date ?? ""}
+                        onChange={(e) => change("recurrence_anchor_date", e.target.value || null)}
+                        disabled={!canOperate}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Sin fecha: enero, abril, julio y octubre.
+                      </p>
                     </div>
                   )}
                   <div className="flex flex-wrap items-center gap-2">
@@ -1253,6 +1280,12 @@ export function TaskPanel({
                       <p className="font-medium">{recurrenceSummary.label}</p>
                       {recurrenceSummary.reason && <p className="mt-1 text-muted-foreground">{recurrenceSummary.reason}</p>}
                       {recurrenceSummary.next_dates.length > 0 && <p className="mt-1 text-muted-foreground">Próximas: {recurrenceSummary.next_dates.join(" · ")}</p>}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {draft.recurrence_pattern === "daily"
+                          ? "No se crea en los festivos de quien la lleva."
+                          : "Si cae en fin de semana o en un festivo de quien la lleva, se crea el siguiente día hábil."}
+                        {" "}Si algún día no llega a crearse, se recupera en los 7 días siguientes.
+                      </p>
                     </div>
                   )}
                   {legacyComparison && (legacyComparison.sourceKey === legacySourceKey || comparisonReady) && (

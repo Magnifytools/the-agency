@@ -147,7 +147,7 @@ async def test_retiring_source_resolves_open_incident(db_session, admin_user):
 async def test_retired_recurrence_child_does_not_reopen_consumed_occurrence(
     db_session,
 ):
-    target = date(2026, 9, 20)
+    target = date(2026, 9, 21)  # lunes: un día del mes en fin de semana se crea el lunes
     template = Task(
         title="Plantilla mensual preservada",
         is_recurring=True,

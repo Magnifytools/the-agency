@@ -50,6 +50,7 @@ from backend.startup.credentials_totp_schema import MIGRATION as CREDENTIALS_TOT
 from backend.startup.task_sort_rank_schema import MIGRATION as TASK_SORT_RANK_MIGRATION
 from backend.startup.task_time_blocks_schema import MIGRATION as TASK_TIME_BLOCKS_MIGRATION
 from backend.startup.calendar_blocks_sync_schema import MIGRATION as CALENDAR_BLOCKS_SYNC_MIGRATION
+from backend.startup.task_recurrence_rules_schema import MIGRATION as TASK_RECURRENCE_RULES_MIGRATION
 from backend.startup.alert_settings_notify_retirement_schema import (
     MIGRATION as ALERT_SETTINGS_NOTIFY_RETIREMENT_MIGRATION,
 )
@@ -73,6 +74,7 @@ MIGRATIONS = (
     TASK_SORT_RANK_MIGRATION, TASK_TIME_BLOCKS_MIGRATION,
     ALERT_SETTINGS_NOTIFY_RETIREMENT_MIGRATION,
     CALENDAR_BLOCKS_SYNC_MIGRATION,
+    TASK_RECURRENCE_RULES_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

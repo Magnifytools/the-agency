@@ -62,6 +62,7 @@ import type {
   TaskStatus,
   RecurrenceSummary,
   TaskCategory,
+  AgendaSubtask,
   ChecklistItem,
   TaskComment,
   TaskAttachment,
@@ -361,6 +362,8 @@ export const clientsApi = {
 export const tasksApi = {
   list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; unscheduled?: boolean; completed_from?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
+  agendaSubtasks: (date: string) =>
+    api.get<AgendaSubtask[]>("/tasks/agenda/subtasks", { params: { date } }).then((r) => r.data),
   agenda: (params: { date: string; section: TaskAgendaSection; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks/agenda", { params }).then((r) => r.data),
   listAll: async (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created" }) => {
@@ -394,7 +397,7 @@ export const tasksApi = {
   }) => api.post<Task>(`/tasks/${id}/carryover-decision`, data).then((r) => r.data),
   restore: (id: number, expected_updated_at: string) =>
     api.post<Task>(`/tasks/${id}/restore`, { expected_updated_at }).then((r) => r.data),
-  recurrencePreview: (data: Pick<TaskCreate, "is_recurring" | "recurrence_pattern" | "recurrence_day" | "recurrence_anchor_date" | "recurrence_end_date" | "client_id" | "project_id" | "phase_id" | "recurrence_paused">) =>
+  recurrencePreview: (data: Pick<TaskCreate, "is_recurring" | "recurrence_pattern" | "recurrence_day" | "recurrence_weekdays" | "recurrence_anchor_date" | "recurrence_end_date" | "client_id" | "project_id" | "phase_id" | "recurrence_paused" | "assigned_to">) =>
     api.post<RecurrenceSummary>("/tasks/recurrence-preview", data).then((r) => r.data),
   delete: (id: number) => api.delete(`/tasks/${id}`).then((r) => r.data),
   bulkUpdate: (ids: number[], updates: Record<string, unknown>) =>
@@ -470,7 +473,8 @@ export const timeEntriesApi = {
 export const timerApi = {
   start: (data: { task_id?: number | null; notes?: string }) =>
     api.post<ActiveTimer>("/timer/start", data).then((r) => r.data),
-  stop: (timerId: number, notes?: string) => api.post<TimeEntry>("/timer/stop", { timer_id: timerId, notes }).then((r) => r.data),
+  stop: (timerId: number, options: { notes?: string; minutes?: number } = {}) =>
+    api.post<TimeEntry>("/timer/stop", { timer_id: timerId, ...options }).then((r) => r.data),
   pause: () => api.post<ActiveTimer>("/timer/pause").then((r) => r.data),
   resume: () => api.post<ActiveTimer>("/timer/resume").then((r) => r.data),
   active: () =>
