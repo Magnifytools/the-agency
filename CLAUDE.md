@@ -1180,8 +1180,9 @@ admin_users, admin_settings
   relación bloque ↔ evento con un `update()` masivo (fuera del Deshacer, sin
   tocar `updated_at`). El job no tiene actor: lo que trae de Google no entra en
   el Deshacer de nadie.
-- **Producción necesita**: añadir el scope `calendar.app.created` en la pantalla
-  de consentimiento de Google Cloud (proyecto `agency-492805`). /privacidad y
+- **Google Cloud** (proyecto `agency-492805`): `calendar.app.created` añadido a
+  "Acceso a los datos" el 28 oct 2026 (Google lo clasifica como no sensible;
+  guardarlo actualizó la solicitud de verificación pendiente). /privacidad y
   /acerca ya lo cuentan (es lo único que la app escribe en Google).
 - Tests: `tests/test_calendar_blocks_sync.py` (plan) y
   `tests/integration/test_calendar_blocks_sync.py` (Google falso en memoria).
