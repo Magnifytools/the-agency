@@ -16,6 +16,14 @@ from backend.tests.integration.concurrency import HANG_TIMEOUT
 pytestmark = pytest.mark.integration
 
 
+def _due_today(today: date) -> dict:
+    """Regla cuya repetición cae hoy: semanal en el día laborable de hoy. La
+    mensual con ``today.day`` no vale los días 29-31 (sólo admite 1-28)."""
+    if today.weekday() < 5:
+        return {"recurrence_pattern": "weekly", "recurrence_day": today.weekday()}
+    return {"recurrence_pattern": "monthly", "recurrence_day": today.day}
+
+
 async def test_preview_is_read_only_and_pause_round_trip(admin_client, db_session):
     weekday = min(date.today().weekday(), 4)
     before = (await db_session.execute(select(func.count(Task.id)))).scalar_one()
@@ -136,8 +144,7 @@ async def test_generator_is_idempotent_and_inherits_creator(admin_client, db_ses
     created = await admin_client.post("/api/tasks", json={
         "title": "Plantilla materializable",
         "is_recurring": True,
-        "recurrence_pattern": "monthly",
-        "recurrence_day": today.day,
+        **_due_today(today),
         "recurrence_end_date": today.isoformat(),
     })
     assert created.status_code == 201, created.text
@@ -176,7 +183,7 @@ async def test_deleting_materialized_template_is_actionable(admin_client, db_ses
     today = date.today()
     response = await admin_client.post("/api/tasks", json={
         "title": "Plantilla con historial", "is_recurring": True,
-        "recurrence_pattern": "monthly", "recurrence_day": today.day,
+        **_due_today(today),
     })
     template_id = response.json()["id"]
     await generate_recurring_instances(db_session, target_date=today)
@@ -189,7 +196,7 @@ async def test_deleting_generated_child_does_not_regenerate_consumed_date(admin_
     today = date.today()
     response = await admin_client.post("/api/tasks", json={
         "title": "Plantilla con recibo", "is_recurring": True,
-        "recurrence_pattern": "monthly", "recurrence_day": today.day,
+        **_due_today(today),
     })
     template_id = response.json()["id"]
     assert await generate_recurring_instances(db_session, target_date=today) == 1
@@ -214,7 +221,7 @@ async def test_undo_generated_child_relinks_receipt_and_keeps_same_identity(admi
     today = date.today()
     created = await admin_client.post("/api/tasks", json={
         "title": "Undo occurrence", "is_recurring": True,
-        "recurrence_pattern": "monthly", "recurrence_day": today.day,
+        **_due_today(today),
     })
     template_id = created.json()["id"]
     await generate_recurring_instances(db_session, target_date=today)
@@ -247,7 +254,7 @@ async def test_undo_refuses_receipt_linked_to_different_task_before_marking_undo
     today = date.today()
     created = await admin_client.post("/api/tasks", json={
         "title": "Undo conflict", "is_recurring": True,
-        "recurrence_pattern": "monthly", "recurrence_day": today.day,
+        **_due_today(today),
     })
     template_id = created.json()["id"]
     await generate_recurring_instances(db_session, target_date=today)
@@ -280,7 +287,7 @@ async def test_legacy_child_observed_today_gets_receipt_without_identity_rewrite
     today = date.today()
     template = Task(
         title="Legacy template", status=TaskStatus.pending, is_recurring=True,
-        recurrence_pattern="monthly", recurrence_day=today.day,
+        **_due_today(today),
     )
     db_session.add(template)
     await db_session.flush()
@@ -341,7 +348,7 @@ async def test_bulk_delete_template_with_receipt_returns_recurrence_reason(admin
     today = date.today()
     created = await admin_client.post("/api/tasks", json={
         "title": "Bulk protected", "is_recurring": True,
-        "recurrence_pattern": "monthly", "recurrence_day": today.day,
+        **_due_today(today),
     })
     template_id = created.json()["id"]
     await generate_recurring_instances(db_session, target_date=today)
