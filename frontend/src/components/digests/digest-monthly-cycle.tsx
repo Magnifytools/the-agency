@@ -15,7 +15,8 @@ import { Card, CardContent } from "@/components/ui/card"
 // (monthly report for last month, weekly follow-up for the last closed week).
 // "Delivered" means a confirmed external delivery event on some version of the
 // period, the same rule as the report_unsent incident. DigestStatus "sent" is a
-// legacy label without evidence and does not count.
+// legacy label without evidence and does not count. A client with an SEO local
+// report gets its monthly row from that report (its tab), not from a digest.
 type MonthState = "missing" | "blocked" | "prepared" | "delivered"
 const ORDER: MonthState[] = ["missing", "blocked", "prepared", "delivered"]
 const LABELS: Record<MonthState, { text: string; variant: "destructive" | "warning" | "secondary" | "success" }> = {
@@ -33,6 +34,9 @@ const SKIP_REASONS: Record<string, string> = {
 }
 
 function monthState(item: GenerationPreviewItem): MonthState {
+  if (item.local_report && item.reason !== "responsible_unavailable") {
+    return item.local_report.delivered_at ? "delivered" : item.local_report.report_id ? "prepared" : "missing"
+  }
   if (item.external_delivery.state === "confirmed") return "delivered"
   if (item.digest.latest_digest_id) return "prepared"
   if (item.reason === "responsible_unavailable") return "blocked"
@@ -132,16 +136,19 @@ function MonthlyCycle({ userId, isAdmin, canWrite, canViewClients }: { userId: n
               <div className="min-w-0 flex-[1_1_12rem]">
                 <p className="font-medium break-words">{item.client_name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {item.cadence && CADENCE_LABEL[item.cadence]}{periodLabel(item) && ` · ${periodLabel(item)}`} · {item.responsible_name || "Sin responsable"}
-                  {state === "delivered" && ` · Entregado${item.external_delivery.actor_name ? ` por ${item.external_delivery.actor_name}` : ""}${item.external_delivery.confirmed_at ? ` el ${confirmedAt(item.external_delivery.confirmed_at)}` : ""}`}
+                  {item.local_report ? "Informe SEO local" : item.cadence && CADENCE_LABEL[item.cadence]}{periodLabel(item) && ` · ${periodLabel(item)}`} · {item.responsible_name || "Sin responsable"}
+                  {state === "delivered" && item.local_report && ` · Entregado${item.local_report.delivered_by_name ? ` por ${item.local_report.delivered_by_name}` : ""}${item.local_report.delivered_at ? ` el ${confirmedAt(item.local_report.delivered_at)}` : ""}`}
+                  {state === "delivered" && !item.local_report && ` · Entregado${item.external_delivery.actor_name ? ` por ${item.external_delivery.actor_name}` : ""}${item.external_delivery.confirmed_at ? ` el ${confirmedAt(item.external_delivery.confirmed_at)}` : ""}`}
                   {state === "delivered" && item.state === "newer_version_unconfirmed" && " · Hay una versión posterior sin confirmar"}
-                  {state === "prepared" && ` · Ábrelo, revísalo y márcalo como entregado${item.digest.latest_status === "sent" ? " (marcado como enviado en el sistema antiguo)" : ""}`}
+                  {state === "prepared" && item.local_report && " · Ábrelo, genéralo y márcalo como entregado"}
+                  {state === "prepared" && !item.local_report && ` · Ábrelo, revísalo y márcalo como entregado${item.digest.latest_status === "sent" ? " (marcado como enviado en el sistema antiguo)" : ""}`}
                 </p>
               </div>
               <Badge variant={LABELS[state].variant}>{LABELS[state].text}</Badge>
               <div className="flex gap-2">
-                {(state === "prepared" || state === "delivered") && item.digest.latest_digest_id && <Link className="text-sm text-primary underline underline-offset-2" to={`/digests/${item.digest.latest_digest_id}/edit`} aria-label={`Abrir resumen de ${rowName(item)}`}>Abrir</Link>}
-                {state === "missing" && canWrite && item.eligible && <Button size="sm" disabled={generate.isPending} onClick={() => prepare(item)} aria-label={`Generar resumen de ${rowName(item)}`}>
+                {item.local_report && state !== "blocked" && canViewClients && <Link className="text-sm text-primary underline underline-offset-2" to={`/clients/${item.client_id}?tab=informe_local`} aria-label={`Abrir informe SEO local de ${item.client_name}`}>{state === "missing" ? "Preparar" : "Abrir"}</Link>}
+                {!item.local_report && (state === "prepared" || state === "delivered") && item.digest.latest_digest_id && <Link className="text-sm text-primary underline underline-offset-2" to={`/digests/${item.digest.latest_digest_id}/edit`} aria-label={`Abrir resumen de ${rowName(item)}`}>Abrir</Link>}
+                {state === "missing" && !item.local_report && canWrite && item.eligible && <Button size="sm" disabled={generate.isPending} onClick={() => prepare(item)} aria-label={`Generar resumen de ${rowName(item)}`}>
                   {generate.isPending && generate.variables?.items[0].client_id === item.client_id && generate.variables?.items[0].period_start === item.period_start ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Sparkles className="size-4 mr-2" />}Generar
                 </Button>}
                 {state === "blocked" && canViewClients && <Link className="text-sm text-primary underline underline-offset-2" to={`/clients/${item.client_id}?tab=resumenes`}>Configurar</Link>}

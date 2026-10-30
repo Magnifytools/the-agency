@@ -49,7 +49,7 @@ export interface ExternalDeliveryResult {
   external_delivery: ExternalDeliverySummary
   has_newer_version: boolean
 }
-export type GenerationReason = "client_inactive" | "internal_client" | "policy_missing" | "policy_disabled" | "responsible_unavailable" | "already_exists" | "eligible"
+export type GenerationReason = "client_inactive" | "internal_client" | "policy_missing" | "policy_disabled" | "responsible_unavailable" | "local_report" | "already_exists" | "eligible"
 export interface GenerationPreviewItem {
   client_id: number
   client_name: string
@@ -67,6 +67,8 @@ export interface GenerationPreviewItem {
   digest: { latest_digest_id: number | null; latest_status: DigestStatus | null; version_count: number }
   internal_distribution: { digest_id: number | null; state: string | null; delivery_id: string | null; sent_at: string | null }
   external_delivery: ExternalDeliverySummary
+  // Sólo en la fila mensual de un cliente con informe SEO local: ese informe hace de mensual.
+  local_report?: { report_id: number | null; delivered_at: string | null; delivered_by_name: string | null } | null
 }
 export interface GenerationPreview {
   as_of: string

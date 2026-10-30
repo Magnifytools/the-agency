@@ -33,6 +33,7 @@ from backend.config import settings
 from backend.db.models import (
     ACTIVE_TASK_STATUSES,
     Client,
+    ClientLocalReport,
     ClientReportPolicy,
     Task,
     TaskStatus,
@@ -150,7 +151,8 @@ async def _overdue_and_waiting(db, client_ids: list[int], today: date) -> dict[i
 async def _digests(db, client_ids: list[int]) -> tuple[dict[int, ClientReportPolicy], dict[tuple[int, str], date]]:
     """Políticas con alguna cadencia encendida y último periodo ENTREGADO por cadencia.
 
-    Entregado = entrega externa confirmada (la regla de ``report_unsent``);
+    Entregado = entrega externa confirmada o, para el mensual, el informe SEO
+    local entregado (la regla de ``report_unsent``);
     ``DigestStatus.sent`` es una etiqueta sin evidencia y no cuenta.
     """
     policies = {p.client_id: p for p in (await db.scalars(select(ClientReportPolicy).where(
@@ -167,7 +169,17 @@ async def _digests(db, client_ids: list[int]) -> tuple[dict[int, ClientReportPol
     rows = (await db.execute(select(
         delivered.c.client_id, delivered.c.cadence, func.max(delivered.c.period_end),
     ).where(delivered.c.cadence.isnot(None)).group_by(delivered.c.client_id, delivered.c.cadence))).all()
-    return policies, {(client_id, value): last for client_id, value, last in rows}
+    last_sent = {(client_id, value): last for client_id, value, last in rows}
+    # El informe SEO local entregado cubre su mes entero (la regla de ``report_unsent``).
+    for client_id, start in (await db.execute(
+        select(ClientLocalReport.client_id, func.max(ClientLocalReport.period_start))
+        .where(ClientLocalReport.client_id.in_(list(policies)), ClientLocalReport.delivered_at.isnot(None))
+        .group_by(ClientLocalReport.client_id)
+    )).all():
+        month_end = (start.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+        if month_end > last_sent.get((client_id, "monthly"), date.min):
+            last_sent[(client_id, "monthly")] = month_end
+    return policies, last_sent
 
 
 async def _month_effort(db, clients: list[Client], today: date, *, with_money: bool) -> dict[int, dict]:
@@ -206,7 +218,8 @@ async def _ready_to_deliver(db, client_id: int, policy: ClientReportPolicy | Non
     Una tarea cuenta desde que se completa (la revisión, si el proyecto la exige,
     ocurre antes: sólo su responsable la cierra). Llega al cliente con el
     resumen de un periodo que cubre su ``completed_at`` (así lo recoge el
-    collector) cuando ese resumen tiene la entrega externa confirmada. Se mira
+    collector) cuando ese resumen tiene la entrega externa confirmada, o con el
+    informe SEO local entregado que llega hasta ese día. Se mira
     desde el inicio del periodo que toca entregar ahora (cadencia de la
     política; mensual si no hay) o desde el día siguiente al último periodo
     entregado, lo más reciente: lo anterior sin entregar ya lo avisa la señal
@@ -218,6 +231,12 @@ async def _ready_to_deliver(db, client_id: int, policy: ClientReportPolicy | Non
     delivered_end = await db.scalar(select(func.max(WeeklyDigest.period_end)).where(
         WeeklyDigest.client_id == client_id, delivery_is_confirmed(),
     ))
+    # El informe SEO local llega al cliente hasta su último día de datos, no al final del mes.
+    local_end = await db.scalar(select(func.max(ClientLocalReport.period_end)).where(
+        ClientLocalReport.client_id == client_id, ClientLocalReport.delivered_at.isnot(None),
+    ))
+    if local_end is not None and (delivered_end is None or local_end > delivered_end):
+        delivered_end = local_end
     if delivered_end is not None and delivered_end >= since:
         since = delivered_end + timedelta(days=1)
     start_dt, _ = civil_day_utc_bounds(since)

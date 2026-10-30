@@ -17,7 +17,7 @@ import { Select } from "@/components/ui/select"
 const reasons: Record<string, string> = {
   eligible: "Pendiente de preparar", client_inactive: "Cliente inactivo", internal_client: "Cliente interno: fuera de los resúmenes para clientes",
   policy_missing: "Falta configurar los resúmenes y el responsable", policy_disabled: "Ni informe mensual ni seguimiento semanal activados",
-  responsible_unavailable: "El responsable no está disponible o no puede preparar resúmenes", already_exists: "Este período ya tiene un resumen",
+  responsible_unavailable: "El responsable no está disponible o no puede preparar resúmenes", local_report: "El informe mensual es el informe SEO local (pestaña del cliente)", already_exists: "Este período ya tiene un resumen",
   policy_changed: "La configuración cambió. Actualiza la selección", permission_changed: "Los permisos cambiaron",
   period_changed: "El período cambió. Actualiza la selección", concurrent_generation: "Otra generación está en curso", generation_failed: "No se pudo generar. Puedes volver a intentarlo tras actualizar",
 }

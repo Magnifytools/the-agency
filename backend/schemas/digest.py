@@ -166,6 +166,17 @@ class ExternalDeliverySummary(BaseModel):
         return _serialize_utc(dt)
 
 
+class LocalReportSummary(BaseModel):
+    """El informe SEO local del mes, que hace de informe mensual del cliente."""
+    report_id: Optional[int] = None
+    delivered_at: Optional[datetime] = None
+    delivered_by_name: Optional[str] = None
+
+    @field_serializer("delivered_at")
+    def _ser_delivered_at(self, dt: Optional[datetime]) -> Optional[str]:
+        return _serialize_utc(dt)
+
+
 class GenerationPreviewItem(BaseModel):
     client_id: int
     client_name: str
@@ -183,6 +194,8 @@ class GenerationPreviewItem(BaseModel):
     digest: DigestStateSummary
     internal_distribution: InternalDistributionSummary
     external_delivery: ExternalDeliverySummary
+    # Sólo en la fila mensual de un cliente con informe SEO local configurado.
+    local_report: Optional[LocalReportSummary] = None
 
 
 class GenerationPreviewResponse(BaseModel):

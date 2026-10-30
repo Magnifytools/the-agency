@@ -10,6 +10,8 @@ from sqlalchemy.orm import aliased
 from backend.core.modules import is_enabled
 from backend.db.models import (
     Client,
+    ClientLocalReport,
+    ClientLocalReportConfig,
     ClientReportPolicy,
     ClientStatus,
     CommunicationOccurrence,
@@ -97,13 +99,49 @@ def delivery_is_confirmed():
     return latest_action == ExternalDeliveryAction.confirmed
 
 
+def local_report_clause(client_id, month_start, month_end, *, delivered: bool):
+    """El informe SEO local de ese mes hace de informe mensual del cliente.
+
+    Es del mes en que EMPIEZA (el de octubre de 2026 va del 1 al 26) y está
+    entregado cuando alguien lo marcó en su pestaña (``delivered_at``).
+    """
+    filters = [
+        ClientLocalReport.client_id == client_id,
+        ClientLocalReport.period_start >= month_start,
+        ClientLocalReport.period_start <= month_end,
+    ]
+    if delivered:
+        filters.append(ClientLocalReport.delivered_at.isnot(None))
+    return exists().where(*filters)
+
+
+async def _local_reports(db, client_ids: list[int], month_start, month_end) -> dict[int, int | None]:
+    """Clientes con informe SEO local configurado → su última versión del mes (o None)."""
+    if not client_ids:
+        return {}
+    rows = (await db.execute(
+        select(ClientLocalReportConfig.client_id, func.max(ClientLocalReport.id))
+        .outerjoin(ClientLocalReport, and_(
+            ClientLocalReport.client_id == ClientLocalReportConfig.client_id,
+            ClientLocalReport.period_start.between(month_start, month_end),
+        ))
+        .where(ClientLocalReportConfig.client_id.in_(client_ids))
+        .group_by(ClientLocalReportConfig.client_id)
+    )).all()
+    return {client_id: version_id for client_id, version_id in rows}
+
+
 def delivery_confirmed_clause(client_id, period_start, period_end):
-    """Some version of the period has, as its latest event, a confirmed delivery."""
-    return exists().where(
-        WeeklyDigest.client_id == client_id,
-        WeeklyDigest.period_start == period_start,
-        WeeklyDigest.period_end == period_end,
-        delivery_is_confirmed(),
+    """Some version of the month has, as its latest event, a confirmed delivery,
+    or the client's SEO local report of that month was delivered."""
+    return or_(
+        exists().where(
+            WeeklyDigest.client_id == client_id,
+            WeeklyDigest.period_start == period_start,
+            WeeklyDigest.period_end == period_end,
+            delivery_is_confirmed(),
+        ),
+        local_report_clause(client_id, period_start, period_end, delivered=True),
     )
 
 
@@ -217,16 +255,19 @@ def report_visibility_clause(user_id: int, *, current_only: bool = False, now: d
             # Una rama por cadencia: sigue viva mientras esa cadencia esté
             # encendida y falte el resumen de su periodo actual.
             start, end = policy_digest_period(cadence, today=today)
+            prepared = [~exists().where(
+                WeeklyDigest.client_id == ClientReportPolicy.client_id,
+                WeeklyDigest.period_start == start,
+                WeeklyDigest.period_end == end,
+            )]
+            if cadence == "monthly":
+                prepared.append(~local_report_clause(ClientReportPolicy.client_id, start, end, delivered=False))
             return exists().where(
                 ClientReportPolicy.client_id == Notification.entity_id,
                 Client.id == ClientReportPolicy.client_id,
                 _report_source_clause(user_id),
                 _CADENCE_FLAGS[cadence].is_(True),
-                ~exists().where(
-                    WeeklyDigest.client_id == ClientReportPolicy.client_id,
-                    WeeklyDigest.period_start == start,
-                    WeeklyDigest.period_end == end,
-                ),
+                *prepared,
                 Notification.dedupe_key == func.concat(
                     "report_pending:client:", ClientReportPolicy.client_id,
                     f":{cadence}:{start.isoformat()}:{end.isoformat()}",
@@ -281,6 +322,7 @@ async def collect_report_conditions(db, user_id: int, now: datetime) -> dict[str
         for cadence in enabled_cadences(policy)
     ]
     matching_digests: set[tuple[int, object, object]] = set()
+    local_clients: set[int] = set()
     if pairs:
         coverage = or_(*[
             and_(WeeklyDigest.client_id == client_id, WeeklyDigest.period_start == periods[cadence][0], WeeklyDigest.period_end == periods[cadence][1])
@@ -290,6 +332,13 @@ async def collect_report_conditions(db, user_id: int, now: datetime) -> dict[str
             (row.client_id, row.period_start, row.period_end)
             for row in (await db.execute(select(WeeklyDigest.client_id, WeeklyDigest.period_start, WeeklyDigest.period_end).where(coverage))).all()
         }
+        monthly_ids = [client_id for client_id, _, cadence in pairs if cadence == "monthly"]
+        if monthly_ids:
+            month_start, month_end = periods["monthly"]
+            for client_id, version_id in (await _local_reports(db, monthly_ids, month_start, month_end)).items():
+                local_clients.add(client_id)
+                if version_id is not None:
+                    matching_digests.add((client_id, month_start, month_end))
 
     conditions: dict[str, Condition] = {}
     monthly_pending: set[int] = set()
@@ -299,13 +348,16 @@ async def collect_report_conditions(db, user_id: int, now: datetime) -> dict[str
             continue
         if cadence == "monthly":
             monthly_pending.add(client_id)
-        what = "el informe mensual" if cadence == "monthly" else "el seguimiento semanal"
+        local = cadence == "monthly" and client_id in local_clients
+        what = ("el informe SEO local" if local else "el informe mensual") if cadence == "monthly" else "el seguimiento semanal"
         key = f"report_pending:client:{client_id}:{cadence}:{start.isoformat()}:{end.isoformat()}"
+        href = (f"/clients/{client_id}?tab=informe_local" if local else
+                f"/digests?client_id={client_id}&period_start={start.isoformat()}&period_end={end.isoformat()}")
         conditions[key] = Condition(
             key=key, kind="report_pending", entity_id=client_id, entity_type="client", entity_key=str(client_id),
             title=f"Resumen pendiente: {name}"[:255],
             message=f"Falta preparar {what} del {start:%d/%m/%Y} al {end:%d/%m/%Y}.",
-            href=f"/digests?client_id={client_id}&period_start={start.isoformat()}&period_end={end.isoformat()}", fingerprint=_fingerprint(key),
+            href=href, fingerprint=_fingerprint(key),
         )
 
     # Sólo un pendiente MENSUAL tapa el aviso de mensual sin entregar: el
@@ -374,13 +426,21 @@ async def _collect_unsent_monthly(db, user_id: int, today, *, skip_clients: set[
         .order_by(WeeklyDigest.created_at, WeeklyDigest.id)
     )).all():
         latest[version.client_id] = version.id
+    local = await _local_reports(db, [row.id for row in rows], start, end)
 
     month = format_month(start)
     conditions: dict[str, Condition] = {}
     for row in rows:
         key = _unsent_key(row.id, start, end)
         digest_id = latest.get(row.id)
-        if digest_id is None:
+        if digest_id is None and row.id in local:
+            href = f"/clients/{row.id}?tab=informe_local"
+            if local[row.id] is None:
+                message = f"Falta preparar y entregar el informe SEO local de {month}."
+            else:
+                message = (f"El informe SEO local de {month} está preparado (versión #{local[row.id]}), "
+                           "pero nadie lo ha marcado como entregado.")
+        elif digest_id is None:
             message = f"Falta preparar y entregar el resumen de {month}."
             href = f"/digests?client_id={row.id}&period_start={start.isoformat()}&period_end={end.isoformat()}"
         else:
