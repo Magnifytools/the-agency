@@ -551,7 +551,8 @@ admin_users, admin_settings
   inbox, search, projects, users, auth/me, dailys + reparse + send-discord,
   clients/{id}/status (incluidos sus bloques `uptime` y `web_changes`),
   digests + external-delivery-events, web/uptime, clients/{id}/web/uptime-targets,
-  web/changes, suggestions, clients/{id}/gsc/properties + gsc/query), revisa
+  web/changes, suggestions, clients/{id}/gsc/properties + gsc/query,
+  clients/{id}/ga4/properties + ga4/query), revisa
   `mcp-server/agency_mcp/server.py` y `format.py`.
 - **Search Console en vivo** (`gsc_query`, `gsc_properties`, sólo lectura): ver
   "Search Console en vivo (MCP)". Es lo único de Search Console que el MCP saca
@@ -686,6 +687,71 @@ admin_users, admin_settings
   `/privacidad` (28 oct 2026). La guardia `test_el_detalle_de_search_console_no_llega_a_la_ia`
   cubre también `gsc_live.py` y `client_gsc.py`: si un día leen lo guardado, falla.
   Tests: `tests/test_gsc_live.py` y los `gsc_*` de `mcp-server/tests/test_server.py`.
+
+## Google Analytics en vivo (MCP e informe SEO local)
+- Gemelo de "Search Console en vivo": `services/ga4_live.py` →
+  `api/routes/client_ga4.py`: `GET /api/clients/{id}/ga4/properties` y
+  `POST /api/clients/{id}/ga4/query` (Data API `runReport`, totales con
+  `metricAggregations: TOTAL`, filtros equals/contains/regex y sus negados en
+  AND, `limit`/`offset`). Sólo la propiedad de `Client.ga4_property_id`, con la
+  cuenta conectada que la ve; lectura de `clients`, `ga4_live_limiter` 60/min.
+  No lee `ga4_daily` ni nada guardado y no guarda nada. MCP: `ga4_query` y
+  `ga4_properties` (READ). Tests: `tests/test_ga4_live.py`.
+
+## Informe mensual SEO local (Cigarral de Caravantes, 30 oct 2026)
+- **Qué es**: el informe HTML (con el PDF incrustado) + PDF de la plantilla
+  aprobada por el cliente, generado desde The Agency. Pestaña "Informe SEO
+  local" en Resultados de la ficha (sólo con `gsc_url`). Permisos: los de
+  `digests` (leer / escribir). Encargo y referencia en
+  `tasks/current/2026-10-30-informe-mensual-seo-local/`.
+- **Plantilla** = carpeta de `backend/report_templates/<nombre>/`: `generar.py`
+  (Jinja2 + Chromium vía Playwright, SIN tocar su diseño; sólo se le añadió red
+  cortada y `CHROMIUM_PATH`), `informe.html.j2`, `estilos.css`, logo, `config.json`
+  (valores de partida de la configuración), `roadmap.json`, `redaccion.md` y
+  `textos_guia.json` (reglas y guía para la IA) y `tono_referencia.json`.
+  Chromium: `/usr/bin/chromium` en la imagen (Dockerfile) o el de Playwright en
+  local. **Excepción consciente a "sin Playwright"** de Webs: aquí se pinta
+  HTML propio sin red, no URLs de clientes.
+- **Tablas** (migración `local_reports_v1`): `client_local_report_configs`
+  (plantilla, página principal, proyecto del plan, `settings` y `roadmap`),
+  `client_local_reports` (versiones: `datos` = contrato `datos.json` de la
+  plantilla, `roadmap`, `inputs` manuales, avisos, comprobaciones, estado de la
+  IA, HTML/PDF, entrega) y `client_local_report_sources` (CSV de la ficha y del
+  rastreo, capturas, tal cual). Una versión ABIERTA por cliente y periodo
+  (índice parcial); entregada se congela y "Nueva versión" la copia con sus
+  fuentes. Fuera del Deshacer.
+- **Cálculo** (`services/local_report/`): `periods` (mes natural → mes anterior
+  y año anterior; mes en curso desde el día 1 → mismos días; rango libre →
+  mismos días justo antes), `gsc` (EN VIVO con `gsc_live.query`: serie de 15
+  meses completos, totales, trimestre, marca/genéricas sin repartir lo que
+  Google oculta, histórico de 16 meses = hoy − 486 días, grupos y top 10 de
+  páginas de toda la web; `null` si la página es un documento subido después),
+  `ga4` (en vivo, canales en español), `plan` (tareas `E<n> - <nombre>` del
+  cliente; completada después de la fecha del informe = prevista; las que no
+  están en The Agency no se tocan y se avisa), `sources` (CSV de la ficha y de
+  Screaming Frog) y `build` (todo junto; recalcular conserva textos).
+  Comprobado en vivo con octubre de 2026 (404/5.817, 306/319, 203/17, 1.230) y
+  septiembre (356/6.562).
+- **IA** (`ai.py`): borrador de las lecturas, los 29 textos, modo/nota, filas
+  técnicas y motivos de espera, en segundo plano (`ai_status`; ~1 min; se da
+  por fallido pasados `TIMEOUT_SECONDS` + 2 min). Recibe las cifras YA
+  calculadas del informe (agregados en vivo), nunca lo guardado de Search
+  Console: `test_el_detalle_de_search_console_no_llega_a_la_ia` mira también
+  las subcarpetas de `services/`. Lo dice `/privacidad` (30 oct 2026).
+  Ojo: la respuesta trae un bloque `thinking` antes del texto.
+- **Comprobaciones al generar** (`render.check`): clics = total de Search
+  Console, 11 secciones, 8 iconos, PDF incrustado = suelto y textos sin
+  "simulado/ejemplo/ficticio/de muestra/dato real", comillas angulares ni guion
+  largo ("se muestra" vale). Sin comprobaciones no se marca como entregado.
+- `editorial.nota_final` del contrato antiguo no lo pinta la v6: ni se edita
+  ni se pide a la IA.
+- **Importar un informe hecho fuera**: `python -m backend.scripts.import_local_report
+  --client-id 28 --start 2026-10-01 --end 2026-10-26 --dir <carpeta> --delivered-on
+  2026-10-30 --dry-run` (crea la configuración si falta; idempotente).
+- Tests: `tests/test_local_report.py` (regenera octubre y compara el HTML con
+  el entregado), `tests/integration/test_local_reports.py` y `_schema.py`.
+- **Pendiente**: que la entrega del informe cuente para `report_unsent` / "Para
+  entregar" (hoy sólo cuentan los resúmenes).
 
 ## Control SEO por cliente
 
@@ -1537,4 +1603,4 @@ cd mcp-server && .venv/bin/python -m pytest -q
 
 ---
 
-*Actualizado: 27 Oct 2026*
+*Actualizado: 30 Oct 2026*

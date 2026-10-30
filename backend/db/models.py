@@ -21,10 +21,10 @@ from sqlalchemy import (
     LargeBinary,
     UniqueConstraint,
     func,
-    literal_column, Sequence, REAL, BigInteger,
+    literal_column, Sequence, REAL, BigInteger, text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import DeclarativeBase, deferred, relationship
 
 
 """SQLAlchemy ORM models for The Agency.
@@ -2706,3 +2706,104 @@ class TaskPublishCheck(Base):
 
 Index("ix_task_publish_checks_pending", TaskPublishCheck.next_attempt_at,
       postgresql_where=TaskPublishCheck.status == "pending")
+
+
+# ═══════════════════════════════════════════════════════════════
+# INFORME MENSUAL SEO LOCAL (services/local_report/, migración local_reports_v1)
+# ═══════════════════════════════════════════════════════════════
+
+
+class ClientLocalReportConfig(Base):
+    """Configuración del informe SEO local de un cliente.
+
+    ``template`` es una carpeta de ``backend/report_templates/`` (plantilla,
+    estilos, logo y valores de partida). ``settings``: familias de consultas
+    de grupos, nombres de páginas, clasificación de la ficha, datos del
+    cliente para la portada y punto de partida técnico. ``roadmap``: el plan
+    por meses (nombre interno y texto para el cliente de cada tarea); el
+    estado lo ponen las tareas ``E<n> - <nombre>`` del cliente.
+    """
+    __tablename__ = "client_local_report_configs"
+    __table_args__ = (
+        CheckConstraint("landing_url ~ '^https?://'", name="ck_local_report_configs_landing"),
+    )
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    template = Column(String(40), nullable=False)
+    landing_url = Column(Text, nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    settings = Column(JSONB, nullable=False)
+    roadmap = Column(JSONB, nullable=False)
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ClientLocalReport(Base):
+    """Una versión del informe de un periodo: datos, textos, plan y archivos.
+
+    Mientras no se entrega se recalcula y se regenera sobre la misma fila (una
+    abierta por cliente y periodo); entregada queda tal cual y un cambio crea
+    otra versión. ``datos`` es el contrato de la plantilla (``datos.json``),
+    así un mes pasado se rehace sin volver a pedir nada.
+    """
+    __tablename__ = "client_local_reports"
+    __table_args__ = (
+        CheckConstraint("period_start <= period_end", name="ck_local_reports_period"),
+        CheckConstraint("ai_status IS NULL OR ai_status IN ('running','done','failed')",
+                        name="ck_local_reports_ai_status"),
+        CheckConstraint("(html IS NULL) = (pdf IS NULL)", name="ck_local_reports_files"),
+        CheckConstraint("delivered_at IS NULL OR generated_at IS NOT NULL", name="ck_local_reports_delivered"),
+        Index("ix_local_reports_client_period", "client_id", "period_start"),
+        Index("uq_local_reports_open_period", "client_id", "period_start", "period_end", unique=True,
+              postgresql_where=text("delivered_at IS NULL")),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    datos = Column(JSONB, nullable=False)
+    roadmap = Column(JSONB, nullable=False)
+    inputs = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    warnings = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    checks = Column(JSONB, nullable=True)
+    computed_at = Column(DateTime(timezone=True), nullable=True)
+    ai_status = Column(String(12), nullable=True)
+    ai_started_at = Column(DateTime(timezone=True), nullable=True)
+    ai_error = Column(Text, nullable=True)
+    ai_drafted_at = Column(DateTime(timezone=True), nullable=True)
+    file_stem = Column(String(120), nullable=True)
+    html = deferred(Column(LargeBinary, nullable=True))
+    pdf = deferred(Column(LargeBinary, nullable=True))
+    generated_at = Column(DateTime(timezone=True), nullable=True)
+    generated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ClientLocalReportSource(Base):
+    """Lo que subió el equipo para una versión: CSV de la ficha (periodo, anterior
+    y año anterior), CSV del rastreo y capturas. Se guarda tal cual."""
+    __tablename__ = "client_local_report_sources"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('gbp_actual','gbp_anterior','gbp_ano_anterior','rastreo','captura','otro')",
+            name="ck_local_report_sources_kind",
+        ),
+        CheckConstraint("size > 0 AND size <= 10485760", name="ck_local_report_sources_size"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("client_local_reports.id", ondelete="CASCADE"), nullable=False,
+                       index=True)
+    kind = Column(String(20), nullable=False)
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(100), nullable=False)
+    content = deferred(Column(LargeBinary, nullable=False))
+    size = Column(Integer, nullable=False)
+    uploaded_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

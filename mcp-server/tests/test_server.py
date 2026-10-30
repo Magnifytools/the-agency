@@ -899,3 +899,121 @@ async def test_gsc_son_de_lectura(agency):
         tools = {t.name: t for t in (await client.list_tools()).tools}
     for name in ("gsc_query", "gsc_properties"):
         assert tools[name].annotations.read_only_hint is True
+
+
+# ── GA4 en vivo ───────────────────────────────────────────────────────
+
+GA4_RESULT = {
+    "property_id": "345678901", "start_date": "2026-09-01", "end_date": "2026-09-30",
+    "dimensions": ["sessionDefaultChannelGroup"], "metrics": ["sessions", "engagementRate"],
+    "rows": [{"keys": {"sessionDefaultChannelGroup": "Organic Search"},
+              "metrics": {"sessions": 812, "engagementRate": 0.6231527093596059}},
+             {"keys": {"sessionDefaultChannelGroup": "Direct"}, "metrics": {"sessions": 240, "engagementRate": 0.5}}],
+    "totals": {"sessions": 1090, "engagementRate": 0.6},
+    "row_count": 2, "total_rows": 3, "has_more": True, "next_offset": 2,
+    "data_available_until": "2026-10-25",
+}
+
+
+async def test_ga4_query_manda_los_parametros_y_devuelve_tabla(fake, agency):
+    fake.route("POST", "/api/clients/28/ga4/query", GA4_RESULT)
+
+    is_error, text = await call(agency, "ga4_query", {
+        "client_id": 28, "start_date": "2026-09-01", "end_date": "2026-09-30",
+        "dimensions": ["sessionDefaultChannelGroup"], "metrics": ["sessions", "engagementRate"], "limit": 2,
+        "filters": [{"dimension": "sessionSourceMedium", "operator": "notEquals", "expression": "(direct) / (none)"}],
+    })
+
+    assert not is_error, text
+    sent = json.loads(fake.last("POST", "/api/clients/28/ga4/query").content)
+    assert sent == {
+        "start_date": "2026-09-01", "end_date": "2026-09-30", "dimensions": ["sessionDefaultChannelGroup"],
+        "metrics": ["sessions", "engagementRate"],
+        "filters": [{"dimension": "sessionSourceMedium", "operator": "notEquals", "expression": "(direct) / (none)"}],
+        "limit": 2, "offset": 0,
+    }
+    lines = text.splitlines()
+    header = lines.index("sessionDefaultChannelGroup\tsessions\tengagementRate")
+    assert lines[header + 1] == "Organic Search\t812\t0.6231527093596059"
+    assert lines[header + 2] == "Direct\t240\t0.5"
+    assert "totals (GA4, del mismo informe y filtros): sessions 1090 · engagementRate 0.6" in text
+    assert "property_id: 345678901" in text and "data_available_until: 2026-10-25" in text
+    assert "row_count: 2 · total_rows: 3 · has_more: true · next_offset: 2" in text
+
+
+async def test_ga4_query_sin_filas_lo_dice(fake, agency):
+    fake.route("POST", "/api/clients/28/ga4/query", {
+        **GA4_RESULT, "dimensions": [], "metrics": ["sessions"], "rows": [], "totals": {"sessions": 0},
+        "row_count": 0, "total_rows": 0, "has_more": False, "next_offset": None})
+
+    _, text = await call(agency, "ga4_query", {"client_id": 28, "start_date": "2026-09-01",
+                                               "end_date": "2026-09-30", "metrics": ["sessions"], "offset": 5})
+
+    sent = json.loads(fake.last("POST", "/api/clients/28/ga4/query").content)
+    assert (sent["dimensions"], sent["filters"], sent["offset"]) == ([], [], 5)
+    assert "(ninguna fila para ese periodo y filtros)" in text
+    assert "has_more: false · next_offset: -" in text
+
+
+@pytest.mark.parametrize("args, message", [
+    ({"dimensions": ["date", "country", "city", "eventName", "pagePath", "landingPage"]}, "dimensions"),
+    ({"dimensions": ["date", "date"]}, "Cada dimensión o métrica sólo puede ir una vez"),
+    ({"metrics": ["sessions", "sessions"]}, "Cada dimensión o métrica sólo puede ir una vez"),
+    ({"metrics": []}, "metrics"),
+    ({"metrics": ["bounceRate"]}, "metrics"),
+    ({"filters": [{"dimension": "country", "operator": "startsWith", "expression": "S"}]}, "filters"),
+    ({"limit": 100001}, "limit"),
+    ({"start_date": "2026-02-30"}, "Fecha no válida"),
+])
+async def test_ga4_query_valida_antes_de_llamar(fake, agency, args, message):
+    is_error, text = await call(agency, "ga4_query", {
+        "client_id": 28, "start_date": "2026-09-01", "end_date": "2026-09-30", "metrics": ["sessions"], **args})
+
+    assert is_error and message in text
+    assert not [r for r in fake.requests if r.url.path.endswith("/ga4/query")]
+
+
+@pytest.mark.parametrize("status, detail", [
+    (409, {"code": "no_property", "message": "El cliente #28 Cigarral no tiene propiedad de GA4"}),
+    (403, {"code": "missing_scope", "message": "La cuenta de Google que ve la propiedad no tiene el permiso de Analytics"}),
+    (422, {"code": "invalid_query", "message": "GA4 rechaza la consulta: Field xyz is not a valid dimension"}),
+    (403, "Sin acceso de lectura al módulo: clients. Pide a un administrador que te dé acceso."),
+])
+async def test_ga4_query_errores_claros(fake, agency, status, detail):
+    fake.route("POST", "/api/clients/28/ga4/query", httpx.Response(status, json={"detail": detail}))
+
+    is_error, text = await call(agency, "ga4_query", {"client_id": 28, "start_date": "2025-01-01",
+                                                      "end_date": "2025-01-31", "metrics": ["sessions"]})
+
+    assert is_error
+    assert (detail["message"] if isinstance(detail, dict) else detail) in text
+
+
+async def test_ga4_properties(fake, agency):
+    fake.route("GET", "/api/clients/28/ga4/properties", {
+        "client_id": 28, "client_name": "Cigarral de Caravantes", "property_id": "345678901",
+        "account": None, "data_available_until": None, "error": "missing_scope",
+        "reconnect_required": ["digital@magnify.ing"], "missing_scope": ["seo@bisiesto.es"]})
+
+    is_error, text = await call(agency, "ga4_properties", {"client_id": 28})
+
+    assert not is_error, text
+    assert text.startswith("Propiedad de GA4 del cliente #28 Cigarral de Caravantes: 345678901 · cuenta: -")
+    assert "(la cuenta no tiene aún el permiso de Analytics" in text
+    assert "Cuentas sin el permiso de Analytics (reconectar en Ajustes → Search Console): seo@bisiesto.es" in text
+    assert "necesitan reconectarse (Ajustes → Search Console): digital@magnify.ing" in text
+
+    fake.route("GET", "/api/clients/28/ga4/properties", {
+        "client_id": 28, "client_name": "Cigarral de Caravantes", "property_id": "345678901",
+        "account": "seo@bisiesto.es", "data_available_until": "2026-10-25", "error": None,
+        "reconnect_required": [], "missing_scope": []})
+    _, text = await call(agency, "ga4_properties", {"client_id": 28})
+    assert text == ("Propiedad de GA4 del cliente #28 Cigarral de Caravantes: 345678901"
+                    " · cuenta: seo@bisiesto.es · data_available_until: 2026-10-25")
+
+
+async def test_ga4_son_de_lectura(agency):
+    async with Client(build_server(agency)) as client:
+        tools = {t.name: t for t in (await client.list_tools()).tools}
+    for name in ("ga4_query", "ga4_properties"):
+        assert tools[name].annotations.read_only_hint is True

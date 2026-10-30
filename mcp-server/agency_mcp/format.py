@@ -395,3 +395,53 @@ def gsc_properties(r: dict[str, Any]) -> str:
         out.append("Cuentas de Google que necesitan reconectarse (Ajustes → Search Console): "
                    + ", ".join(r["reconnect_required"]))
     return "\n".join(out)
+
+
+def ga4_query(r: dict[str, Any]) -> str:
+    """Respuesta de /ga4/query -> cabecera, totales y filas en tabla separada por tabuladores."""
+    metrics = r.get("metrics") or []
+    totals = r.get("totals") or {}
+    out = [
+        f"property_id: {r['property_id']}",
+        f"start_date: {r['start_date']} · end_date: {r['end_date']} (inclusivos)",
+        f"data_available_until: {r.get('data_available_until') or 'sin datos en los últimos días'}",
+        "totals (GA4, del mismo informe y filtros): "
+        + " · ".join(f"{m} {_cell(totals.get(m)) or '-'}" for m in metrics),
+        f"row_count: {r['row_count']} · total_rows: {r.get('total_rows')} · has_more: {str(r['has_more']).lower()}"
+        f" · next_offset: {r['next_offset'] if r.get('next_offset') is not None else '-'}",
+        "",
+    ]
+    dims = r.get("dimensions") or []
+    if not r.get("rows"):
+        out.append("(ninguna fila para ese periodo y filtros)")
+        return "\n".join(out)
+    out.append("\t".join([*dims, *metrics]))
+    for row in r["rows"]:
+        keys, values = row.get("keys") or {}, row.get("metrics") or {}
+        out.append("\t".join([*(_cell(keys.get(d)) for d in dims), *(_cell(values.get(m)) for m in metrics)]))
+    return "\n".join(out)
+
+
+GA4_PROPERTY_ERROR = {
+    "no_access": "ninguna cuenta conectada la ve",
+    "missing_scope": "la cuenta no tiene aún el permiso de Analytics: un admin la reconecta en Ajustes → Search Console",
+    "reconnect_required": "la cuenta que la ve necesita reconectarse",
+    "rate_limited": "Google limita las consultas ahora mismo",
+    "google_error": "Google no respondió bien",
+}
+
+
+def ga4_properties(r: dict[str, Any]) -> str:
+    line = (f"Propiedad de GA4 del cliente #{r['client_id']} {r.get('client_name')}: {r['property_id']}"
+            f" · cuenta: {r.get('account') or '-'}"
+            f" · data_available_until: {r.get('data_available_until') or '-'}")
+    if r.get("error"):
+        line += f" ({GA4_PROPERTY_ERROR.get(r['error'], r['error'])})"
+    out = [line]
+    if r.get("missing_scope"):
+        out.append("Cuentas sin el permiso de Analytics (reconectar en Ajustes → Search Console): "
+                   + ", ".join(r["missing_scope"]))
+    if r.get("reconnect_required"):
+        out.append("Cuentas de Google que necesitan reconectarse (Ajustes → Search Console): "
+                   + ", ".join(r["reconnect_required"]))
+    return "\n".join(out)

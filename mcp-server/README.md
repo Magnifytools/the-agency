@@ -29,6 +29,8 @@ No tiene herramientas de borrado. Lo destructivo se hace en la web.
 | `web_status` | Webs de un cliente: si responden (estado, % de 24 h y 30 días, caídas recientes) y cambios sin revisar por severidad con los últimos críticos/avisos y su enlace. Sin cliente: webs caídas o bloqueadas ahora y clientes con cambios críticos sin revisar |
 | `gsc_properties` | Propiedades de Search Console de un cliente: la principal y las de su dominio que vea una cuenta conectada, con tipo, permiso y último día con datos. Sólo lectura |
 | `gsc_query` | Search Console en vivo (`searchanalytics.query`) para cualquier periodo de los 16 meses: filas por fecha, consulta, página, país, dispositivo o aparición (tabla separada por tabuladores), con filtros, paginación y los totales de Google del mismo filtro (incluyen lo anonimizado). Sólo lectura |
+| `ga4_properties` | Propiedad de GA4 de un cliente, qué cuenta conectada la ve y último día con datos; si nadie la ve, por qué (sin acceso, sin permiso de Analytics, reconectar). Sólo lectura |
+| `ga4_query` | GA4 en vivo (`runReport` de la Data API) para cualquier periodo: sesiones, usuarios, eventos clave, páginas vistas y engagement por canal, landing, fuente/medio, campaña, dispositivo, país, ciudad o evento (tabla separada por tabuladores), con filtros AND, paginación (`offset`) y los totales que calcula GA4 para el mismo informe. Sólo lectura |
 | `create_task` | Crea una tarea (si no dices a quién, te la asigna a ti) |
 | `update_task` | Cambia estado, prioridad, fechas, responsable, espera… |
 | `comment_task` | Comenta una tarea |
@@ -42,9 +44,11 @@ No tiene herramientas de borrado. Lo destructivo se hace en la web.
 `client_overview` omite lo que tu usuario no puede leer (tareas, resúmenes,
 horas, web) en vez de fallar. `web_status` necesita lectura del módulo Webs
 (`web`); sin ella lo dice en vez de dar un 403. No enseña nada de Search Console
-ni de GA4. `gsc_query` y `gsc_properties` necesitan lectura de clientes y
-preguntan a Google en el momento (nada se guarda); los números salen sin
-redondear y el CTR en decimal (0.047). `send_daily_to_discord` sólo envía dailys propios,
+ni de GA4: para eso están `gsc_*` y `ga4_*`. `gsc_query`, `gsc_properties`,
+`ga4_query` y `ga4_properties` necesitan lectura de clientes, son de sólo
+lectura y preguntan a Google en el momento (nada se guarda ni se lee de lo
+importado); los números salen sin redondear y el CTR y el `engagementRate` en
+decimal (0.047). En `ga4_query`, `regex` casa con el valor entero. `send_daily_to_discord` sólo envía dailys propios,
 también si eres admin, y manda la revisión leída: si alguien lo edita entre
 medias, el backend lo rechaza.
 

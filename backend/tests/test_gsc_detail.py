@@ -215,8 +215,12 @@ def _ai_paths() -> list[Path]:
     # Search Console en vivo para el MCP: pregunta a Google, nunca lee lo guardado.
     paths.add(services / "gsc_live.py")
     paths.add(ROOT / "backend" / "api" / "routes" / "client_gsc.py")
-    # Cualquier servicio que llame a Claude.
-    paths |= {p for p in services.glob("*.py") if "ai_utils" in p.read_text(encoding="utf-8")}
+    # GA4 en vivo para el MCP: también pregunta a Google y nunca lee lo guardado.
+    paths.add(services / "ga4_live.py")
+    paths.add(ROOT / "backend" / "api" / "routes" / "client_ga4.py")
+    # Cualquier servicio que llame a Claude, también en subcarpetas (el
+    # borrador del informe SEO local está en `services/local_report/ai.py`).
+    paths |= {p for p in services.rglob("*.py") if "ai_utils" in p.read_text(encoding="utf-8")}
     paths |= set((ROOT / "mcp-server" / "agency_mcp").rglob("*.py"))
     return sorted(paths)
 
@@ -247,6 +251,16 @@ def test_el_detalle_de_search_console_no_llega_a_la_ia():
     assert ROOT / "backend" / "services" / "digest_generator.py" in paths
     assert any("mcp-server" in str(p) for p in paths)
     assert ROOT / "backend" / "services" / "gsc_live.py" in paths
+    assert ROOT / "backend" / "services" / "local_report" / "ai.py" in paths
+    assert ROOT / "backend" / "services" / "ga4_live.py" in paths
     offenders = [str(p.relative_to(ROOT)) for p in paths
                  if p.exists() and _FORBIDDEN.search(p.read_text(encoding="utf-8"))]
     assert offenders == []
+
+
+def test_ga4_en_vivo_no_lee_lo_importado():
+    # Lo guardado de GA4 (totales diarios, estado de la importación) se pinta con
+    # código en la ficha y los resúmenes; el MCP sólo recibe lo que dice Google.
+    stored = re.compile(r"Ga4Daily|ga4_daily|Ga4PropertySync|ga4_property_sync|month_summary|ga4_service\.windows")
+    for path in (ROOT / "backend" / "services" / "ga4_live.py", ROOT / "backend" / "api" / "routes" / "client_ga4.py"):
+        assert not stored.search(path.read_text(encoding="utf-8")), path.name

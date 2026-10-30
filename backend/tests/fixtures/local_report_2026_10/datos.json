@@ -1,0 +1,435 @@
+{
+  "cliente": {
+    "nombre": "Cigarral de Caravantes",
+    "negocio": "Restaurante Cigarral de Caravantes",
+    "ciudad": "Toledo",
+    "web": "https://cigarraldecaravantes.com/",
+    "landing": "/restaurante/"
+  },
+  "informe": {
+    "mes_datos": "2026-10",
+    "fecha_documento": "28 de octubre de 2026",
+    "mes_roadmap_preferido": "2026-10",
+    "modo": "Datos del 1 al 26 de octubre de 2026 (mes en curso)",
+    "nota": "Octubre aún no ha terminado: las cifras de la web llegan hasta el 26 de octubre, último día con datos cerrados en Google, y se comparan con los mismos días de septiembre de 2026 y de octubre de 2025. Los gráficos mensuales muestran solo meses completos, hasta septiembre.",
+    "es_demo": false
+  },
+  "gsc": {
+    "mes": "2026-10",
+    "clics_mes": 404,
+    "clics_mes_anterior": 306,
+    "clics_mismo_mes_ano_anterior": 319,
+    "clics_trimestre_actual": 1152,
+    "clics_trimestre_anterior": 853,
+    "meses_serie": [
+      {
+        "mes": "2025-07",
+        "clics": 305,
+        "impresiones": 9338
+      },
+      {
+        "mes": "2025-08",
+        "clics": 279,
+        "impresiones": 9676
+      },
+      {
+        "mes": "2025-09",
+        "clics": 255,
+        "impresiones": 8963
+      },
+      {
+        "mes": "2025-10",
+        "clics": 398,
+        "impresiones": 8823
+      },
+      {
+        "mes": "2025-11",
+        "clics": 353,
+        "impresiones": 7880
+      },
+      {
+        "mes": "2025-12",
+        "clics": 326,
+        "impresiones": 7872
+      },
+      {
+        "mes": "2026-01",
+        "clics": 218,
+        "impresiones": 4685
+      },
+      {
+        "mes": "2026-02",
+        "clics": 221,
+        "impresiones": 4362
+      },
+      {
+        "mes": "2026-03",
+        "clics": 204,
+        "impresiones": 4646
+      },
+      {
+        "mes": "2026-04",
+        "clics": 345,
+        "impresiones": 5559
+      },
+      {
+        "mes": "2026-05",
+        "clics": 366,
+        "impresiones": 6172
+      },
+      {
+        "mes": "2026-06",
+        "clics": 379,
+        "impresiones": 6040
+      },
+      {
+        "mes": "2026-07",
+        "clics": 382,
+        "impresiones": 5812
+      },
+      {
+        "mes": "2026-08",
+        "clics": 392,
+        "impresiones": 6577
+      },
+      {
+        "mes": "2026-09",
+        "clics": 356,
+        "impresiones": 6562
+      }
+    ],
+    "periodo_consultas": "29 jun 2025 - 26 oct 2026 (16 meses)",
+    "clics_totales_landing": 5197,
+    "consultas_visibles_clics": 3308,
+    "marca_visibles_clics": 3155,
+    "no_marca_visibles_clics": 153,
+    "ocultos_clics": 1889,
+    "impresiones_totales_landing": 109252,
+    "serie_mensual_por_intencion": null,
+    "impresiones_mes": 5817,
+    "impresiones_mes_anterior": 5732,
+    "impresiones_mismo_mes_ano_anterior": 7492,
+    "intencion_mensual": {
+      "mes_actual": "2026-10",
+      "mes_anterior": "2026-09",
+      "filas": [
+        {
+          "tipo": "Marca",
+          "clics": 203,
+          "prev_clics": 164,
+          "impresiones": 3059,
+          "prev_impresiones": 2829
+        },
+        {
+          "tipo": "Genéricas y sin marca",
+          "clics": 17,
+          "prev_clics": 15,
+          "impresiones": 480,
+          "prev_impresiones": 581
+        }
+      ]
+    },
+    "paginas": [
+      {
+        "nombre": "Inicio",
+        "ruta": "/",
+        "clics": 461,
+        "clics_anterior": 484,
+        "clics_ano_anterior": 550
+      },
+      {
+        "nombre": "Restaurante",
+        "ruta": "/restaurante/",
+        "clics": 404,
+        "clics_anterior": 306,
+        "clics_ano_anterior": 319
+      },
+      {
+        "nombre": "Bodas, bautizos y comuniones",
+        "ruta": "/bodas-y-eventos/bodas-bautizos-comuniones/",
+        "clics": 84,
+        "clics_anterior": 36,
+        "clics_ano_anterior": 114
+      },
+      {
+        "nombre": "Terraza-bar",
+        "ruta": "/terraza-bar/",
+        "clics": 64,
+        "clics_anterior": 51,
+        "clics_ano_anterior": 0
+      },
+      {
+        "nombre": "Bodas y eventos",
+        "ruta": "/bodas-y-eventos/",
+        "clics": 44,
+        "clics_anterior": 26,
+        "clics_ano_anterior": 16
+      },
+      {
+        "nombre": "Artículo: terraza-bar en Toledo",
+        "ruta": "/terraza-bar-en-toledo-un-sitio-donde-tomar-algo-tranquilo-en-cigarral-de-caravantes/",
+        "clics": 26,
+        "clics_anterior": 28,
+        "clics_ano_anterior": 0
+      },
+      {
+        "nombre": "Carta del restaurante (PDF, abril 2026)",
+        "ruta": "/wp-content/uploads/2026/04/Carta-restaurante_abr26_Cigarral-ESP-1.pdf",
+        "clics": 25,
+        "clics_anterior": 27,
+        "clics_ano_anterior": null
+      },
+      {
+        "nombre": "Cenas de Navidad en Toledo",
+        "ruta": "/cenas-de-navidad-en-toledo/",
+        "clics": 23,
+        "clics_anterior": 5,
+        "clics_ano_anterior": 0
+      },
+      {
+        "nombre": "Menú degustación",
+        "ruta": "/menu-degustacion-toledo/",
+        "clics": 21,
+        "clics_anterior": 2,
+        "clics_ano_anterior": 0
+      },
+      {
+        "nombre": "Comidas de Navidad en Toledo",
+        "ruta": "/comidas-de-navidad-en-toledo/",
+        "clics": 20,
+        "clics_anterior": 1,
+        "clics_ano_anterior": 0
+      }
+    ],
+    "paginas_totales": {
+      "actual": 1230,
+      "anterior": 1031,
+      "ano_anterior": 1185
+    }
+  },
+  "grupos": {
+    "periodo": "29 jun 2025 - 26 oct 2026, acumulado",
+    "consultas": [
+      {
+        "q": "restaurante para eventos toledo",
+        "intencion": "Eventos y grupos",
+        "imp_actual": 0,
+        "clics_actual": 0,
+        "imp_anterior": 1,
+        "imp": 241,
+        "clics": 0,
+        "pos": 19.18
+      },
+      {
+        "q": "restaurante para eventos y celebraciones en toledo",
+        "intencion": "Eventos y grupos",
+        "imp_actual": 0,
+        "clics_actual": 0,
+        "imp_anterior": 4,
+        "imp": 10,
+        "clics": 0,
+        "pos": 18.4
+      },
+      {
+        "q": "comuniones en toledo",
+        "intencion": "Celebraciones",
+        "imp_actual": 19,
+        "clics_actual": 6,
+        "imp_anterior": 10,
+        "imp": 35,
+        "clics": 6,
+        "pos": 10.8
+      },
+      {
+        "q": "menú comuniones 2026 toledo",
+        "intencion": "Celebraciones",
+        "imp_actual": 6,
+        "clics_actual": 1,
+        "imp_anterior": 0,
+        "imp": 10,
+        "clics": 1,
+        "pos": 3.3
+      },
+      {
+        "q": "restaurante toledo con vistas",
+        "intencion": "Restaurante con vistas",
+        "imp_actual": 1,
+        "clics_actual": 0,
+        "imp_anterior": 0,
+        "imp": 38,
+        "clics": 0,
+        "pos": 24.55
+      },
+      {
+        "q": "restaurante los cigarrales toledo",
+        "intencion": "Entorno y restaurante",
+        "imp_actual": 20,
+        "clics_actual": 1,
+        "imp_anterior": 24,
+        "imp": 411,
+        "clics": 14,
+        "pos": 7.58
+      },
+      {
+        "q": "cigarrales toledo restaurante",
+        "intencion": "Entorno y restaurante",
+        "imp_actual": 0,
+        "clics_actual": 0,
+        "imp_anterior": 4,
+        "imp": 65,
+        "clics": 1,
+        "pos": 5.55
+      }
+    ],
+    "origen_contactos": [
+      "Teléfono, a menudo a través de la recepción del hotel y derivación a eventos",
+      "Formulario de bodas, bautizos y comuniones",
+      "Formulario de eventos corporativos"
+    ],
+    "url_celebraciones": "https://cigarraldecaravantes.com/bodas-y-eventos/bodas-bautizos-comuniones/",
+    "url_empresa": "https://cigarraldecaravantes.com/eventos-corporativos/",
+    "solicitudes_confirmadas": null,
+    "resumen_mensual": {
+      "impresiones": 29,
+      "impresiones_mes_anterior": 15,
+      "clics": 7
+    }
+  },
+  "google": {
+    "periodo": "1 al 25 de octubre de 2026",
+    "vistas_perfil": 2628,
+    "interacciones": 493,
+    "clics_llamada": 64,
+    "indicaciones": 268,
+    "clics_web": 137,
+    "acciones_reserva": 9,
+    "clics_carta": 15,
+    "busquedas_que_mostraron_ficha": "Pendiente",
+    "consultas": [
+      {
+        "q": "Búsquedas de octubre",
+        "apariciones": "Pendiente",
+        "tipo": "Google las publica a principios de noviembre"
+      }
+    ],
+    "comparativa_mensual": {
+      "periodo_anterior": "1 al 25 de septiembre de 2026",
+      "vistas_perfil": 3580,
+      "interacciones": 443,
+      "clics_llamada": 39,
+      "indicaciones": 201,
+      "clics_web": 155,
+      "acciones_reserva": 6,
+      "clics_carta": 42,
+      "vistas_por_superficie": {
+        "actual": {
+          "busqueda_movil": 284,
+          "busqueda_ordenador": 92,
+          "maps_movil": 2226,
+          "maps_ordenador": 26
+        },
+        "anterior": {
+          "busqueda_movil": 1309,
+          "busqueda_ordenador": 288,
+          "maps_movil": 1945,
+          "maps_ordenador": 38
+        }
+      },
+      "interanual": "No facilitado (exportación del 1 al 25 de octubre de 2025 pendiente)"
+    }
+  },
+  "tecnico": {
+    "fecha_ultimo_crawl": "28 de octubre de 2026",
+    "enlaces_redirigen": 2,
+    "origenes": 1,
+    "recurrentes": 0,
+    "estado_correccion": "Comprobado en el rastreo del 28 de octubre: quedan 2 de 205",
+    "mes_actual": "2026-10",
+    "filas_rastreo": [
+      {
+        "titulo": "2 enlaces a páginas que redirigen (205 en el estudio inicial)",
+        "detalle": "Quedan en la paginación de la categoría de ocio del blog, desde una sola página. La navegación principal ya no pasa por pasos innecesarios.",
+        "estado": "Casi resuelto",
+        "siguiente": "Corregir los 2 enlaces cuando se revise el blog."
+      },
+      {
+        "titulo": "168 enlaces repetidos en navegación",
+        "detalle": "Estaban en cabecera, menú móvil y pie de página, y obligaban a dar un paso de más en casi todas las páginas.",
+        "estado": "Resuelto",
+        "siguiente": "Comprobado en el rastreo del 28 de octubre. Sin acción pendiente."
+      }
+    ],
+    "otros": [
+      {
+        "titulo": "Información del restaurante en Google",
+        "detalle": "Horarios y categoría de la ficha, a la espera de la confirmación del restaurante.",
+        "estado": "En espera",
+        "siguiente": "Actualizar la ficha en cuanto el restaurante confirme los datos."
+      },
+      {
+        "titulo": "Información estructurada del restaurante",
+        "detalle": "Completar datos de contacto, ubicación y horarios confirmados en la página del restaurante.",
+        "estado": "Previsto en noviembre",
+        "siguiente": "Implementar y validar con las herramientas de Google."
+      },
+      {
+        "titulo": "Cartas antiguas visibles en buscadores",
+        "detalle": "Comprobar visitas recientes y equivalencia antes de sustituir o redirigir documentos.",
+        "estado": "Previsto en noviembre",
+        "siguiente": "Revisar qué cartas siguen recibiendo visitas."
+      },
+      {
+        "titulo": "Páginas técnicas del sistema de reservas",
+        "detalle": "Revisar las cinco direcciones detectadas como potencialmente indexables.",
+        "estado": "Por verificar",
+        "siguiente": "Verificar la incidencia antes de intervenir."
+      }
+    ]
+  },
+  "editorial": {
+    "resumen": "Del 1 al 26 de octubre, la página del restaurante recibió 404 visitas desde Google, un 32 % más que en los mismos días de septiembre y un 27 % más que hace un año. Aparecemos algo menos que en 2025, pero quien nos ve entra más: la página ocupa mejores posiciones y consigue más clics por cada aparición. La mayoría de las visitas sigue llegando de quien ya conoce el nombre; el reto es que nos encuentre quien busca dónde comer o celebrar en Toledo. En la ficha de Google crecen las llamadas y las peticiones de cómo llegar, aunque baja el número de personas que la ven desde el buscador del móvil.",
+    "web": "Con 26 días, octubre ya supera a septiembre completo (404 clics frente a 356) y a octubre de 2025 en las mismas fechas (319). Desde agosto suman 1.152 clics, un 35 % más que en el mismo periodo del año pasado. Las impresiones, 5.817, son parecidas a las de septiembre y un 22 % inferiores a las de hace un año: la página aparece menos veces, pero en mejor posición (3,1 de media frente a 5,1) y con más clics por aparición (6,9 % frente a 4,3 %). Octubre suele ser un buen mes en Toledo por el turismo de otoño y el inicio de las comidas de empresa; noviembre y diciembre dirán si la tendencia se mantiene con la demanda de Navidad. Los cambios en el título y la descripción de la página se publicaron el 27 de octubre, así que todavía no influyen en estas cifras.",
+    "intencion": "De los 220 clics en los que Google identifica la búsqueda, 203 incluyen el nombre del restaurante (92 %) y 17 no lo incluyen (8 %). Los dos grupos crecen frente a septiembre: un 24 % las búsquedas por el nombre y un 13 % las demás. Entre las búsquedas sin la marca predominan variantes cercanas al nombre, como \"restaurante el cigarral Toledo\", y aparece \"comuniones en Toledo\". Las búsquedas de quien todavía no nos conoce, como restaurantes con vistas o para eventos, apenas generan visitas: es donde el trabajo de los próximos meses tiene que notarse.",
+    "grupos": "Las búsquedas sobre celebraciones despiertan en octubre: \"comuniones en Toledo\" pasa de 10 a 19 apariciones y deja 6 visitas, y aparece \"menú comuniones 2026 Toledo\". Es el momento en que muchas familias empiezan a buscar sitio para las comuniones de primavera, por lo que conviene que la oferta de celebraciones esté bien enlazada desde la página del restaurante. \"Restaurante para eventos Toledo\", con buen volumen a lo largo del año, no ha mostrado la página este mes, y las búsquedas de restaurantes con vistas siguen lejos de las primeras posiciones. Son cifras pequeñas: las leemos como señales de interés, no como solicitudes.",
+    "maps": "Del 1 al 25 de octubre, 2.628 personas vieron la ficha, frente a 3.580 en los mismos días de septiembre. La bajada se concentra en el buscador de Google desde el móvil (de 1.309 a 284), mientras que en Google Maps desde el móvil sube (de 1.945 a 2.226). Aun así, crecen las acciones con más intención: 64 pulsaciones para llamar (39 en septiembre) y 268 peticiones de cómo llegar (201). Bajan los clics a la web (137 frente a 155) y a la carta (15 frente a 42). En noviembre veremos si la bajada en el buscador del móvil se mantiene; actualizar horarios y categoría, en cuanto el restaurante los confirme, es la mejora más directa a nuestro alcance.",
+    "negocio": "El interés por celebraciones crece en octubre: las búsquedas sobre eventos, comuniones, bodas o empresas sin el nombre del restaurante suman 29 apariciones y 7 visitas, frente a 15 apariciones y ninguna visita en septiembre, y casi todo procede de las comuniones. La ficha de Google suma más llamadas y más peticiones de cómo llegar, aunque esas acciones no permiten saber cuántas corresponden a grupos ni cuántas acaban en reserva. En noviembre y diciembre esperamos más búsquedas de comidas y cenas de empresa y de Navidad; en primavera, de comuniones y celebraciones.",
+    "tecnico": "El rastreo del 28 de octubre confirma la corrección de los enlaces que pasaban por una redirección: de 205 en el estudio inicial quedan 2, y han desaparecido los 168 que se repetían en cabecera, menú y pie de página. Los 2 restantes están en la paginación de una categoría del blog y tienen poca importancia. Quedan pendientes la información estructurada del restaurante y la revisión de cartas antiguas, previstas para noviembre.",
+    "prioridades": [],
+    "nota_final": "Este informe recoge octubre hasta el día 26 (hasta el 25 en la ficha de Google). Las tareas publicadas el 27 de octubre empezarán a reflejarse en los datos de noviembre.",
+    "paginas": "Del 1 al 26 de octubre, toda la web recibió 1.230 visitas desde Google, un 19 % más que en los mismos días de septiembre y un 4 % más que hace un año. La página del restaurante es ya casi tan visitada como la de inicio (404 frente a 461) y es la que más crece frente al año pasado. Destaca el despegue de las páginas de Navidad: \"Cenas de Navidad en Toledo\" pasa de 5 a 23 visitas y \"Comidas de Navidad en Toledo\", de 1 a 20, señal de que la demanda de comidas y cenas de empresa empieza en octubre. La página de bodas, bautizos y comuniones duplica las visitas de septiembre (84 frente a 36), aunque sigue por debajo de octubre de 2025 (114), cuando además se consultaba mucho el dossier de comuniones en PDF."
+  },
+  "textos": {
+    "resumen_fuente_cola": "Octubre está incompleto: la web se compara con los mismos días de septiembre de 2026 y de octubre de 2025.",
+    "aviso_etiqueta": "Mes en curso:",
+    "impresiones_grafico_nota": "Meses completos, de julio de 2025 a septiembre de 2026",
+    "reparto_nota": "Porcentajes calculados sobre los 220 clics de búsquedas que Google identifica, del 1 al 26 de octubre. Los 184 clics restantes corresponden a búsquedas que Google no muestra y no se asignan a ningún grupo.",
+    "intencion_nota": "Clics del 1 al 26 de octubre frente al 1 al 26 de septiembre de 2026, solo de búsquedas que Google identifica.",
+    "grupos_nota_etiqueta": "Cómo leer la tabla:",
+    "grupos_nota": "impresiones de la página del restaurante del 1 al 26 de septiembre y del 1 al 26 de octubre de 2026. Son cifras pequeñas: una variación grande puede deberse a muy pocas búsquedas.",
+    "ficha_nota": "Del 1 al 25 de octubre de 2026. Son acciones de la ficha, no contactos atendidos ni reservas confirmadas.",
+    "grupos_acumulado_nota": "Search Console · datos acumulados del 29 de junio de 2025 al 26 de octubre de 2026. El seguimiento mensual se muestra con detalle en \"Grupos y celebraciones\".",
+    "ficha_grupos_nota": "Ficha del restaurante · del 1 al 25 de octubre de 2026. Google publica las búsquedas que mostraron la ficha a principios del mes siguiente. Son cifras generales de la ficha, no acciones identificadas como consultas de grupos.",
+    "plan_nota": "Estados según el registro de trabajo del equipo a 28 de octubre de 2026. Las mejoras técnicas solo se dan por comprobadas tras un nuevo rastreo.",
+    "fuentes_resumen": "Todas las cifras de este informe son reales. Indicamos el periodo de cada una, porque octubre aún no ha terminado.",
+    "fuentes_gsc": "clics e impresiones de la página /restaurante/ del 1 al 26 de octubre de 2026, comparados con los mismos días de septiembre de 2026 y de octubre de 2025. Los gráficos mensuales recogen meses completos, de julio de 2025 a septiembre de 2026.",
+    "fuentes_marca": "consideramos búsquedas de marca las que contienen \"Caravantes\" o \"Carabante\". Google identifica la búsqueda en 220 de los 404 clics de octubre, y los porcentajes se calculan solo sobre esos 220.",
+    "fuentes_grupos": "consultas sobre eventos, celebraciones, vistas y los cigarrales en la página del restaurante. La tarjeta de grupos suma todas las búsquedas sin el nombre del restaurante sobre eventos, celebraciones, comuniones, bodas, empresas o Navidad.",
+    "fuentes_ficha": "exportación de la ficha del restaurante en Google del 1 al 25 de octubre de 2026, comparada con el 1 al 25 de septiembre. Las búsquedas que mostraron la ficha en octubre aún no están disponibles: Google las publica a principios del mes siguiente.",
+    "fuentes_trabajo": "estado de las tareas según el registro interno del equipo. Rastreo técnico de la web del 28 de octubre de 2026, comparado con el del estudio inicial.",
+    "ficha_resumen_cola": "Son acciones de la ficha, no reservas confirmadas.",
+    "ficha_vistas_pie": "1 al 25 de octubre · 3.580 en septiembre",
+    "web_clics_pie": "frente a octubre de 2025 (1 al 26)",
+    "web_impresiones_pie": "frente a octubre de 2025 (1 al 26)",
+    "clics_grafico_nota": "Meses completos, de julio de 2025 a septiembre de 2026",
+    "web_nota": "Clics: personas que acceden a la página del restaurante desde los resultados de Google. Impresiones: veces que la página aparece en resultados, aunque nadie haga clic. Octubre (1 al 26) aún no aparece en los gráficos porque el mes no ha terminado.",
+    "paginas_nota": "Clics desde Google a cada página de toda la web, del 1 al 26 de octubre de 2026, frente a los mismos días de septiembre de 2026 y de octubre de 2025. \"Nueva\": la página no tuvo visitas desde Google el año anterior; en blanco, la página aún no existía.",
+    "ga_pendiente_etiqueta": "Pendiente:",
+    "ga_nota": "estas tablas se completarán cuando tengamos acceso a Google Analytics de la web.",
+    "ga_periodos": "Se compararán con el mes anterior y con el mismo mes del año anterior.",
+    "fuentes_paginas": "clics desde Google a cada página de toda la web, del 1 al 26 de octubre de 2026, comparados con los mismos días de septiembre de 2026 y de octubre de 2025.",
+    "fuentes_ga": "adquisición de tráfico (sesiones por canal) y de usuarios (usuarios nuevos por canal). Pendiente de acceso a Google Analytics."
+  },
+  "ga4": {
+    "disponible": false
+  }
+}
