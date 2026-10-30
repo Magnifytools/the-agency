@@ -17,13 +17,13 @@
 - [x] 8. `scripts/import_local_report.py` (octubre como versión entregada).
 - [x] 9. CLAUDE.md, /privacidad (+ test), README del MCP (subagente).
 
-## Para producción (a mano, una vez)
-1. Desplegar (Dockerfile instala chromium: comprobar que el build de Railway pasa).
-2. `python -m backend.scripts.import_local_report --client-id 28 --start 2026-10-01
-   --end 2026-10-26 --dir <referencia_octubre_2026> --project-id 18 --delivered-on 2026-10-30`
-   (antes con `--dry-run`).
+## Producción
+1. HECHO 30 oct 2026: PR #222 mergeado (18500a6), desplegado con `local_reports_v1`.
+2. HECHO: octubre importado (versión #2, entregada, comprobaciones OK, HTML idéntico
+   al entregado, 5 fuentes). Configuración: plantilla cigarral, proyecto #18.
 3. Cigarral no tiene propiedad de GA4: ponerla en Ajustes del cliente cuando haya acceso.
 
-## Pendiente (siguiente paso propuesto)
-- Que la entrega del informe SEO local cuente para `report_unsent` / "Para entregar".
+## Hecho después
+- La entrega del informe SEO local cuenta como informe mensual (aviso, pendiente,
+  cartera, dashboard y "Para entregar"). Cigarral con la política mensual encendida.
 - `editorial.nota_final` no lo pinta la plantilla v6: se dejó fuera del editor y de la IA.

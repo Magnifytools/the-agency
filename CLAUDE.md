@@ -750,8 +750,17 @@ admin_users, admin_settings
   2026-10-30 --dry-run` (crea la configuración si falta; idempotente).
 - Tests: `tests/test_local_report.py` (regenera octubre y compara el HTML con
   el entregado), `tests/integration/test_local_reports.py` y `_schema.py`.
-- **Pendiente**: que la entrega del informe cuente para `report_unsent` / "Para
-  entregar" (hoy sólo cuentan los resúmenes).
+- **Hace de informe mensual** (30 oct 2026): con la política mensual encendida,
+  el informe SEO local del mes (el del mes en que EMPIEZA: octubre iba del 1 al
+  26) cuenta como el resumen. Entregado = `delivered_at`
+  (`local_report_clause` en `incident_report_conditions.py`, dentro de
+  `delivery_confirmed_clause`): lo leen `report_unsent`, `report_pending` (una
+  versión cualquiera ya es "preparado"), la fila "Operación", el estado del
+  cliente (cubre el mes entero; "listo para entregar", hasta su `period_end`) y
+  "Para entregar" (`local_report` en `generation-preview`, motivo `local_report`:
+  no se genera resumen mensual de ese cliente; "Preparar"/"Abrir" llevan a la
+  pestaña). Avisos con enlace a `?tab=informe_local`. Tests:
+  `tests/integration/test_local_report_monthly_delivery.py`.
 
 ## Control SEO por cliente
 

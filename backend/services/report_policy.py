@@ -5,6 +5,8 @@ from sqlalchemy import and_, func, or_, select
 
 from backend.db.models import (
     Client,
+    ClientLocalReport,
+    ClientLocalReportConfig,
     ClientReportPolicy,
     ClientStatus,
     Delivery,
@@ -19,6 +21,7 @@ from backend.schemas.digest import (
     ExternalDeliverySummary,
     GenerationPreviewItem,
     InternalDistributionSummary,
+    LocalReportSummary,
     ReportPolicyResponse,
 )
 from backend.services.digest_access import permission_exists, user_has_digest_permission
@@ -192,6 +195,9 @@ async def preview_items(db, rows) -> list[GenerationPreviewItem]:
                 .where(confirmed_versions.c.confirmed_rank == 1)
             )).all()}
 
+    local_by_client = await _local_reports(
+        db, [client.id for client, _, cadence in entries if cadence == "monthly"], periods.get("monthly"),
+    )
     items = []
     for client, policy, cadence in entries:
         period = periods.get(cadence) if cadence else None
@@ -200,11 +206,41 @@ async def preview_items(db, rows) -> list[GenerationPreviewItem]:
             client, policy, cadence, period,
             responsible_by_id.get(policy.responsible_user_id) if policy else None,
             latest_by_period.get(key), internal_by_digest, external_by_period.get(key),
+            local_by_client.get(client.id) if cadence == "monthly" else None,
         ))
     return items
 
 
-def _preview_item(client, policy, cadence, period, responsible, latest, internal_by_digest, external):
+async def _local_reports(db, client_ids: list[int], month) -> dict[int, LocalReportSummary]:
+    """Clientes con informe SEO local: su versión del mes (la entregada, si hay; si no,
+    la última). Es del mes en que empieza, como en ``report_unsent``."""
+    if not client_ids or month is None:
+        return {}
+    month_start, month_end = month
+    ranked = select(
+        ClientLocalReport.client_id, ClientLocalReport.id, ClientLocalReport.delivered_at,
+        ClientLocalReport.delivered_by,
+        func.row_number().over(
+            partition_by=ClientLocalReport.client_id,
+            order_by=(ClientLocalReport.delivered_at.is_(None), ClientLocalReport.id.desc()),
+        ).label("rank"),
+    ).where(
+        ClientLocalReport.client_id.in_(client_ids),
+        ClientLocalReport.period_start.between(month_start, month_end),
+    ).subquery()
+    rows = (await db.execute(
+        select(ClientLocalReportConfig.client_id, ranked.c.id, ranked.c.delivered_at, User.full_name)
+        .outerjoin(ranked, and_(ranked.c.client_id == ClientLocalReportConfig.client_id, ranked.c.rank == 1))
+        .outerjoin(User, User.id == ranked.c.delivered_by)
+        .where(ClientLocalReportConfig.client_id.in_(client_ids))
+    )).all()
+    return {row.client_id: LocalReportSummary(
+        report_id=row.id, delivered_at=row.delivered_at,
+        delivered_by_name=row.full_name if row.delivered_at else None,
+    ) for row in rows}
+
+
+def _preview_item(client, policy, cadence, period, responsible, latest, internal_by_digest, external, local=None):
     period_start, period_end = period or (None, None)
     responsible_ok = bool(responsible and responsible.can_prepare)
     internal = internal_by_digest.get(latest.id, InternalDistributionSummary()) if latest else InternalDistributionSummary()
@@ -220,6 +256,9 @@ def _preview_item(client, policy, cadence, period, responsible, latest, internal
         reason = "policy_disabled"
     elif not responsible_ok:
         reason = "responsible_unavailable"
+    elif local is not None:
+        # El mes lo cubre el informe SEO local (su pestaña), no un resumen.
+        reason = "local_report"
     elif latest:
         reason = "already_exists"
     else:
@@ -231,6 +270,9 @@ def _preview_item(client, policy, cadence, period, responsible, latest, internal
         state = "disabled"
     elif not responsible_ok:
         state = "blocked_responsible"
+    elif local is not None:
+        state = ("local_delivered" if local.delivered_at else
+                 "local_prepared" if local.report_id else "local_missing")
     elif latest is None:
         state = "missing"
     elif external.state == "confirmed" and external.digest_id != latest.id:
@@ -263,4 +305,5 @@ def _preview_item(client, policy, cadence, period, responsible, latest, internal
         ),
         internal_distribution=internal,
         external_delivery=external,
+        local_report=local,
     )
