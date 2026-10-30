@@ -1,0 +1,82 @@
+{
+  "version": "20261030_local_reports_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS client_local_report_configs (\n client_id INTEGER PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,\n template VARCHAR(40) NOT NULL,\n landing_url TEXT NOT NULL,\n project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,\n settings JSONB NOT NULL,\n roadmap JSONB NOT NULL,\n updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT ck_local_report_configs_landing CHECK (landing_url ~ '^https?://')\n)",
+    "CREATE TABLE IF NOT EXISTS client_local_reports (\n id SERIAL PRIMARY KEY,\n client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,\n period_start DATE NOT NULL,\n period_end DATE NOT NULL,\n datos JSONB NOT NULL,\n roadmap JSONB NOT NULL,\n inputs JSONB NOT NULL DEFAULT '{}'::jsonb,\n warnings JSONB NOT NULL DEFAULT '[]'::jsonb,\n checks JSONB,\n computed_at TIMESTAMPTZ,\n ai_status VARCHAR(12),\n ai_started_at TIMESTAMPTZ,\n ai_error TEXT,\n ai_drafted_at TIMESTAMPTZ,\n file_stem VARCHAR(120),\n html BYTEA,\n pdf BYTEA,\n generated_at TIMESTAMPTZ,\n generated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n delivered_at TIMESTAMPTZ,\n delivered_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT ck_local_reports_period CHECK (period_start <= period_end),\n CONSTRAINT ck_local_reports_ai_status CHECK (ai_status IS NULL OR ai_status IN ('running','done','failed')),\n CONSTRAINT ck_local_reports_files CHECK ((html IS NULL) = (pdf IS NULL)),\n CONSTRAINT ck_local_reports_delivered CHECK (delivered_at IS NULL OR generated_at IS NOT NULL)\n)",
+    "CREATE INDEX IF NOT EXISTS ix_local_reports_client_period ON client_local_reports (client_id, period_start DESC)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_local_reports_open_period ON client_local_reports (client_id, period_start, period_end) WHERE delivered_at IS NULL",
+    "CREATE TABLE IF NOT EXISTS client_local_report_sources (\n id SERIAL PRIMARY KEY,\n report_id INTEGER NOT NULL REFERENCES client_local_reports(id) ON DELETE CASCADE,\n kind VARCHAR(20) NOT NULL,\n filename VARCHAR(255) NOT NULL,\n content_type VARCHAR(100) NOT NULL,\n content BYTEA NOT NULL,\n size INTEGER NOT NULL,\n uploaded_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT ck_local_report_sources_kind CHECK (kind IN ('gbp_actual','gbp_anterior','gbp_ano_anterior','rastreo','captura','otro')),\n CONSTRAINT ck_local_report_sources_size CHECK (size > 0 AND size <= 10485760)\n)",
+    "CREATE INDEX IF NOT EXISTS ix_local_report_sources_report ON client_local_report_sources (report_id)"
+  ],
+  "columns": {
+    "client_local_report_configs": {
+      "client_id": ["int4", false, null],
+      "template": ["varchar", false, 40],
+      "landing_url": ["text", false, null],
+      "project_id": ["int4", true, null],
+      "settings": ["jsonb", false, null],
+      "roadmap": ["jsonb", false, null],
+      "updated_by": ["int4", true, null],
+      "created_at": ["timestamptz", false, null],
+      "updated_at": ["timestamptz", false, null]
+    },
+    "client_local_reports": {
+      "id": ["int4", false, null],
+      "client_id": ["int4", false, null],
+      "period_start": ["date", false, null],
+      "period_end": ["date", false, null],
+      "datos": ["jsonb", false, null],
+      "roadmap": ["jsonb", false, null],
+      "inputs": ["jsonb", false, null],
+      "warnings": ["jsonb", false, null],
+      "checks": ["jsonb", true, null],
+      "computed_at": ["timestamptz", true, null],
+      "ai_status": ["varchar", true, 12],
+      "ai_started_at": ["timestamptz", true, null],
+      "ai_error": ["text", true, null],
+      "ai_drafted_at": ["timestamptz", true, null],
+      "file_stem": ["varchar", true, 120],
+      "html": ["bytea", true, null],
+      "pdf": ["bytea", true, null],
+      "generated_at": ["timestamptz", true, null],
+      "generated_by": ["int4", true, null],
+      "delivered_at": ["timestamptz", true, null],
+      "delivered_by": ["int4", true, null],
+      "created_by": ["int4", true, null],
+      "created_at": ["timestamptz", false, null],
+      "updated_at": ["timestamptz", false, null]
+    },
+    "client_local_report_sources": {
+      "id": ["int4", false, null],
+      "report_id": ["int4", false, null],
+      "kind": ["varchar", false, 20],
+      "filename": ["varchar", false, 255],
+      "content_type": ["varchar", false, 100],
+      "content": ["bytea", false, null],
+      "size": ["int4", false, null],
+      "uploaded_by": ["int4", true, null],
+      "created_at": ["timestamptz", false, null]
+    }
+  },
+  "primary_keys": {
+    "client_local_report_configs": ["client_id"],
+    "client_local_reports": ["id"],
+    "client_local_report_sources": ["id"]
+  },
+  "foreign_keys": [
+    {"table": "client_local_report_configs", "column": "client_id", "references": "clients", "on_delete": "c"},
+    {"table": "client_local_report_configs", "column": "project_id", "references": "projects", "on_delete": "n"},
+    {"table": "client_local_report_configs", "column": "updated_by", "references": "users", "on_delete": "n"},
+    {"table": "client_local_reports", "column": "client_id", "references": "clients", "on_delete": "c"},
+    {"table": "client_local_reports", "column": "generated_by", "references": "users", "on_delete": "n"},
+    {"table": "client_local_reports", "column": "delivered_by", "references": "users", "on_delete": "n"},
+    {"table": "client_local_reports", "column": "created_by", "references": "users", "on_delete": "n"},
+    {"table": "client_local_report_sources", "column": "report_id", "references": "client_local_reports", "on_delete": "c"},
+    {"table": "client_local_report_sources", "column": "uploaded_by", "references": "users", "on_delete": "n"}
+  ],
+  "check_constraints": {
+    "client_local_report_configs": ["ck_local_report_configs_landing"],
+    "client_local_reports": ["ck_local_reports_ai_status", "ck_local_reports_delivered", "ck_local_reports_files", "ck_local_reports_period"],
+    "client_local_report_sources": ["ck_local_report_sources_kind", "ck_local_report_sources_size"]
+  }
+}

@@ -1,0 +1,339 @@
+{
+  "periodo": "octubre 2026 - marzo 2027",
+  "meses": {
+    "2026-10": {
+      "titulo": "GBP, landing y enlaces internos a 301",
+      "tareas": [
+        {
+          "id": "2026-10-01",
+          "nombre": "Optimización GBP",
+          "detalle": "Corregir categoría, horarios, dirección y atributos del restaurante cuando estén validados; no modificar el perfil del hotel.",
+          "estado": "bloqueado",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Datos del restaurante en Google",
+          "detalle_publico": "Confirmar y actualizar, cuando el negocio lo valide, categoría, horarios, dirección e información de la ficha del restaurante.",
+          "motivo": "Pendiente de que el restaurante confirme los horarios y la categoría de la ficha."
+        },
+        {
+          "id": "2026-10-02",
+          "nombre": "Redirecciones internas",
+          "detalle": "Actualizar enlaces recurrentes de cabecera, menú móvil y footer para apuntar a las URLs definitivas. Objetivo: resolver los 168 enlaces repetidos, si proceden de componentes comunes.",
+          "estado": "hecho",
+          "resultado": null,
+          "evidencia": "The Agency #1192, completada el 27 de octubre de 2026",
+          "nombre_publico": "Corregir enlaces repetidos",
+          "detalle_publico": "Actualizar los enlaces de cabecera, menú móvil y pie de página que pasan innecesariamente por otra dirección, si se editan desde elementos compartidos."
+        },
+        {
+          "id": "2026-10-03",
+          "nombre": "SEO on-page",
+          "detalle": "Optimizar title y metadescripción de /restaurante/ a partir de las consultas de GSC.",
+          "estado": "hecho",
+          "resultado": null,
+          "evidencia": "The Agency #1193, completada el 27 de octubre de 2026",
+          "nombre_publico": "Mejorar cómo aparece la página en Google",
+          "detalle_publico": "Ajustar el título y la descripción que Google puede mostrar para la página del restaurante."
+        },
+        {
+          "id": "2026-10-04",
+          "nombre": "Presentación del restaurante",
+          "detalle": "Incorporar al párrafo introductorio existente una referencia natural a la atención de clientes no alojados, sin nueva sección.",
+          "estado": "hecho",
+          "resultado": null,
+          "evidencia": "The Agency #1194, completada el 27 de octubre de 2026",
+          "nombre_publico": "Dejar claro que el restaurante recibe público externo",
+          "detalle_publico": "Introducir una frase natural en el texto existente para transmitir que no es necesario alojarse en el hotel."
+        },
+        {
+          "id": "2026-10-05",
+          "nombre": "Enlaces y reservas",
+          "detalle": "Verificar los enlaces de carta y reservas y añadir parámetros UTM al enlace web de la ficha GBP.",
+          "estado": "hecho",
+          "resultado": null,
+          "evidencia": "The Agency #1195, completada el 27 de octubre de 2026",
+          "nombre_publico": "Comprobar carta y vías de reserva",
+          "detalle_publico": "Verificar accesos a la carta y al sistema de reservas, y preparar una mejor medición del enlace desde Google."
+        },
+        {
+          "id": "2026-10-06",
+          "nombre": "Validación",
+          "detalle": "Comprobar cambios publicados y repetir una verificación selectiva de los enlaces 301 corregidos.",
+          "estado": "bloqueado",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Comprobar los cambios",
+          "detalle_publico": "Revisar lo publicado y verificar los enlaces corregidos.",
+          "motivo": "Pendiente de comprobar que las visitas desde la ficha de Google se registran correctamente en la analítica de la web."
+        }
+      ],
+      "comentario": null,
+      "titulo_publico": "Ficha de Google, página del restaurante y enlaces"
+    },
+    "2026-11": {
+      "titulo": "Identidad estructurada y cartas indexadas",
+      "tareas": [
+        {
+          "id": "2026-11-01",
+          "nombre": "Schema Restaurant",
+          "detalle": "Revisar, implementar y validar Restaurant con NAP, coordenadas y horarios confirmados.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Completar información del restaurante para Google",
+          "detalle_publico": "Revisar y añadir datos correctos de contacto, ubicación y horarios al contenido técnico de la página."
+        },
+        {
+          "id": "2026-11-02",
+          "nombre": "PDFs históricos",
+          "detalle": "Identificar cartas antiguas que siguen captando clics y decidir equivalentes válidos.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Comprobar cartas antiguas",
+          "detalle_publico": "Identificar documentos antiguos que aún aparecen en buscadores y compararlos con las versiones vigentes."
+        },
+        {
+          "id": "2026-11-03",
+          "nombre": "Actualización de documentos",
+          "detalle": "Corregir enlaces y aplicar redirecciones justificadas a versiones vigentes.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Actualizar enlaces a documentos",
+          "detalle_publico": "Corregir enlaces a cartas y redirigir versiones antiguas solo cuando exista un documento equivalente."
+        },
+        {
+          "id": "2026-11-04",
+          "nombre": "Validación",
+          "detalle": "Comprobar schema, URLs y redirecciones.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Comprobar los cambios",
+          "detalle_publico": "Verificar datos del restaurante, documentos y direcciones actualizadas."
+        }
+      ],
+      "comentario": null,
+      "titulo_publico": "Información del restaurante y cartas disponibles"
+    },
+    "2026-12": {
+      "titulo": "On-page y enlazado editorial",
+      "tareas": [
+        {
+          "id": "2026-12-01",
+          "nombre": "Encabezados",
+          "detalle": "Ajustar estructura H1/H2 de la landing sin nueva redacción extensa.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Ordenar los encabezados de la página",
+          "detalle_publico": "Mejorar la jerarquía de títulos del restaurante sin rehacer los textos ni el diseño."
+        },
+        {
+          "id": "2026-12-02",
+          "nombre": "Diferenciación",
+          "detalle": "Resolver title/meta duplicados entre restaurante y terraza-bar.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Diferenciar restaurante y terraza",
+          "detalle_publico": "Evitar que ambas páginas usen el mismo título y descripción en los resultados de Google."
+        },
+        {
+          "id": "2026-12-03",
+          "nombre": "Enlaces contextuales",
+          "detalle": "Añadir enlaces relevantes desde 2–3 contenidos hacia /restaurante/.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Acercar contenidos relacionados al restaurante",
+          "detalle_publico": "Añadir enlaces naturales desde dos o tres contenidos existentes hacia la página del restaurante."
+        },
+        {
+          "id": "2026-12-04",
+          "nombre": "Limpieza editorial",
+          "detalle": "Corregir repeticiones sencillas del contenido existente cuando no requieran maquetación.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Eliminar repeticiones sencillas",
+          "detalle_publico": "Corregir textos duplicados dentro de la página cuando pueda hacerse directamente en el editor."
+        },
+        {
+          "id": "2026-12-05",
+          "nombre": "Validación",
+          "detalle": "Revisión final de los cambios publicados.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Comprobar lo publicado",
+          "detalle_publico": "Revisar que los cambios hayan quedado aplicados."
+        }
+      ],
+      "comentario": null,
+      "titulo_publico": "Mejoras de la página y contenidos relacionados"
+    },
+    "2027-01": {
+      "titulo": "Arquitectura y contenidos relacionados",
+      "tareas": [
+        {
+          "id": "2027-01-01",
+          "nombre": "Solapamientos",
+          "detalle": "Contrastar /restaurante/ con dos artículos comerciales a partir de GSC.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Comprobar si hay contenidos que se solapan",
+          "detalle_publico": "Comparar la página del restaurante con dos artículos para ver si responden a búsquedas diferentes."
+        },
+        {
+          "id": "2027-01-02",
+          "nombre": "Ajustes en artículos",
+          "detalle": "Aplicar mejoras de metadatos y enlaces en hasta dos URLs.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Ajustar hasta dos artículos",
+          "detalle_publico": "Mejorar la presentación en Google y los enlaces de contenidos existentes cuando esté justificado."
+        },
+        {
+          "id": "2027-01-03",
+          "nombre": "Error 404",
+          "detalle": "Verificar y resolver enlaces hacia /tomar-algo-en-toledo/.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Resolver un enlace a una página inexistente",
+          "detalle_publico": "Comprobar los enlaces hacia una dirección antigua y actualizarlos o redirigirla cuando corresponda."
+        },
+        {
+          "id": "2027-01-04",
+          "nombre": "Anclas {title}",
+          "detalle": "Resolver el placeholder solo si el ajuste es sencillo en la plantilla.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Reparar textos de enlace incorrectos",
+          "detalle_publico": "Corregir palabras técnicas que aparecen donde debería mostrarse el texto de un enlace, si puede hacerse sin desarrollo complejo."
+        },
+        {
+          "id": "2027-01-05",
+          "nombre": "Validación",
+          "detalle": "Rastreo selectivo y cierre.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Validar el resultado",
+          "detalle_publico": "Comprobar los enlaces y las páginas intervenidas."
+        }
+      ],
+      "comentario": null,
+      "titulo_publico": "Revisión de contenidos y enlaces"
+    },
+    "2027-02": {
+      "titulo": "Quick wins técnicos y ficha local",
+      "tareas": [
+        {
+          "id": "2027-02-01",
+          "nombre": "Enlazado desde páginas comerciales",
+          "detalle": "Mejorar hasta tres enlaces existentes desde home, terraza u otras páginas comerciales hacia /restaurante/, sin crear bloques ni modificar el diseño.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Facilitar el acceso al restaurante desde otras páginas",
+          "detalle_publico": "Mejorar hasta tres enlaces desde páginas comerciales ya existentes, sin añadir nuevas secciones."
+        },
+        {
+          "id": "2027-02-02",
+          "nombre": "Imágenes y accesibilidad",
+          "detalle": "Alt descriptivos en las imágenes informativas prioritarias.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Describir imágenes importantes de la web",
+          "detalle_publico": "Añadir textos descriptivos a imágenes informativas de páginas prioritarias."
+        },
+        {
+          "id": "2027-02-03",
+          "nombre": "Coherencia local",
+          "detalle": "Verificar NAP y contacto en la landing del restaurante.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Revisar coherencia de contacto",
+          "detalle_publico": "Confirmar que dirección, teléfono e información del restaurante coinciden donde corresponde."
+        },
+        {
+          "id": "2027-02-04",
+          "nombre": "GBP",
+          "detalle": "Revisar modificaciones automáticas y atributos; corregir información obsoleta.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Mantener actualizada la ficha del restaurante",
+          "detalle_publico": "Revisar cambios propuestos por Google, horarios, categorías y atributos, validándolos con el negocio."
+        },
+        {
+          "id": "2027-02-05",
+          "nombre": "Validación",
+          "detalle": "Comprobar cambios.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Comprobar los cambios",
+          "detalle_publico": "Verificar las mejoras publicadas."
+        }
+      ],
+      "comentario": null,
+      "titulo_publico": "Enlaces comerciales y ficha de Google"
+    },
+    "2027-03": {
+      "titulo": "Visibilidad para grupos y celebraciones",
+      "tareas": [
+        {
+          "id": "2027-03-01",
+          "nombre": "On-page de una página existente",
+          "detalle": "Optimizar title/meta/H1 de una URL de grupos o celebraciones escogida con GSC.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Mejorar una página existente de grupos o celebraciones",
+          "detalle_publico": "Seleccionar la página más adecuada según las búsquedas y ajustar cómo se presenta en Google y sus títulos."
+        },
+        {
+          "id": "2027-03-02",
+          "nombre": "Enlaces comerciales",
+          "detalle": "Mejorar el enlazado contextual desde 3 o 4 páginas existentes relacionadas con grupos y celebraciones hacia /restaurante/ y su oferta vigente, sin añadir secciones nuevas.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Mejorar los caminos hacia las solicitudes de grupo",
+          "detalle_publico": "Reforzar enlaces desde tres o cuatro páginas existentes a la oferta real del restaurante y de los eventos."
+        },
+        {
+          "id": "2027-03-03",
+          "nombre": "Imágenes de la página",
+          "detalle": "Alt útiles en las imágenes informativas relevantes.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Describir imágenes relevantes",
+          "detalle_publico": "Añadir textos descriptivos a imágenes informativas de la página seleccionada."
+        },
+        {
+          "id": "2027-03-04",
+          "nombre": "Seguimiento y prioridades",
+          "detalle": "Revisar resultados brevemente y definir siguiente oportunidad.",
+          "estado": "previsto",
+          "resultado": null,
+          "evidencia": null,
+          "nombre_publico": "Revisar evolución y definir la siguiente prioridad",
+          "detalle_publico": "Contrastar resultados y decidir qué mejorar a continuación."
+        }
+      ],
+      "comentario": null,
+      "titulo_publico": "Grupos, eventos y celebraciones"
+    }
+  }
+}

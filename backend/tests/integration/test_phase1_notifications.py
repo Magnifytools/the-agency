@@ -276,8 +276,10 @@ async def test_recurrences_keep_project_and_pause_after_close(
         created_by=admin_user.id,
         assigned_to=admin_user.id,
         is_recurring=True,
-        recurrence_pattern="monthly",
-        recurrence_day=business_today().day,
+        # Semanal en el día laborable de hoy: la mensual con el día de hoy no
+        # vale los días 29-31 (sólo admite 1-28).
+        recurrence_pattern="weekly" if business_today().weekday() < 5 else "monthly",
+        recurrence_day=business_today().weekday() if business_today().weekday() < 5 else business_today().day,
     )
     db_session.add(template)
     await db_session.commit()

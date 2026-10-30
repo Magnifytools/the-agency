@@ -29,6 +29,16 @@ KEYCHAIN_SERVICE = "the-agency-mcp"
 GscDimension = Literal["date", "query", "page", "country", "device", "searchAppearance"]
 GscFilterDimension = Literal["query", "page", "country", "device", "searchAppearance"]
 GscOperator = Literal["equals", "notEquals", "contains", "notContains", "includingRegex", "excludingRegex"]
+Ga4Dimension = Literal[
+    "date", "sessionDefaultChannelGroup", "firstUserDefaultChannelGroup", "landingPage",
+    "landingPagePlusQueryString", "pagePath", "sessionSource", "sessionMedium", "sessionSourceMedium",
+    "sessionCampaignName", "deviceCategory", "country", "city", "eventName",
+]
+Ga4Metric = Literal[
+    "sessions", "engagedSessions", "keyEvents", "newUsers", "totalUsers", "activeUsers",
+    "screenPageViews", "engagementRate", "eventCount", "averageSessionDuration",
+]
+Ga4Operator = Literal["equals", "contains", "regex", "notEquals", "notContains", "notRegex"]
 TaskStatus = Literal["backlog", "pending", "in_progress", "waiting", "in_review", "advanced", "completed"]
 Priority = Literal["urgent", "high", "medium", "low"]
 ClearableField = Literal[
@@ -47,6 +57,8 @@ DAILY_AI_TIMEOUT = 90.0
 DRAFT_AI_TIMEOUT = 120.0
 # Search Console en vivo: tres llamadas a Google, con reintentos ante 429/5xx.
 GSC_TIMEOUT = 90.0
+# GA4 en vivo: dos llamadas a Google, con reintentos ante 429/5xx.
+GA4_TIMEOUT = 90.0
 
 INSTRUCTIONS = """\
 The Agency es la herramienta interna de gestión de la agencia (Magnify): clientes,
@@ -64,6 +76,13 @@ class GscFilter(BaseModel):
     operator: GscOperator
     expression: Annotated[str, Field(min_length=1, max_length=4096,
                                      description="Valor a comparar (URL completa para page, código ISO de 3 letras para country)")]
+
+
+class Ga4Filter(BaseModel):
+    dimension: Ga4Dimension
+    operator: Ga4Operator
+    expression: Annotated[str, Field(min_length=1, max_length=4096,
+                                     description="Valor a comparar. regex/notRegex casan con el valor ENTERO (usa .* delante y detrás para 'contiene')")]
 
 
 def _opt_date(value: str | None) -> str | None:
@@ -490,6 +509,52 @@ def build_server(client: AgencyClient, *, timezone: str = "Europe/Madrid") -> MC
         }
         result = await call(client.post(f"/api/clients/{client_id}/gsc/query", body, timeout=GSC_TIMEOUT))
         return fmt.gsc_query(result)
+
+    @mcp.tool(annotations=READ)
+    async def ga4_properties(client_id: int) -> str:
+        """Propiedad de GA4 de un cliente (Ajustes del cliente), qué cuenta de Google
+        conectada la ve y el último día con datos. Si ninguna la ve, dice por qué
+        (sin acceso, cuenta sin el permiso de Analytics o que necesita reconectarse).
+        Úsala para comprobar que se puede consultar antes de ga4_query."""
+        return fmt.ga4_properties(await call(
+            client.request("GET", f"/api/clients/{client_id}/ga4/properties", timeout=GA4_TIMEOUT)))
+
+    @mcp.tool(annotations=READ)
+    async def ga4_query(
+        client_id: int,
+        start_date: Annotated[str, Field(description="Primer día AAAA-MM-DD, incluido.")],
+        end_date: Annotated[str, Field(description="Último día AAAA-MM-DD, incluido (como mucho hoy).")],
+        metrics: Annotated[list[Ga4Metric], Field(min_length=1, max_length=10,
+                           description="De 1 a 10. engagementRate en decimal (0.62); averageSessionDuration en segundos.")],
+        dimensions: Annotated[list[Ga4Dimension] | None,
+                              Field(max_length=5, description="Hasta 5. Sin dimensiones, sólo totales.")] = None,
+        filters: Annotated[list[Ga4Filter] | None, Field(max_length=20,
+                           description="Se combinan con AND. Sobre cualquiera de las dimensiones admitidas, aunque no se pida.")] = None,
+        limit: Annotated[int, Field(ge=1, le=100000)] = 1000,
+        offset: Annotated[int, Field(ge=0, description="Para paginar: el next_offset de la respuesta anterior")] = 0,
+    ) -> str:
+        """GA4 de un cliente en vivo (runReport de la Data API de Google) para cualquier
+        periodo: sesiones, usuarios, eventos clave (conversiones), páginas vistas y
+        engagement por canal, landing, fuente/medio, campaña, dispositivo, país,
+        ciudad o evento, con filtros. Para el informe mensual: sesiones por
+        sessionDefaultChannelGroup, usuarios nuevos (newUsers) por
+        firstUserDefaultChannelGroup, keyEvents por landingPage; para comprobar el
+        UTM de Google Business Profile, sessionCampaignName o sessionSourceMedium
+        (p. ej. filtro contains "gbp" o equals "google / organic").
+        Devuelve las filas como tabla separada por tabuladores (por fecha si va date;
+        si no, por la primera métrica de mayor a menor) y los totales del mismo
+        informe calculados por GA4 (no la suma de filas). Números sin redondear.
+        Si has_more es true, repite con offset = next_offset."""
+        start, end = _opt_date(start_date), _opt_date(end_date)
+        dims, mets = list(dimensions or []), list(metrics)
+        if len(set(dims)) != len(dims) or len(set(mets)) != len(mets):
+            raise ToolError("Cada dimensión o métrica sólo puede ir una vez.")
+        body = {
+            "start_date": start, "end_date": end, "dimensions": dims, "metrics": mets,
+            "filters": [f.model_dump() for f in filters or []], "limit": limit, "offset": offset,
+        }
+        result = await call(client.post(f"/api/clients/{client_id}/ga4/query", body, timeout=GA4_TIMEOUT))
+        return fmt.ga4_query(result)
 
     # ── Escritura ────────────────────────────────────────────────────────
 

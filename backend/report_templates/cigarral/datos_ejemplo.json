@@ -1,0 +1,299 @@
+{
+  "cliente": {
+    "nombre": "Cigarral de Caravantes",
+    "negocio": "Restaurante Cigarral de Caravantes",
+    "ciudad": "Toledo",
+    "web": "https://cigarraldecaravantes.com/",
+    "landing": "/restaurante/"
+  },
+  "informe": {
+    "mes_datos": "2026-09",
+    "fecha_documento": "27 de octubre de 2026",
+    "mes_roadmap_preferido": null,
+    "modo": "EJEMPLO: DATOS MENSUALES SIMULADOS",
+    "nota": "Los clics mensuales y el histórico de la auditoría proceden del estudio original. Las impresiones repartidas por mes, los segmentos mensuales, las variaciones de consultas y los estados ilustrativos del plan son SIMULADOS exclusivamente para visualizar la plantilla. No acreditan resultados ni trabajos ejecutados.",
+    "es_demo": true
+  },
+  "gsc": {
+    "mes": "2026-09",
+    "clics_mes": 356,
+    "clics_mes_anterior": 392,
+    "clics_mismo_mes_ano_anterior": 255,
+    "clics_trimestre_actual": 1130,
+    "clics_trimestre_anterior": 839,
+    "meses_serie": [
+      {
+        "mes": "2025-07",
+        "clics": 305,
+        "impresiones": 9100
+      },
+      {
+        "mes": "2025-08",
+        "clics": 279,
+        "impresiones": 9400
+      },
+      {
+        "mes": "2025-09",
+        "clics": 255,
+        "impresiones": 9477
+      },
+      {
+        "mes": "2025-10",
+        "clics": 398,
+        "impresiones": 7900
+      },
+      {
+        "mes": "2025-11",
+        "clics": 353,
+        "impresiones": 7200
+      },
+      {
+        "mes": "2025-12",
+        "clics": 326,
+        "impresiones": 6750
+      },
+      {
+        "mes": "2026-01",
+        "clics": 218,
+        "impresiones": 6500
+      },
+      {
+        "mes": "2026-02",
+        "clics": 221,
+        "impresiones": 6130
+      },
+      {
+        "mes": "2026-03",
+        "clics": 204,
+        "impresiones": 5800
+      },
+      {
+        "mes": "2026-04",
+        "clics": 345,
+        "impresiones": 6210
+      },
+      {
+        "mes": "2026-05",
+        "clics": 366,
+        "impresiones": 6580
+      },
+      {
+        "mes": "2026-06",
+        "clics": 379,
+        "impresiones": 6690
+      },
+      {
+        "mes": "2026-07",
+        "clics": 382,
+        "impresiones": 6080
+      },
+      {
+        "mes": "2026-08",
+        "clics": 392,
+        "impresiones": 6510
+      },
+      {
+        "mes": "2026-09",
+        "clics": 356,
+        "impresiones": 6361
+      }
+    ],
+    "periodo_consultas": "21 jun 2025 - 20 oct 2026 (aprox. 16 meses)",
+    "clics_totales_landing": 5199,
+    "consultas_visibles_clics": 3321,
+    "marca_visibles_clics": 3192,
+    "no_marca_visibles_clics": 129,
+    "ocultos_clics": 1878,
+    "impresiones_totales_landing": 110610,
+    "serie_mensual_por_intencion": null,
+    "impresiones_mes": 6361,
+    "impresiones_mes_anterior": 6510,
+    "impresiones_mismo_mes_ano_anterior": 9477,
+    "intencion_mensual": {
+      "mes_actual": "2026-09",
+      "mes_anterior": "2026-08",
+      "filas": [
+        {
+          "tipo": "Marca",
+          "clics": 337,
+          "prev_clics": 376,
+          "impresiones": 5200,
+          "prev_impresiones": 5480
+        },
+        {
+          "tipo": "Genéricas y sin marca",
+          "clics": 19,
+          "prev_clics": 16,
+          "impresiones": 1161,
+          "prev_impresiones": 1030
+        }
+      ]
+    }
+  },
+  "grupos": {
+    "periodo": "21 jun 2025 - 20 oct 2026, acumulado",
+    "consultas": [
+      {
+        "q": "restaurante para eventos toledo",
+        "imp": 241,
+        "clics": 0,
+        "pos": 19.18,
+        "intencion": "Eventos y grupos",
+        "mes_actual": null,
+        "mes_anterior": null,
+        "ago_imp": 18,
+        "sep_imp": 24,
+        "sep_clics": 0,
+        "sep_pos": 20.3
+      },
+      {
+        "q": "comuniones en toledo",
+        "imp": 34,
+        "clics": 5,
+        "pos": 11.09,
+        "intencion": "Celebraciones",
+        "mes_actual": null,
+        "mes_anterior": null,
+        "ago_imp": 4,
+        "sep_imp": 3,
+        "sep_clics": 1,
+        "sep_pos": 10.4
+      },
+      {
+        "q": "restaurante los cigarrales toledo",
+        "imp": 416,
+        "clics": 13,
+        "pos": 7.69,
+        "intencion": "Entorno y restaurante",
+        "mes_actual": null,
+        "mes_anterior": null,
+        "ago_imp": 38,
+        "sep_imp": 33,
+        "sep_clics": 1,
+        "sep_pos": 8.1
+      },
+      {
+        "q": "restaurantes en toledo con vistas",
+        "imp": 86,
+        "clics": 0,
+        "pos": 22.34,
+        "intencion": "Restaurante con vistas",
+        "mes_actual": null,
+        "mes_anterior": null,
+        "ago_imp": 7,
+        "sep_imp": 9,
+        "sep_clics": 0,
+        "sep_pos": 22.0
+      },
+      {
+        "q": "restaurante con vistas toledo",
+        "imp": 50,
+        "clics": 0,
+        "pos": 21.52,
+        "intencion": "Restaurante con vistas",
+        "mes_actual": null,
+        "mes_anterior": null,
+        "ago_imp": 4,
+        "sep_imp": 5,
+        "sep_clics": 0,
+        "sep_pos": 20.8
+      }
+    ],
+    "origen_contactos": [
+      "Teléfono, a menudo a través de la recepción del hotel y derivación a eventos",
+      "Formulario de bodas, bautizos y comuniones",
+      "Formulario de eventos corporativos"
+    ],
+    "url_celebraciones": "https://cigarraldecaravantes.com/bodas-y-eventos/bodas-bautizos-comuniones/",
+    "url_empresa": "https://cigarraldecaravantes.com/eventos-corporativos/",
+    "solicitudes_confirmadas": null
+  },
+  "google": {
+    "periodo": "mayo - octubre 2026 (octubre incompleto)",
+    "vistas_perfil": 18204,
+    "interacciones": 2266,
+    "clics_llamada": 294,
+    "indicaciones": 1060,
+    "clics_web": 750,
+    "acciones_reserva": 33,
+    "clics_carta": 129,
+    "busquedas_que_mostraron_ficha": 9891,
+    "consultas": [
+      {
+        "q": "restaurantes",
+        "apariciones": 5096,
+        "tipo": "Genérica"
+      },
+      {
+        "q": "cigarral de caravantes",
+        "apariciones": 1540,
+        "tipo": "Marca"
+      },
+      {
+        "q": "restaurants",
+        "apariciones": 249,
+        "tipo": "Genérica"
+      },
+      {
+        "q": "restaurante",
+        "apariciones": 237,
+        "tipo": "Genérica"
+      }
+    ],
+    "comparativa_mensual": null
+  },
+  "tecnico": {
+    "fecha_ultimo_crawl": "octubre 2026, rastreo del estudio inicial",
+    "enlaces_redirigen": 205,
+    "origenes": 56,
+    "recurrentes": 168,
+    "estado_correccion": "Pendiente de comprobación posterior",
+    "mes_actual": null,
+    "otros": [
+      {
+        "titulo": "Información del restaurante en Google",
+        "detalle": "Confirmar categoría, dirección y horarios antes de modificar la ficha.",
+        "estado": "Requiere validación"
+      },
+      {
+        "titulo": "Información estructurada del restaurante",
+        "detalle": "Completar datos empresariales y horarios confirmados en la página del restaurante.",
+        "estado": "Planificado"
+      },
+      {
+        "titulo": "Cartas antiguas visibles en buscadores",
+        "detalle": "Comprobar visitas recientes y equivalencia antes de sustituir o redirigir documentos.",
+        "estado": "Planificado"
+      },
+      {
+        "titulo": "Páginas técnicas del sistema de reservas",
+        "detalle": "Revisar las cinco direcciones detectadas como potencialmente indexables.",
+        "estado": "Por verificar"
+      }
+    ]
+  },
+  "editorial": {
+    "resumen": "La página del restaurante registró 356 clics desde Google en septiembre, un 39,6 % más que un año antes. El dato es positivo, pero el siguiente objetivo sigue siendo ganar visibilidad cuando alguien busca un restaurante con vistas o un espacio para grupos sin conocer aún Cigarral de Caravantes. El desglose de consultas de esta maqueta es ilustrativo.",
+    "web": "Los 356 clics de septiembre superan los 255 de septiembre del año anterior (+39,6 %), aunque bajan respecto a agosto (392). El balance de julio a septiembre sigue siendo favorable (+34,7 % frente a 2025). Las impresiones mensuales de esta demostración son simuladas: permitirían analizar si somos más visibles o si conseguimos más visitas con menos apariciones, pero no deben interpretarse como un resultado real. En un restaurante de Toledo contrastaremos siempre la evolución con el mismo mes de años anteriores, por turismo, fines de semana y celebraciones.",
+    "intencion": "El ejemplo representa una realidad comercial clave: las búsquedas por el nombre del establecimiento no significan lo mismo que encontrar el restaurante sin conocerlo. Incluso si suben los clics totales, necesitamos comprobar si también crece la parte genérica. La comparación mensual que se muestra aquí es simulada; con las exportaciones reales se calculará cada mes sobre las consultas que permitan clasificar.",
+    "grupos": "Para grupos y celebraciones es más útil analizar por separado las impresiones, los clics y la evolución de consultas como \"restaurante para eventos Toledo\" y \"comuniones en Toledo\" que interpretar únicamente el tráfico total del restaurante. En otoño prestaremos especial atención a las comidas y cenas de empresa y, de cara a primavera, a las celebraciones. Las variaciones mensuales de la tabla son ficticias para enseñar el formato; en el informe real se utilizarán los datos comparables de Search Console.",
+    "maps": "La ficha del restaurante ya se muestra para \"restaurantes\", lo que indica descubrimiento más allá del nombre del negocio. Las solicitudes de indicaciones y los clics para llamar sugieren intención de visita o contacto, pero no equivalen a comensales ni reservas confirmadas. Para comprender si esas acciones aumentan habrá que comparar meses completos de la misma ficha.",
+    "negocio": "La visibilidad para \"restaurante para eventos Toledo\" y \"comuniones en Toledo\" muestra una oportunidad comercial todavía poco aprovechada. La ficha de Google también genera acciones de contacto, pero esos clics no indican si se trata de grupos ni permiten conocer cuántas reservas se cierran. Seguiremos la evolución mensual de las consultas de eventos, grupos y celebraciones en Search Console y de las búsquedas y acciones de la ficha. La lectura tendrá en cuenta la demanda de comidas de empresa en otoño y de comuniones y celebraciones en primavera.",
+    "tecnico": "La auditoría detectó 205 enlaces que pasaban por una redirección, con 168 repeticiones en elementos compartidos. La cifra sirve para marcar el punto de partida, no para afirmar que se ha solucionado. En cada nuevo rastreo mostraremos qué sigue pendiente, qué se ha corregido y qué se descarta, solo después de verificarlo.",
+    "prioridades": [
+      {
+        "titulo": "Preparar mejor la captación de grupos",
+        "detalle": "Comprobar enlaces existentes hacia los formularios de celebraciones y eventos corporativos, priorizando contenidos vigentes y sin crear nuevas páginas."
+      },
+      {
+        "titulo": "Medir el descubrimiento más allá de la marca",
+        "detalle": "Separar mes a mes búsquedas por el nombre del negocio y búsquedas genéricas, con periodos cerrados y la misma clasificación."
+      },
+      {
+        "titulo": "Validar los arreglos técnicos",
+        "detalle": "Repetir un rastreo comparable tras las modificaciones para comprobar qué enlaces a redirecciones siguen activos."
+      }
+    ],
+    "nota_final": "La revisión definitiva del informe incluirá las acciones realmente ejecutadas, incidencias bloqueadas y cualquier aclaración comercial del cliente."
+  }
+}

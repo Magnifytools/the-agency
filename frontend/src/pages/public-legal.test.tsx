@@ -41,7 +41,7 @@ it("la política cuenta lo que hace desconectar y la retención del calendario",
 it("la política cuenta el detalle por consulta y página de Search Console y su retención", () => {
   renderPage(<PrivacyPage />)
   const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
-  expect(text).toContain("Actualizada el 28 de octubre de 2026")
+  expect(text).toContain("Actualizada el 30 de octubre de 2026")
   expect(text).toContain("durante 120 días, guardamos esas mismas cifras por día para cada búsqueda (consulta) y cada página")
   expect(text).toContain("agregadas y anonimizadas en Search Console: no identifican a ninguna persona")
   expect(text).toContain("No guardamos países ni dispositivos")
@@ -51,8 +51,12 @@ it("la política cuenta el detalle por consulta y página de Search Console y su
   expect(text).toContain("for 120 days the same daily figures per search query and per page, as aggregated and anonymised by Google")
   expect(text).toContain("Query and page detail is deleted after 120 days or when the site is no longer linked to an active client")
   // El detalle guardado sigue sin ir a la IA (lo vigila test_gsc_detail.py).
-  expect(text).toContain("Ni Analytics ni el detalle guardado por búsqueda y página se envían a ningún servicio de IA")
+  expect(text).toContain("Ni las cifras diarias de Analytics guardadas ni el detalle guardado por búsqueda y página se envían a ningún servicio de IA")
   expect(text).toContain("the stored per-query and per-page detail are never sent to any AI service")
+  // El borrador del informe SEO local sí recibe las cifras ya calculadas de ese informe.
+  expect(text).toContain("cuando pide a Claude un borrador de los textos del informe mensual SEO local")
+  expect(text).toContain("when they ask Claude to draft the texts of a monthly local SEO report")
+  expect(text).toContain("Esas cifras se guardan con cada versión del informe")
   // Ya no dice lo contrario.
   expect(text).not.toContain("No guardamos consultas, páginas")
   expect(text).not.toContain("No queries, pages")
@@ -61,7 +65,7 @@ it("la política cuenta el detalle por consulta y página de Search Console y su
 it("la política cuenta el total mensual por búsqueda (historial de posiciones) y su retención", () => {
   renderPage(<PrivacyPage />)
   const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
-  expect(text).toContain("Actualizada el 28 de octubre de 2026")
+  expect(text).toContain("Actualizada el 30 de octubre de 2026")
   expect(text).toContain("Pasados esos 120 días, de cada búsqueda sólo conservamos un total por mes (clics, impresiones y posición media), durante un máximo de 16 meses y mientras la web esté asociada a un cliente activo")
   expect(text).toContain("El total mensual por búsqueda se conserva como mucho 16 meses y se borra antes si la web deja de estar asociada a un cliente activo")
   expect(text).toContain("el borrado incluye el detalle por búsqueda y página, el total mensual por búsqueda")
@@ -88,7 +92,7 @@ it("la política cuenta los leads por página de entrada y el historial importad
   expect(text).toContain("monthly per-query totals older than those 16 months, with the same Search Console data, imported once from our previous tool; they are kept while the site is linked to an active client")
   expect(text).toContain("those imported from our previous tool are kept while the site is linked to an active client")
   // Siguen sin ir a la IA.
-  expect(text).toContain("Ni Analytics ni el detalle guardado por búsqueda y página se envían a ningún servicio de IA")
+  expect(text).toContain("Ni las cifras diarias de Analytics guardadas ni el detalle guardado por búsqueda y página se envían a ningún servicio de IA")
 })
 
 it("la política cuenta las consultas en vivo a Search Console desde Claude (gsc_live)", () => {

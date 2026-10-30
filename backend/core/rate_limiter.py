@@ -220,3 +220,22 @@ class GscLiveLimiter:
 
 # Cada consulta en vivo son tres llamadas a Google (filas, totales y último día).
 gsc_live_limiter = GscLiveLimiter()
+
+
+class Ga4LiveLimiter:
+    """Sliding-window limiter for live GA4 queries (MCP), per user."""
+
+    def __init__(self) -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix="rate:ga4-live",
+            detail_fn=lambda _max_requests, _window_seconds: (
+                "Demasiadas consultas a GA4 seguidas. Espera un minuto."
+            ),
+        )
+
+    def check(self, key: str | int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(key, max_requests, window_seconds)
+
+
+# Cada consulta en vivo son dos llamadas a Google (informe con totales y último día).
+ga4_live_limiter = Ga4LiveLimiter()

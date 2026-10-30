@@ -1,0 +1,69 @@
+{
+  "prefijo_archivo": "Cigarral",
+  "cliente": {
+    "nombre": "Cigarral de Caravantes",
+    "negocio": "Restaurante Cigarral de Caravantes",
+    "ciudad": "Toledo"
+  },
+  "landing_url": "https://cigarraldecaravantes.com/restaurante/",
+  "grupos": {
+    "tabla": "evento|comuni|celebra|empresa|grupo|bautiz|boda|navidad|cena|comida|vistas|cigarrales",
+    "tarjeta": "evento|celebra|comuni|bautiz|boda|empresa|grupo|navidad",
+    "excluir": ["karavan"],
+    "min_impresiones_nuevas": 5,
+    "intencion_defecto": "Eventos y grupos",
+    "intenciones": [
+      {"label": "Eventos y grupos", "pattern": "evento|empresa|grupo|navidad|cena|comida"},
+      {"label": "Celebraciones", "pattern": "comuni|celebra|bautiz|boda"},
+      {"label": "Restaurante con vistas", "pattern": "vistas"},
+      {"label": "Entorno y restaurante", "pattern": "cigarrales"}
+    ],
+    "consultas_iniciales": [
+      {"q": "restaurante para eventos toledo", "intencion": "Eventos y grupos"},
+      {"q": "restaurante para eventos y celebraciones en toledo", "intencion": "Eventos y grupos"},
+      {"q": "comuniones en toledo", "intencion": "Celebraciones"},
+      {"q": "menú comuniones 2026 toledo", "intencion": "Celebraciones"},
+      {"q": "restaurante con vistas toledo", "intencion": "Restaurante con vistas"},
+      {"q": "restaurantes en toledo con vistas", "intencion": "Restaurante con vistas"},
+      {"q": "restaurante toledo con vistas", "intencion": "Restaurante con vistas"},
+      {"q": "restaurante los cigarrales toledo", "intencion": "Entorno y restaurante"},
+      {"q": "cigarrales toledo restaurante", "intencion": "Entorno y restaurante"}
+    ]
+  },
+  "ficha": {
+    "cercanas_a_marca": ["cigarral"],
+    "marca_secundaria": {"terminos": ["hotel"], "tipo": "Marca (hotel)"}
+  },
+  "nombres_paginas": {
+    "/": "Inicio",
+    "/restaurante/": "Restaurante",
+    "/bodas-y-eventos/bodas-bautizos-comuniones/": "Bodas, bautizos y comuniones",
+    "/terraza-bar/": "Terraza-bar",
+    "/bodas-y-eventos/": "Bodas y eventos",
+    "/terraza-bar-en-toledo-un-sitio-donde-tomar-algo-tranquilo-en-cigarral-de-caravantes/": "Artículo: terraza-bar en Toledo",
+    "/wp-content/uploads/2026/04/Carta-restaurante_abr26_Cigarral-ESP-1.pdf": "Carta del restaurante (PDF, abril 2026)",
+    "/cenas-de-navidad-en-toledo/": "Cenas de Navidad en Toledo",
+    "/menu-degustacion-toledo/": "Menú degustación",
+    "/comidas-de-navidad-en-toledo/": "Comidas de Navidad en Toledo",
+    "/eventos-corporativos/": "Eventos corporativos",
+    "/hotel/": "Hotel"
+  },
+  "tecnico": {
+    "fecha_ultimo_crawl": "28 de octubre de 2026",
+    "enlaces_redirigen": 2,
+    "origenes": 1,
+    "recurrentes": 0,
+    "estado_correccion": "Comprobado en el rastreo del 28 de octubre: quedan 2 de 205",
+    "estudio_inicial": "205 enlaces a páginas que redirigen desde 56 páginas, 168 de ellos repetidos en cabecera, menú móvil y pie de página (estudio inicial de octubre de 2026)",
+    "filas_rastreo": [
+      {"titulo": "2 enlaces a páginas que redirigen (205 en el estudio inicial)", "detalle": "Quedan en la paginación de la categoría de ocio del blog, desde una sola página. La navegación principal ya no pasa por pasos innecesarios.", "estado": "Casi resuelto", "siguiente": "Corregir los 2 enlaces cuando se revise el blog."},
+      {"titulo": "168 enlaces repetidos en navegación", "detalle": "Estaban en cabecera, menú móvil y pie de página, y obligaban a dar un paso de más en casi todas las páginas.", "estado": "Resuelto", "siguiente": "Comprobado en el rastreo del 28 de octubre. Sin acción pendiente."}
+    ],
+    "otros": [
+      {"titulo": "Información del restaurante en Google", "detalle": "Horarios y categoría de la ficha, a la espera de la confirmación del restaurante.", "estado": "En espera", "siguiente": "Actualizar la ficha en cuanto el restaurante confirme los datos."},
+      {"titulo": "Información estructurada del restaurante", "detalle": "Completar datos de contacto, ubicación y horarios confirmados en la página del restaurante.", "estado": "Previsto en noviembre", "siguiente": "Implementar y validar con las herramientas de Google."},
+      {"titulo": "Cartas antiguas visibles en buscadores", "detalle": "Comprobar visitas recientes y equivalencia antes de sustituir o redirigir documentos.", "estado": "Previsto en noviembre", "siguiente": "Revisar qué cartas siguen recibiendo visitas."},
+      {"titulo": "Páginas técnicas del sistema de reservas", "detalle": "Revisar las cinco direcciones detectadas como potencialmente indexables.", "estado": "Por verificar", "siguiente": "Verificar la incidencia antes de intervenir."}
+    ]
+  }
+}

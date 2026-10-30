@@ -30,6 +30,7 @@ import { ClientDigestVersions } from "@/components/clients/client-digest-version
 import { EngineMetricsWidget } from "@/components/clients/engine-metrics-widget"
 import { EngineSeoTab } from "@/components/clients/engine-seo-tab"
 import { SeoControlTab } from "@/components/clients/seo-control/seo-control-tab"
+import { LocalReportTab } from "@/components/clients/local-report/local-report-tab"
 import { FichaTab } from "@/components/clients/ficha-tab"
 import { useAuth } from "@/context/auth-context"
 import { clientKeys, holdedKeys, projectKeys, timeKeys } from "@/lib/query-keys"
@@ -88,7 +89,7 @@ export default function ClientDetailPage() {
   const [creatingTask, setCreatingTask] = useState(false)
   const [whatIfOpen, setWhatIfOpen] = useState(false)
 
-  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "control_seo", "seo", "ajustes", "facturas", "accesos", "web", "peticiones"] as const
+  const validTabs = ["ficha", "contexto", "actividad", "tareas", "proyectos", "resumenes", "comunicaciones", "contactos", "panel", "tiempo", "control_seo", "seo", "ajustes", "facturas", "accesos", "web", "peticiones", "informe_local"] as const
   type Tab = (typeof validTabs)[number]
 
   // Pestaña -> módulo que la sirve. Si el módulo está oculto, sus endpoints no
@@ -106,6 +107,8 @@ export default function ClientDetailPage() {
     tareas: "tasks",
     proyectos: "projects",
     resumenes: "digests",
+    // Informe SEO local: un entregable al cliente, con los permisos de Resúmenes.
+    informe_local: "digests",
     comunicaciones: "communications",
     accesos: "credentials",
     web: "web",
@@ -334,6 +337,8 @@ export default function ClientDetailPage() {
             label: "Resultados",
             tabs: [
               ...(isTabVisible("resumenes") ? (["resumenes"] as TabKey[]) : []),
+              // Informe SEO local: sale de Search Console, así que pide propiedad.
+              ...(client.gsc_url && isTabVisible("informe_local") ? (["informe_local"] as TabKey[]) : []),
               // Control SEO (Search Console propio) con propiedad.
               ...(client.gsc_url ? (["control_seo"] as TabKey[]) : []),
               ...(isTabVisible("web") ? (["web"] as TabKey[]) : []),
@@ -378,6 +383,7 @@ export default function ClientDetailPage() {
           proyectos: "Proyectos",
           tiempo: "Tiempo",
           peticiones: "Peticiones extra",
+          informe_local: "Informe SEO local",
           resumenes: "Resúmenes",
           comunicaciones: "Comunicaciones",
           control_seo: "Control SEO",
@@ -713,6 +719,7 @@ export default function ClientDetailPage() {
 
       {/* Tab: Web (disponibilidad) */}
       {activeTab === "peticiones" && <ScopeRequestsTab clientId={clientId} />}
+      {activeTab === "informe_local" && <LocalReportTab clientId={clientId} />}
 
       {activeTab === "web" && <WebTab clientId={clientId} website={client.website ?? null} />}
 

@@ -8,6 +8,13 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /app
 
+# Informe SEO local: la plantilla (backend/report_templates/) pinta el PDF con
+# Chromium vía Playwright, que usa /usr/bin/chromium. Las fuentes Liberation
+# sustituyen a Arial y Times con las mismas medidas.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends chromium fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt ./
 RUN python -m pip install --no-cache-dir --upgrade pip==26.2.1 \
     && python -m pip install --no-cache-dir -r requirements.txt
