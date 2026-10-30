@@ -1,27 +1,9 @@
 """
 Permission matrix tests.
-Covers: vault RBAC, inbox access, capacity admin-only, users sanitization, CSRF.
+Covers: inbox access, capacity admin-only, users sanitization, CSRF.
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-
-
-# ── Vault ────────────────────────────────────────────────────────────────────
-
-class TestVaultRBAC:
-    @pytest.mark.asyncio
-    async def test_vault_admin_allowed(self, admin_client):
-        """Admin can list vault assets."""
-        with patch("backend.api.routes.agency_vault.get_db"):
-            response = await admin_client.get("/api/vault/assets")
-        # 200 or 422/500 from mock DB — NOT 403
-        assert response.status_code != 403
-
-    @pytest.mark.asyncio
-    async def test_vault_member_forbidden(self, member_client):
-        """Member gets 403 on vault assets."""
-        response = await member_client.get("/api/vault/assets")
-        assert response.status_code == 403
 
 
 # ── Capacity ─────────────────────────────────────────────────────────────────
@@ -240,7 +222,6 @@ class TestAdminOnlyRoutes:
     """Smoke test: member gets 403 on all admin-only API endpoints."""
 
     ADMIN_ONLY_ENDPOINTS = [
-        ("GET", "/api/vault/assets"),
         ("GET", "/api/dashboard/capacity"),
         ("GET", "/api/users/1"),          # get single user (admin-only)
         # DELETE /api/users/1 not implemented — no endpoint, would return 405

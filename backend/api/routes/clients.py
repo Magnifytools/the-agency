@@ -1,8 +1,7 @@
 from __future__ import annotations
+
 import logging
-import os
 from typing import Literal, Optional
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Path, Query, UploadFile, status
 from pydantic import BaseModel
@@ -15,34 +14,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.database import get_db
 from backend.db.models import (
     Client, ClientStatus, Task, TaskRecurrenceOccurrence, TimeEntry, User, UserRole,
-    Project, ProjectPhase, ProjectEvidence,
-    ClientContact, ClientResource, BillingEvent,
+    Project, ProjectPhase,
+    ClientContact, BillingEvent,
     CommunicationLog, WeeklyDigest, Invoice, InvoiceItem,
     PMInsight, GrowthIdea, Proposal, Event, Lead,
-    GeneratedReport, Income, Expense, HoldedInvoiceCache, ClientDocument,
+    Income, Expense, HoldedInvoiceCache, ClientDocument,
     BalanceSnapshot,
 )
 from backend.schemas.client import ClientCreate, ClientUpdate, ClientResponse, ClientDocumentResponse
 from backend.schemas.client_onboarding import ClientOnboardingCreate, ClientOnboardingResponse
 from backend.schemas.pagination import PaginatedResponse
-from backend.api.deps import get_current_user, require_module, require_admin
-from backend.services.client_health import HealthCapabilities, compute_health, compute_health_batch
+from backend.api.deps import require_module, require_admin
+from backend.services.client_status import Viewer, portfolio
 from backend.services.dashboard_access import (
     ensure_source_access,
     has_module_read,
     require_financial_dashboard_access,
 )
-from backend.core.modules import is_enabled
 from backend.api.utils.db_helpers import safe_refresh
+from backend.services.file_uploads import attachment_type, read_limited, stored_file_response_args
 from backend.services.client_onboarding import create_onboarding, recover_onboarding
 from backend.services.domain_writes import create_client as create_client_write
 from backend.services.temporal import business_today, utc_isoformat
 from backend.config import settings
+from backend.services.seo_traffic import attach_seo_traffic, client_traffic, clicks_change_expr
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 ClientCohort = Literal["all", "external", "internal"]
+ClientSort = Literal["created", "seo_change_asc", "seo_change_desc"]
 
 
 def _client_cohort(query, cohort: ClientCohort):
@@ -59,6 +60,7 @@ async def list_clients(
     cohort: ClientCohort = Query("all"),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=1000),
+    sort: ClientSort = Query("created"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
@@ -71,10 +73,19 @@ async def list_clients(
 
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
 
-    query = base.order_by(Client.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
-    result = await db.execute(query)
+    order = [Client.created_at.desc()]
+    if sort != "created":
+        # Semáforo SEO en todas las páginas, no sólo en la visible: una sola
+        # agregación sobre gsc_daily; sin propiedad o sin base, al final.
+        traffic = client_traffic()
+        base = base.outerjoin(traffic, traffic.c.client_id == Client.id)
+        change = clicks_change_expr(traffic)
+        order.insert(0, (change.asc() if sort == "seo_change_asc" else change.desc()).nulls_last())
+    query = base.order_by(*order, Client.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    clients = list((await db.execute(query)).scalars().all())
+    await attach_seo_traffic(db, clients)
 
-    return PaginatedResponse(items=result.scalars().all(), total=total, page=page, page_size=page_size)
+    return PaginatedResponse(items=clients, total=total, page=page, page_size=page_size)
 
 
 _CLIENT_EXTRACT_PROMPT = """Analiza este texto de contexto sobre un cliente y extrae la información relevante.
@@ -88,7 +99,6 @@ Responde SOLO con un JSON válido con los campos que puedas extraer (omite los q
   "contract_type": "monthly si es recurrente/retención, one_time si es puntual",
   "monthly_budget": importe mensual numérico o null (solo si es fijo; si es variable, dejarlo null)",
   "notes": "resumen breve de la relación y contexto importante (2-3 frases)",
-  "business_model": "sector/modelo de negocio del cliente (ej: ecommerce, saas, igaming, media, fintech, etc.) o null",
   "is_intermediary_deal": true si hay una agencia intermediaria entre nosotros y el cliente final,
   "intermediary_name": "nombre de la agencia intermediaria o null",
   "context": "resumen ejecutivo completo: quién es el cliente, cómo llegó, qué se ha hecho, qué se ha prometido, particularidades del trato",
@@ -161,7 +171,6 @@ class ClientExtract(BaseModel):
     contract_type: Optional[str] = None
     monthly_budget: Optional[float] = None
     notes: Optional[str] = None
-    business_model: Optional[str] = None
     is_intermediary_deal: bool = False
     intermediary_name: Optional[str] = None
     context: Optional[str] = None
@@ -224,7 +233,7 @@ async def create_client(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ya existe un cliente con esos datos")
-    except DataError as e:
+    except DataError:
         await db.rollback()
         raise HTTPException(status_code=422, detail="Datos inválidos: campo excede longitud máxima")
     except Exception as e:
@@ -290,76 +299,29 @@ async def recover_client_onboarding(
     return JSONResponse(status_code=response_status, content=response.model_dump(mode="json"))
 
 
-def _health_capabilities(user: User) -> HealthCapabilities:
-    """Only score sources exposed to this caller by the current product."""
-    readable = {
-        permission.module
-        for permission in (user.permissions or [])
-        if permission.can_read
-    }
-    is_admin = user.role == UserRole.admin
-
-    def can_read(module: str) -> bool:
-        return is_enabled(module) and (is_admin or module in readable)
-
-    return HealthCapabilities(
-        communications=can_read("communications"),
-        tasks=can_read("tasks"),
-        digests=can_read("digests"),
-        profitability=(
-            is_admin
-            and is_enabled("finance")
-            and is_enabled("billing")
-            and (is_admin or "finance_income" in readable)
-        ),
-    )
-
-
-def _health_sort_key(result: dict) -> tuple[bool, bool, int]:
-    """Put observed risk first, including partial risk without a global score."""
-    return (
-        result["risk_level"] != "at_risk",
-        result["score"] is None,
-        result["score"] or 0,
-    )
-
-
-@router.get("/health-scores")
-async def list_health_scores(
-    cohort: ClientCohort = Query("all"),
+@router.get("/portfolio")
+async def client_portfolio(
+    cohort: ClientCohort = Query("external"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("clients")),
 ):
-    """Health scores for all active clients."""
-    try:
-        query = select(Client).where(Client.status == ClientStatus.active)
-        result = await db.execute(_client_cohort(query, cohort).order_by(Client.name))
-        clients = result.scalars().all()
-        scores = await compute_health_batch(clients, db, _health_capabilities(current_user))
-        # Sort by score ascending (worst first)
-        scores.sort(key=_health_sort_key)
-        return scores
-    except Exception as e:
-        logger.error("Error computing batch health scores: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Error calculando health scores")
+    """Cartera: estado explicado de cada cliente activo, lo que pide actuar primero."""
+    query = select(Client).where(Client.status == ClientStatus.active)
+    clients = (await db.execute(_client_cohort(query, cohort).order_by(Client.name))).scalars().all()
+    return await portfolio(db, list(clients), Viewer.of(current_user))
 
 
-@router.get("/{client_id}/health")
-async def get_client_health(
+@router.get("/{client_id}/status")
+async def client_status(
     client_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("clients")),
 ):
-    """Health score for a single client."""
-    result = await db.execute(select(Client).where(Client.id == client_id))
-    client = result.scalar_one_or_none()
+    """Estado explicado de un cliente (el mismo que su fila en la cartera)."""
+    client = await db.get(Client, client_id)
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-    try:
-        return await compute_health(client, db, _health_capabilities(current_user))
-    except Exception as e:
-        logger.error("Error computing health for client %s: %s", client_id, e, exc_info=True)
-        raise HTTPException(status_code=500, detail="Error calculando health score")
+    return (await portfolio(db, [client], Viewer.of(current_user), detail=True))[0]
 
 
 @router.get("/{client_id}", response_model=ClientResponse)
@@ -372,6 +334,7 @@ async def get_client(
     client = result.scalar_one_or_none()
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
+    await attach_seo_traffic(db, [client])
     return client
 
 
@@ -404,10 +367,9 @@ async def update_client(
     _UPDATABLE_CLIENT_FIELDS = {
         "name", "email", "phone", "company", "website", "contract_type",
         "monthly_budget", "status", "notes", "is_internal", "ga4_property_id",
-        "gsc_url", "billing_cycle", "billing_day", "next_invoice_date",
-        "last_invoiced_date", "engine_project_id", "business_model", "aov",
-        "conversion_rate", "ltv", "seo_maturity_level", "context",
-        "cif", "vat_number", "slack_template",
+        "gsc_url", "engine_project_id", "context",
+        "vat_number", "slack_template", "brand_terms", "seo_page_groups",
+        "ga4_lead_events",
     }
     if "engine_project_id" in update_data:
         if update_data["engine_project_id"] != client.engine_project_id:
@@ -421,7 +383,7 @@ async def update_client(
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Conflicto al actualizar cliente")
-    except DataError as e:
+    except DataError:
         await db.rollback()
         raise HTTPException(status_code=422, detail="Datos inválidos: campo excede longitud máxima")
     except Exception as e:
@@ -521,11 +483,6 @@ async def hard_delete_client(
         await db.execute(update(Event).where(Event.project_id.in_(project_ids)).values(project_id=None))
 
     await db.execute(update(Lead).where(Lead.converted_client_id == client_id).values(converted_client_id=None))
-
-    await db.execute(update(GeneratedReport).where(GeneratedReport.client_id == client_id).values(client_id=None))
-    if project_ids:
-        await db.execute(update(GeneratedReport).where(GeneratedReport.project_id.in_(project_ids)).values(project_id=None))
-
     await db.execute(update(Income).where(Income.client_id == client_id).values(client_id=None))
     await db.execute(update(HoldedInvoiceCache).where(HoldedInvoiceCache.client_id == client_id).values(client_id=None))
 
@@ -560,14 +517,10 @@ async def hard_delete_client(
         ))
     if invoice_ids:
         await db.execute(delete(InvoiceItem).where(InvoiceItem.invoice_id.in_(invoice_ids)))
-    if project_ids:
-        await db.execute(delete(ProjectEvidence).where(ProjectEvidence.project_id.in_(project_ids)))
-
     # Step 3: Delete tables with NOT NULL client_id (in dependency order)
     # CommunicationLog before ClientContact (contact_id FK)
     await db.execute(delete(CommunicationLog).where(CommunicationLog.client_id == client_id))
     await db.execute(delete(ClientContact).where(ClientContact.client_id == client_id))
-    await db.execute(delete(ClientResource).where(ClientResource.client_id == client_id))
     await db.execute(delete(BillingEvent).where(BillingEvent.client_id == client_id))
     await db.execute(delete(WeeklyDigest).where(WeeklyDigest.client_id == client_id))
     # Task before ProjectPhase and Project
@@ -624,7 +577,7 @@ async def get_client_summary(
     if can_read_tasks:
         # Task titles and task-derived totals belong to the tasks module.
         from sqlalchemy.orm import selectinload
-        from backend.api.routes.tasks import _task_to_response
+        from backend.api.routes.tasks import _task_responses
 
         tasks_result = await db.execute(
             select(Task).options(
@@ -638,7 +591,7 @@ async def get_client_summary(
             ).order_by(Task.created_at.desc())
         )
         tasks = tasks_result.scalars().unique().all()
-        task_responses = [_task_to_response(task) for task in tasks]
+        task_responses = await _task_responses(db, tasks)
         total_tasks = len(tasks)
         total_estimated = sum(task.estimated_minutes or 0 for task in tasks)
         total_actual = sum(task.actual_minutes or 0 for task in tasks)
@@ -721,7 +674,6 @@ async def get_ai_advice(
             tasks=has_module_read(current_user, "tasks"),
             communications=has_module_read(current_user, "communications"),
             timesheet=has_module_read(current_user, "tasks") and has_module_read(current_user, "timesheet"),
-            billing=has_module_read(current_user, "billing"),
         ))
         return {"recommendations": recommendations}
     except ValueError as e:
@@ -749,34 +701,13 @@ async def upload_document(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients", write=True)),
 ):
-    _ALLOWED_MIME_TYPES = {
-        "application/pdf", "image/jpeg", "image/png", "image/gif", "image/webp",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "text/plain", "text/csv",
-        "application/zip",
-    }
-    _ALLOWED_EXTENSIONS = {
-        ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp",
-        ".doc", ".docx", ".xls", ".xlsx",
-        ".txt", ".csv", ".zip",
-    }
-    filename = file.filename or ""
-    ext = os.path.splitext(filename.lower())[1]
-    if ext not in _ALLOWED_EXTENSIONS:
-        raise HTTPException(400, f"Extensión no permitida: {ext or '(sin extensión)'}")
-    if not file.content_type or file.content_type not in _ALLOWED_MIME_TYPES:
-        raise HTTPException(400, f"Tipo de archivo no permitido: {file.content_type or '(sin tipo)'}")
-    content = await file.read()
-    if len(content) > 20 * 1024 * 1024:
-        raise HTTPException(400, "Archivo demasiado grande (máx 20 MB)")
+    mime = attachment_type(file.filename or "")
+    content = await read_limited(file, 20 * 1024 * 1024)
     doc = ClientDocument(
         client_id=client_id,
         name=file.filename or "documento",
         description=description,
-        mime_type=file.content_type or "application/octet-stream",
+        mime_type=mime,
         size_bytes=len(content),
         content=content,
     )
@@ -799,11 +730,7 @@ async def download_document(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(404, "Documento no encontrado")
-    return Response(
-        content=doc.content,
-        media_type=doc.mime_type,
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(doc.name, safe='')}"},
-    )
+    return Response(content=doc.content, **stored_file_response_args(doc.name, doc.mime_type))
 
 
 @router.delete("/{client_id}/documents/{doc_id}", status_code=204)

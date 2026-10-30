@@ -188,7 +188,7 @@ export default function CapacityPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold uppercase tracking-wide">Capacidad del equipo</h2>
+        <h1 className="text-2xl font-bold uppercase tracking-wide">Capacidad del equipo</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Carga de trabajo por miembro — basado en tiempo estimado de tareas activas
         </p>

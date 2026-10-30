@@ -22,6 +22,7 @@ from backend.db.models import (
     UserRole,
 )
 from backend.services import change_journal
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.asyncio
 
@@ -270,13 +271,13 @@ async def test_undo_waits_for_lifecycle_writer_then_revalidates_new_work(
         await original_lock(writer)
         actor = await undo_session.get(User, actor_id)
         pending = asyncio.create_task(undo_change(change_id, undo_session, actor))
-        await asyncio.wait_for(reached_lock.wait(), timeout=1)
+        await asyncio.wait_for(reached_lock.wait(), timeout=HANG_TIMEOUT)
         await asyncio.sleep(0)
         assert not pending.done()
         writer.add(Task(title="Creada durante la espera", project_id=project_id))
         await writer.commit()
         with pytest.raises(HTTPException) as error:
-            await asyncio.wait_for(pending, timeout=2)
+            await asyncio.wait_for(pending, timeout=HANG_TIMEOUT)
 
     assert error.value.status_code == 409
     async with AsyncSession(engine) as verifier:

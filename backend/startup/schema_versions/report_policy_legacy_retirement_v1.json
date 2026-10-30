@@ -1,0 +1,7 @@
+{
+  "version": "20261021_report_policy_legacy_retirement_v1",
+  "drop_tables": [],
+  "drop_columns": {
+    "client_report_policies": ["enabled", "cadence"]
+  }
+}

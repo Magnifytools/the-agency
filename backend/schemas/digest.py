@@ -40,6 +40,8 @@ class DigestContent(BaseModel):
     # Bloque de Search Console (sólo resúmenes mensuales con datos): el editor
     # puede quitarlo de todos los formatos sin tocar los datos guardados.
     include_seo: bool = True
+    # Bloque de GA4 (visitas, conversiones e IA), con la misma regla.
+    include_ga4: bool = True
 
 
 # --- API schemas ---
@@ -91,8 +93,11 @@ class DigestResponse(BaseModel):
     creator_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    # Sólo en el listado: la entrega externa confirmada (la única que cuenta).
+    delivered_at: Optional[datetime] = None
+    delivered_by_name: Optional[str] = None
 
-    @field_serializer("generated_at", "edited_at", "created_at", "updated_at")
+    @field_serializer("generated_at", "edited_at", "created_at", "updated_at", "delivered_at")
     def _ser_dt(self, dt: Optional[datetime]) -> Optional[str]:
         return _serialize_utc(dt)
 
@@ -105,8 +110,11 @@ class DigestRenderResponse(BaseModel):
 
 
 class ReportPolicyUpdate(BaseModel):
-    enabled: bool
-    cadence: ReportCadence
+    """Un interruptor por cadencia; el formato antiguo {enabled, cadence} da 422."""
+    model_config = {"extra": "forbid"}
+
+    weekly_enabled: bool
+    monthly_enabled: bool
     responsible_user_id: Optional[int] = None
     revision: int = Field(ge=0)
 
@@ -114,8 +122,10 @@ class ReportPolicyUpdate(BaseModel):
 class ReportPolicyResponse(BaseModel):
     client_id: int
     configured: bool
+    # ``enabled`` = alguna de las dos cadencias encendida (derivado).
     enabled: bool = False
-    cadence: ReportCadence = ReportCadence.weekly
+    weekly_enabled: bool = False
+    monthly_enabled: bool = False
     responsible_user_id: Optional[int] = None
     responsible_name: Optional[str] = None
     responsible_active: Optional[bool] = None
@@ -196,9 +206,9 @@ class CohortGenerateRequest(BaseModel):
 
     @model_validator(mode="after")
     def unique_clients_and_valid_periods(self):
-        ids = [item.client_id for item in self.items]
+        ids = [(item.client_id, item.period_start, item.period_end) for item in self.items]
         if len(ids) != len(set(ids)):
-            raise ValueError("Cada cliente solo puede aparecer una vez")
+            raise ValueError("Cada cliente y periodo solo puede aparecer una vez")
         if any(item.period_end < item.period_start for item in self.items):
             raise ValueError("period_end no puede ser anterior a period_start")
         return self
@@ -206,6 +216,8 @@ class CohortGenerateRequest(BaseModel):
 
 class CohortGenerateResult(BaseModel):
     client_id: int
+    period_start: Optional[date] = None
+    period_end: Optional[date] = None
     outcome: Literal["generated", "skipped", "failed"]
     digest_id: Optional[int] = None
     reason: Optional[str] = None

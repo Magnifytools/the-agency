@@ -8,6 +8,8 @@ interface AuthContextType {
   isAuthenticated: boolean
   isLoading: boolean
   isAdmin: boolean
+  /** La sesión se cerró sola (401 a media sesión), no porque la persona saliera. */
+  sessionExpired: boolean
   login: (email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   hasPermission: (module: string, write?: boolean) => boolean
@@ -20,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [sessionExpired, setSessionExpired] = useState(false)
   const sessionEpoch = useRef(0)
   const sessionMutations = useRef<Promise<void>>(Promise.resolve())
 
@@ -54,7 +57,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // A 401 can race an older response. Cancel and remove every query first so
     // that response cannot repopulate the cache for the next identity.
-    const onExpired = () => { void clearSessionCache() }
+    const onExpired = () => {
+      setSessionExpired(true)
+      void clearSessionCache()
+    }
     window.addEventListener("auth:expired", onExpired)
     return () => window.removeEventListener("auth:expired", onExpired)
   }, [clearSessionCache])
@@ -65,11 +71,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const epoch = sessionEpoch.current
       await authApi.login(email, password)
       const me = await authApi.me()
-      if (epoch === sessionEpoch.current) setUser(me)
+      if (epoch === sessionEpoch.current) {
+        setUser(me)
+        setSessionExpired(false)
+      }
     })
 
   const logout = () =>
     queueSessionMutation(async () => {
+      setSessionExpired(false)
       await clearSessionCache()
       await authApi.logout().catch(() => undefined)
     })
@@ -95,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated: !!user, isLoading, isAdmin, login, logout, hasPermission, refreshUser }}
+      value={{ user, isAuthenticated: !!user, isLoading, isAdmin, sessionExpired, login, logout, hasPermission, refreshUser }}
     >
       {children}
     </AuthContext.Provider>

@@ -120,6 +120,14 @@ const meetingMinutesBefore = document.getElementById("meeting-minutes-before");
 const meetingSettingsState = document.getElementById("meeting-settings-state");
 const meetingSettingsError = document.getElementById("meeting-settings-error");
 const meetingSettingsSave = document.getElementById("meeting-settings-save");
+const desktopEnabled = document.getElementById("desktop-enabled");
+const desktopQuietStart = document.getElementById("desktop-quiet-start");
+const desktopQuietEnd = document.getElementById("desktop-quiet-end");
+const desktopSettingsState = document.getElementById("desktop-settings-state");
+const desktopSettingsSave = document.getElementById("desktop-settings-save");
+// Misma clave y valores por defecto que background.js.
+const DESKTOP_PREFS_KEY = "am_desktop_prefs_v1";
+const DEFAULT_DESKTOP_PREFS = { enabled: true, quietStart: "20:00", quietEnd: "08:00" };
 
 // Capture — Task mode
 const captureNoteMode = document.getElementById("capture-note-mode");
@@ -221,6 +229,7 @@ const timerTasksRetry = document.getElementById("timer-tasks-retry");
 assignmentRetry.addEventListener("click", loadProjectsAndClients);
 timerTasksRetry.addEventListener("click", loadTimerTasks);
 meetingSettingsSave.addEventListener("click", saveMeetingSettings);
+desktopSettingsSave.addEventListener("click", saveDesktopSettings);
 
 function newRequestKey() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -362,6 +371,7 @@ function showMainView() {
   });
   loadTasks();
   loadMeetingSettings();
+  loadDesktopSettings();
 }
 
 function switchToTab(target) {
@@ -1098,6 +1108,28 @@ async function loadMeetingSettings({ preserveDraft = false } = {}) {
   }
 }
 
+async function loadDesktopSettings() {
+  const stored = (await chrome.storage.local.get(DESKTOP_PREFS_KEY))[DESKTOP_PREFS_KEY];
+  const prefs = { ...DEFAULT_DESKTOP_PREFS, ...(stored || {}) };
+  desktopEnabled.checked = prefs.enabled;
+  desktopQuietStart.value = prefs.quietStart || "";
+  desktopQuietEnd.value = prefs.quietEnd || "";
+  desktopSettingsState.textContent = "";
+}
+
+async function saveDesktopSettings() {
+  const start = desktopQuietStart.value;
+  const end = desktopQuietEnd.value;
+  if (Boolean(start) !== Boolean(end)) {
+    desktopSettingsState.textContent = "Indica las dos horas o deja las dos vacías.";
+    return;
+  }
+  await chrome.storage.local.set({
+    [DESKTOP_PREFS_KEY]: { enabled: desktopEnabled.checked, quietStart: start, quietEnd: end },
+  });
+  desktopSettingsState.textContent = desktopEnabled.checked ? "Guardado. Los avisos están activos." : "Guardado. No se mostrarán avisos.";
+}
+
 async function saveMeetingSettings() {
   const session = captureSession();
   if (!meetingPolicy) return;
@@ -1579,14 +1611,31 @@ function updateTimerDisplay() {
   headerTimerText.textContent = timerIsPaused ? `⏸ ${h}:${String(m).padStart(2, "0")}` : `${h}:${String(m).padStart(2, "0")}`;
 }
 
+// Al elegir tarea para el timer o el registro manual no salen las planificadas a
+// más de dos semanas: dar de alta el trabajo de los próximos meses llenaba el
+// desplegable (sugerencia de Nacho, oct 2026). Lo empezado sale siempre.
+const TIMER_HORIZON_DAYS = 14;
+
+function timerHorizon(today = new Date()) {
+  const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + TIMER_HORIZON_DAYS);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function isTimerCandidate(task, horizon) {
+  if (task.status !== "pending") return true;
+  const dates = [task.scheduled_date, task.due_date].filter(Boolean).map((value) => String(value).slice(0, 10));
+  return dates.length === 0 || dates.some((day) => day <= horizon);
+}
+
 async function loadTimerTasks() {
   const session = captureSession();
   const loadId = ++timerTasksLoadId;
   timerTasksRetry.disabled = true;
   try {
-    const tasks = await fetchAllPages("/api/tasks", {
+    const horizon = timerHorizon();
+    const tasks = (await fetchAllPages("/api/tasks", {
       assigned_to: "me", timer_scope: "assigned_or_created", status: "pending,in_progress,waiting,in_review",
-    }, session);
+    }, session)).filter((task) => isTimerCandidate(task, horizon));
     if (!isCurrentSession(session)) return;
     if (loadId !== timerTasksLoadId || !isCurrentSession(session)) return;
     [timerTaskSelect, manualTaskSelect].forEach((select) => {
@@ -1869,7 +1918,8 @@ async function loadTasks() {
   tasksActionError.classList.add("hidden");
   if (!tasksList.children.length) tasksList.innerHTML = '<div class="tasks-loading">Cargando tareas...</div>';
   tasksEmpty.classList.add("hidden");
-  const filters = { assigned_to: "me" };
+  // Incluye las tareas propias que quedaron sin asignar (creadas antes desde el Timer).
+  const filters = { assigned_to: "me", timer_scope: "assigned_or_created" };
   if (tasksFilter.value) filters.status = tasksFilter.value;
   try {
     const tasks = await fetchAllPages("/api/tasks", filters, session);
@@ -2061,6 +2111,8 @@ function setupQuickCreate(linkEl, formEl, titleEl, clientEl, cancelEl, saveEl, t
           title,
           client_id: parseInt(clientId, 10),
           status: "in_progress",
+          // Como en Captura: trabajo propio, para que siga en "Tareas" al parar el timer.
+          assign_to_current_user: true,
         }),
       });
       if (!isCurrentSession(session)) return;

@@ -10,12 +10,16 @@ import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import {
   CheckSquare, X, RefreshCw, Loader2, FolderKanban,
-  Users, Clock, Sparkles, ExternalLink, Paperclip, FileText, Image, Trash2,
+  Users, Clock, Sparkles, ExternalLink, Paperclip, FileText, Image, Trash2, Lightbulb, Receipt, Target,
 } from "lucide-react"
+import { isEnabled } from "@/lib/hidden-modules"
 import { toast } from "sonner"
 import { getErrorMessage, formatTimeAgo } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
+import { useFileUpload } from "@/hooks/use-file-upload"
+import { UploadProgress } from "@/components/ui/upload-progress"
 import { getAgencyTimezone, parseApiInstant } from "@/lib/dates"
+import { parseEstimate, scopeRequestsApi } from "@/lib/scope-requests"
 
 
 const priorityColors: Record<string, string> = {
@@ -41,7 +45,7 @@ const classificationMessages = {
 
 const captureSourceLabels: Record<string, string> = {
   dashboard: "Panel",
-  quick_capture: "Captura rápida",
+  quick_capture: "Anotación rápida",
   chrome_extension: "Extensión",
 }
 
@@ -57,6 +61,7 @@ function formatFileSize(bytes: number): string {
 
 export function InboxNoteCard({ note }: Props) {
   const [convertOpen, setConvertOpen] = useState(false)
+  const [scopeOpen, setScopeOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
@@ -64,19 +69,17 @@ export function InboxNoteCard({ note }: Props) {
   const canReadProjects = hasPermission("projects")
   const canReadClients = hasPermission("clients")
   const canWriteTasks = hasPermission("tasks", true)
+  const canWriteClients = hasPermission("clients", true)
+  const canWriteLeads = hasPermission("growth", true) && isEnabled("leads")
   const ai = note.ai_suggestion as AISuggestion | null
 
   const invalidateAll = () => {
     if (user) queryClient.invalidateQueries({ queryKey: inboxKeys.all(user.id) })
   }
 
-  const uploadMutation = useMutation({
-    mutationFn: (file: File) => inboxApi.uploadAttachment(note.id, file),
-    onSuccess: () => {
-      invalidateAll()
-      toast.success("Adjunto subido")
-    },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al subir adjunto")),
+  const uploadMutation = useFileUpload({
+    upload: (file, onProgress) => inboxApi.uploadAttachment(note.id, file, onProgress),
+    onUploaded: invalidateAll,
   })
 
   const deleteAttachmentMutation = useMutation({
@@ -90,7 +93,7 @@ export function InboxNoteCard({ note }: Props) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) uploadMutation.mutate(file)
+    if (file) uploadMutation.upload(file)
     e.target.value = ""
   }
 
@@ -134,6 +137,25 @@ export function InboxNoteCard({ note }: Props) {
       toast.success("Descartado")
     },
     onError: (err) => toast.error(getErrorMessage(err, "Error al descartar")),
+  })
+
+  const suggestMutation = useMutation({
+    mutationFn: () => inboxApi.suggest(note.id),
+    onSuccess: () => {
+      invalidateAll()
+      toast.success("Sugerencia enviada a los administradores")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo enviar la sugerencia")),
+  })
+
+  const leadMutation = useMutation({
+    mutationFn: () => inboxApi.toLead(note.id),
+    onSuccess: () => {
+      invalidateAll()
+      queryClient.invalidateQueries({ queryKey: ["leads"] })
+      toast.success("Pasada al Pipeline como lead nuevo")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo crear el lead")),
   })
 
   const deleteMutation = useMutation({
@@ -191,6 +213,11 @@ export function InboxNoteCard({ note }: Props) {
                 })}
               </div>
             )}
+            {uploadMutation.uploading && (
+              <div className="mt-2 max-w-xs">
+                <UploadProgress state={uploadMutation.uploading} />
+              </div>
+            )}
 
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <span className="text-[10px] text-muted-foreground flex items-center gap-1">
@@ -207,7 +234,9 @@ export function InboxNoteCard({ note }: Props) {
               )}
               {note.status === "processed" && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
-                  Procesado
+                  {note.resolved_as === "app_suggestion" ? "Sugerencia para la app"
+                    : note.resolved_as === "scope_request" ? "Petición extra"
+                    : note.resolved_as === "lead" ? "Lead en el Pipeline" : "Procesado"}
                 </span>
               )}
               {note.status === "dismissed" && (
@@ -341,6 +370,38 @@ export function InboxNoteCard({ note }: Props) {
                 {classifyMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
                 Reclasificar
               </Button>}
+              {canWriteClients && <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1.5 px-3"
+                title="Apunta la nota como petición fuera de lo contratado del cliente"
+                onClick={() => setScopeOpen(true)}
+              >
+                <Receipt className="w-3 h-3" />
+                Petición extra
+              </Button>}
+              {canWriteLeads && <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1.5 px-3"
+                title="Crea un lead en el Pipeline con la primera línea como empresa"
+                onClick={() => leadMutation.mutate()}
+                disabled={leadMutation.isPending}
+              >
+                <Target className="w-3 h-3" />
+                Lead
+              </Button>}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs gap-1.5 px-3"
+                title="Envía la nota a los administradores como mejora para The Agency"
+                onClick={() => suggestMutation.mutate()}
+                disabled={suggestMutation.isPending}
+              >
+                {suggestMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lightbulb className="w-3 h-3" />}
+                Sugerencia para la app
+              </Button>
               <Button
                 size="sm"
                 variant="ghost"
@@ -360,9 +421,9 @@ export function InboxNoteCard({ note }: Props) {
                 variant="ghost"
                 className="h-7 text-xs gap-1.5 px-3"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploadMutation.isPending}
+                disabled={uploadMutation.isUploading}
               >
-                {uploadMutation.isPending ? (
+                {uploadMutation.isUploading ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
                   <Paperclip className="w-3 h-3" />
@@ -387,6 +448,16 @@ export function InboxNoteCard({ note }: Props) {
           open={convertOpen}
           onOpenChange={setConvertOpen}
           onConverted={invalidateAll}
+        />
+      )}
+
+      {scopeOpen && (
+        <ScopeRequestDialog
+          note={note}
+          clients={clients}
+          projects={canReadProjects ? projects : []}
+          onOpenChange={setScopeOpen}
+          onDone={invalidateAll}
         />
       )}
 
@@ -577,6 +648,102 @@ function ConvertToTaskDialog({
             <CheckSquare className="h-4 w-4" />
           )}
           Crear tarea
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  )
+}
+
+
+// --- Petición extra (fuera de alcance) desde Por aclarar ---
+
+function ScopeRequestDialog({
+  note,
+  clients,
+  projects,
+  onOpenChange,
+  onDone,
+}: {
+  note: InboxNote
+  clients: { id: number; name: string }[]
+  projects: { id: number; name: string; client_id: number }[]
+  onOpenChange: (open: boolean) => void
+  onDone: () => void
+}) {
+  const queryClient = useQueryClient()
+  const firstLine = note.raw_text.trim().split("\n")[0]?.slice(0, 200) ?? ""
+  const [title, setTitle] = useState(firstLine)
+  const [clientId, setClientId] = useState(String(note.client_id ?? ""))
+  const [projectId, setProjectId] = useState(String(note.project_id ?? ""))
+  const [estimate, setEstimate] = useState("")
+  const [unit, setUnit] = useState<"min" | "h">("min")
+  const minutes = parseEstimate(estimate, unit)
+  const clientProjects = projects.filter((p) => String(p.client_id) === clientId)
+
+  const mutation = useMutation({
+    mutationFn: () => scopeRequestsApi.fromInbox(note.id, {
+      client_id: Number(clientId),
+      estimated_minutes: minutes ?? 0,
+      title: title.trim() || undefined,
+      project_id: projectId ? Number(projectId) : null,
+    }),
+    onSuccess: () => {
+      onOpenChange(false)
+      onDone()
+      queryClient.invalidateQueries({ queryKey: ["scope-requests", Number(clientId)] })
+      toast.success("Apuntada como petición extra del cliente")
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo apuntar la petición")),
+  })
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <Receipt className="w-4 h-4 text-brand" />
+          Petición extra del cliente
+        </DialogTitle>
+      </DialogHeader>
+      <DialogContent>
+        <p className="text-xs text-muted-foreground">
+          Algo que el cliente pide fuera de lo contratado. Entra como pendiente en su ficha (Trabajo → Peticiones extra) para decidir si se asume, se factura o se cambia por otra cosa.
+        </p>
+        <div className="space-y-3">
+          <div>
+            <label htmlFor={`scope-title-${note.id}`} className="text-xs font-medium text-muted-foreground mb-1 block">Qué ha pedido</label>
+            <Input id={`scope-title-${note.id}`} value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor={`scope-client-${note.id}`} className="text-xs font-medium text-muted-foreground mb-1 block">Cliente</label>
+            <Select id={`scope-client-${note.id}`} value={clientId} onChange={(e) => { setClientId(e.target.value); setProjectId("") }}>
+              <option value="">Elige cliente</option>
+              {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          </div>
+          {clientProjects.length > 0 && <div>
+            <label htmlFor={`scope-project-${note.id}`} className="text-xs font-medium text-muted-foreground mb-1 block">Proyecto (opcional)</label>
+            <Select id={`scope-project-${note.id}`} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">Sin proyecto</option>
+              {clientProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </Select>
+          </div>}
+          <div>
+            <label htmlFor={`scope-estimate-${note.id}`} className="text-xs font-medium text-muted-foreground mb-1 block">Coste estimado</label>
+            <div className="flex gap-2">
+              <Input id={`scope-estimate-${note.id}`} inputMode="decimal" value={estimate} onChange={(e) => setEstimate(e.target.value)} placeholder="p. ej. 90" />
+              <Select aria-label="Unidad" value={unit} onChange={(e) => setUnit(e.target.value as "min" | "h")} className="w-24">
+                <option value="min">min</option>
+                <option value="h">h</option>
+              </Select>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+      <DialogFooter>
+        <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+        <Button onClick={() => mutation.mutate()} disabled={!clientId || minutes === null || mutation.isPending}>
+          {mutation.isPending && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+          Apuntar
         </Button>
       </DialogFooter>
     </Dialog>

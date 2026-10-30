@@ -124,7 +124,7 @@ async def test_member_can_generate_after_explicit_policy_setup(
     assert "administrador" in missing.json()["detail"]["message"]
 
     configured = await admin_client.put(f"/api/digests/policies/{client_id}", json={
-        "enabled": True, "cadence": "weekly", "responsible_user_id": member_id, "revision": 0,
+        "weekly_enabled": True, "monthly_enabled": False, "responsible_user_id": member_id, "revision": 0,
     })
     assert configured.status_code == 200, configured.text
     assert configured.json()["revision"] == 1
@@ -147,7 +147,7 @@ async def test_individual_generation_rechecks_policy_revision_after_provider(eng
         await setup.flush()
         setup.add_all([
             UserPermission(user_id=actor.id, module="digests", can_read=True, can_write=True),
-            ClientReportPolicy(client_id=client.id, enabled=True, responsible_user_id=actor.id, revision=1),
+            ClientReportPolicy(client_id=client.id, weekly_enabled=True, responsible_user_id=actor.id, revision=1),
         ])
         await setup.commit()
         actor_id, client_id = actor.id, client.id
@@ -432,19 +432,36 @@ async def test_generation_persists_when_final_source_snapshot_is_stable(engine):
         assert await verify.scalar(select(func.count(WeeklyDigest.id)).where(WeeklyDigest.id == digest.id)) == 1
 
 
-def test_source_keys_reject_unknown_duplicate_missing_and_wrong_section():
-    base = {"sections": {"done": [], "need": [], "next": [], "metrics": []}}
+def _sections(**sections):
+    return {"sections": {"done": [], "need": [], "next": [], "metrics": [], **sections}}
+
+
+def test_invalid_sources_are_dropped_and_unsourced_claims_discarded():
     catalog = facts()
-    for item in (
-        {"title": "x", "description": "", "source_keys": []},
-        {"title": "x", "description": "", "source_keys": ["missing"]},
-        {"title": "x", "description": "", "source_keys": ["task:1", "task:1"]},
-        {"title": "x", "description": "", "source_keys": ["aggregate:hours"]},
-    ):
-        candidate = {"sections": {**base["sections"], "done": [item]}}
-        with pytest.raises(ValueError):
-            _validate_sources(candidate, catalog)
+    item = lambda *keys: {"title": "x", "description": "", "source_keys": list(keys)}  # noqa: E731
+    result = _validate_sources(_sections(done=[
+        item(),                                # sin fuentes: fuera
+        item("missing"),                       # fuente inventada: fuera
+        item("aggregate:hours"),               # clase de otra sección: fuera
+        item("task:1", "task:1", "missing"),   # se queda con task:1 una vez
+    ], metrics=[item("aggregate:hours")]), catalog)
+    assert result["sections"]["done"] == [item("task:1")]
+    assert result["sections"]["metrics"] == [item("aggregate:hours")]
     assert _validate_sources(generated(), catalog) == generated()
+
+
+def test_metrics_can_cite_project_progress():
+    catalog = {**facts()["source_catalog"], "project:7": {"kind": "project", "class": "project", "id": 7}}
+    progress = {"title": "Progreso", "description": "60 %", "source_keys": ["project:7"]}
+    result = _validate_sources(_sections(metrics=[progress]), {"source_catalog": catalog})
+    assert result["sections"]["metrics"] == [progress]
+
+
+def test_all_claims_without_valid_sources_is_still_an_invalid_digest():
+    with pytest.raises(ValueError, match="Ninguna afirmación"):
+        _validate_sources(_sections(done=[{"title": "x", "source_keys": ["missing"]}]), facts())
+    # Un periodo sin nada que contar (todo vacío) sigue siendo válido.
+    assert _validate_sources(_sections(), facts()) == _sections()
 
 
 async def test_timeout_is_sanitized_and_persists_nothing(admin_client, db_session):

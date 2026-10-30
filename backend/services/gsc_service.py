@@ -33,7 +33,12 @@ from backend.services.temporal import business_today
 
 logger = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly", "openid", "email"]
+# Una misma cuenta de Google sirve para Search Console y para GA4 (lectura).
+SCOPES = [
+    "https://www.googleapis.com/auth/webmasters.readonly",
+    "https://www.googleapis.com/auth/analytics.readonly",
+    "openid", "email",
+]
 # 16 meses: lo máximo que guarda Search Console.
 BACKFILL_DAYS = 486
 # GSC revisa los últimos días: se vuelven a pedir en cada pasada.
@@ -84,7 +89,8 @@ def get_auth_url(state: str) -> str:
         "response_type": "code",
         "scope": " ".join(SCOPES),
         "access_type": "offline",
-        "prompt": "consent",
+        # select_account: para añadir una cuenta distinta a la que ya tiene sesión.
+        "prompt": "consent select_account",
         "state": state,
     }
     return f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
@@ -127,9 +133,12 @@ async def exchange_code(code: str) -> tuple[str, str | None]:
 
 
 async def save_connection(db, *, refresh_token: str, email: str | None, user_id: int) -> GscConnection:
-    connection = await db.get(GscConnection, 1)
+    """Añade una cuenta o renueva la que ya estaba (misma dirección de Google)."""
+    email = email.lower() if email else None
+    connection = (await db.scalar(select(GscConnection).where(GscConnection.google_email == email))
+                  if email else None)
     if connection is None:
-        connection = GscConnection(id=1)
+        connection = GscConnection()
         db.add(connection)
     connection.refresh_token = encrypt_vault_secret(refresh_token)
     connection.google_email = email
@@ -231,7 +240,8 @@ async def tracked_sites(db) -> list[str]:
     return sorted({site for site in (normalize_site_url(r) for r in rows) if site})
 
 
-async def sync_site(db, encrypted_refresh_token: str, site_url: str, *, fetch=query_daily, today: date | None = None) -> int:
+async def sync_site(db, encrypted_refresh_token: str, site_url: str, *, fetch=query_daily,
+                    today: date | None = None, connection_id: int | None = None) -> int:
     """Importa una propiedad. Devuelve cuántos días se han guardado.
 
     No mantiene transacción abierta durante la llamada a Google.
@@ -248,7 +258,7 @@ async def sync_site(db, encrypted_refresh_token: str, site_url: str, *, fetch=qu
     try:
         rows = await fetch(encrypted_refresh_token, site_url, start, end)
     except GscSiteError as exc:
-        await _record_state(db, site_url, error_code=exc.code)
+        await _record_state(db, site_url, error_code=exc.code, connection_id=connection_id)
         raise
 
     if rows:
@@ -264,13 +274,13 @@ async def sync_site(db, encrypted_refresh_token: str, site_url: str, *, fetch=qu
         ))
     await _record_state(
         db, site_url, error_code=None, backfilled=backfill,
-        last_data_date=max((r.date for r in rows), default=None),
+        last_data_date=max((r.date for r in rows), default=None), connection_id=connection_id,
     )
     return len(rows)
 
 
 async def _record_state(db, site_url: str, *, error_code: str | None, backfilled: bool = False,
-                        last_data_date: date | None = None) -> None:
+                        last_data_date: date | None = None, connection_id: int | None = None) -> None:
     state = await db.get(GscSiteSync, site_url)
     if state is None:
         state = GscSiteSync(site_url=site_url)
@@ -278,6 +288,7 @@ async def _record_state(db, site_url: str, *, error_code: str | None, backfilled
     now = datetime.now(UTC)
     state.last_synced_at = now
     state.error_code = error_code
+    state.connection_id = connection_id
     if backfilled:
         state.backfilled_at = now
     if last_data_date and (state.last_data_date is None or last_data_date > state.last_data_date):
@@ -285,33 +296,87 @@ async def _record_state(db, site_url: str, *, error_code: str | None, backfilled
     await db.commit()
 
 
-async def sync_all(session_factory, *, fetch=query_daily, today: date | None = None) -> dict:
-    """Una pasada sobre todas las propiedades. Cada propiedad en su sesión."""
+_PERMISSION_RANK = {"siteOwner": 0, "siteFullUser": 1, "siteRestrictedUser": 2}
+
+
+async def _mark_reconnect(session_factory, connection_id: int) -> None:
     async with session_factory() as db:
-        connection = await db.get(GscConnection, 1)
-        if connection is None or connection.status != "connected":
-            return {"status": "not_connected", "synced": 0, "failed": 0}
-        token = connection.refresh_token
+        connection = await db.get(GscConnection, connection_id)
+        if connection is not None:
+            connection.status = "reconnect_required"
+            await db.commit()
+
+
+async def site_access(session_factory, *, list_fn=list_sites) -> tuple[dict[str, int], list[int]]:
+    """Qué cuenta conectada ve cada propiedad. Devuelve (propiedad → cuenta, cuentas caídas).
+
+    Si varias la ven, gana la de más permiso y, a igualdad, la más antigua.
+    Una cuenta que Google rechaza se marca para reconectar y no tumba a las demás.
+    """
+    async with session_factory() as db:
+        connections = [(c.id, c.refresh_token) for c in (await db.scalars(
+            select(GscConnection).where(GscConnection.status == "connected").order_by(GscConnection.id)
+        )).all()]
+    best: dict[str, tuple[int, int]] = {}
+    failed: list[int] = []
+    for connection_id, token in connections:
+        try:
+            sites = await list_fn(token)
+        except GscAuthError:
+            await _mark_reconnect(session_factory, connection_id)
+            failed.append(connection_id)
+            logger.warning("Search Console: la cuenta %s necesita reconectarse", connection_id)
+            continue
+        except GscSiteError as exc:
+            logger.warning("Search Console: no se pudo listar la cuenta %s (%s)", connection_id, exc.code)
+            continue
+        for s in sites:
+            rank = _PERMISSION_RANK.get(s.get("permission") or "", 3)
+            current = best.get(s["site_url"])
+            if current is None or rank < current[1]:
+                best[s["site_url"]] = (connection_id, rank)
+    return {site: cid for site, (cid, _) in best.items()}, failed
+
+
+async def sync_all(session_factory, *, fetch=query_daily, list_fn=list_sites, today: date | None = None) -> dict:
+    """Una pasada sobre todas las propiedades. Cada propiedad con la cuenta que la ve, en su sesión."""
+    async with session_factory() as db:
+        any_connected = await db.scalar(select(GscConnection.id).where(GscConnection.status == "connected").limit(1))
+        if any_connected is None:
+            has_any = await db.scalar(select(GscConnection.id).limit(1))
+            return {"status": "reconnect_required" if has_any else "not_connected", "synced": 0, "failed": 0}
         sites = await tracked_sites(db)
+
+    access, broken = await site_access(session_factory, list_fn=list_fn)
+    async with session_factory() as db:
+        tokens = {c.id: c.refresh_token for c in (await db.scalars(
+            select(GscConnection).where(GscConnection.status == "connected")
+        )).all()}
 
     synced = failed = 0
     for site in sites:
+        connection_id = access.get(site)
+        if connection_id is None or connection_id not in tokens:
+            # Ninguna cuenta conectada la ve: se apunta y se sigue con las demás.
+            async with session_factory() as db:
+                await _record_state(db, site, error_code="no_access", connection_id=None)
+            failed += 1
+            continue
         try:
             async with session_factory() as db:
-                await sync_site(db, token, site, fetch=fetch, today=today)
+                await sync_site(db, tokens[connection_id], site, fetch=fetch, today=today,
+                                connection_id=connection_id)
             synced += 1
         except GscAuthError:
-            async with session_factory() as db:
-                connection = await db.get(GscConnection, 1)
-                if connection is not None:
-                    connection.status = "reconnect_required"
-                    await db.commit()
-            logger.warning("Search Console: la conexión necesita reconectarse")
-            return {"status": "reconnect_required", "synced": synced, "failed": failed + 1}
+            await _mark_reconnect(session_factory, connection_id)
+            tokens.pop(connection_id, None)
+            broken.append(connection_id)
+            failed += 1
         except GscSiteError as exc:
             failed += 1
             logger.warning("Search Console: fallo al importar %s (%s)", site, exc.code)
-    return {"status": "ok", "synced": synced, "failed": failed}
+    status = "reconnect_required" if broken else "ok"
+    return {"status": status, "synced": synced, "failed": failed}
 
 
 # ── Resumen mensual ──────────────────────────────────────────────────
@@ -383,12 +448,12 @@ async def month_summary(db, site_url: str | None, period_start: date, period_end
     site = normalize_site_url(site_url)
     if site is None:
         return {"status": "no_property"}
-    connection = await db.get(GscConnection, 1)
-    if connection is None:
+    connected = await db.scalar(select(GscConnection.id).where(GscConnection.status == "connected").limit(1))
+    if connected is None and await db.scalar(select(GscConnection.id).limit(1)) is None:
         return {"status": "not_connected", "site_url": site}
     state = await db.get(GscSiteSync, site)
     if state is None or state.backfilled_at is None:
-        status = "not_synced" if connection.status == "connected" else "reconnect_required"
+        status = "not_synced" if connected is not None else "reconnect_required"
         return {"status": status, "site_url": site,
                 "error_code": state.error_code if state else None}
     if state.last_data_date is None or state.last_data_date < period_end:

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 import { activeArea, activeAreaLink, navigationFor } from "./navigation"
-vi.mock("@/lib/hidden-modules", () => ({ isHidden: (name: string) => ["finance", "capacity", "my_week", "reports", "leads", "growth", "proposals", "vault", "discord", "automations"].includes(name) }))
+vi.mock("@/lib/hidden-modules", () => ({ isHidden: (name: string) => ["finance", "capacity", "reports", "leads", "growth", "proposals", "discord"].includes(name) }))
 
 describe("agency areas and permission boundaries", () => {
   it("gives five areas to an admin without exposing hidden modules", () => {
@@ -16,14 +16,24 @@ describe("agency areas and permission boundaries", () => {
     expect(areas.map((area) => area.id)).toEqual(["today", "work", "summaries", "settings"])
     expect(areas[0].links).toEqual([{ to: "/incidents", label: "Alertas" }])
     expect(areas.find(area => area.id === "work")?.links[0].to).toBe("/projects")
-    expect(areas.flatMap((area) => area.links).some((link) => ["/users", "/clients", "/tasks?view=all", "/digests"].includes(link.to))).toBe(false)
+    expect(areas.flatMap((area) => area.links).some((link) => ["/users", "/clients", "/tasks?view=tareas", "/digests"].includes(link.to))).toBe(false)
+  })
+  it("shows website availability under Clientes only with the web module", () => {
+    const withWeb = navigationFor((module) => module === "web", false)
+    expect(withWeb.find((area) => area.id === "clients")?.links.map((link) => link.to)).toEqual(["/web", "/web/cambios"])
+    expect(navigationFor((module) => module === "clients", false).flatMap((area) => area.links).some((link) => link.to.startsWith("/web"))).toBe(false)
+    expect(activeArea("/web", "")).toBe("clients")
+    // Los enlaces del digest de Slack caen en Clientes y encienden "Cambios web", no "Disponibilidad".
+    expect(activeArea("/web/cambios/0b9c", "")).toBe("clients")
+    expect(activeAreaLink("/web/cambios", "/web/cambios/0b9c", "")).toBe(true)
+    expect(activeAreaLink("/web", "/web/cambios", "?cliente=7")).toBe(false)
   })
   it("distinguishes agenda from work while preserving legacy and QA task links", () => {
     expect(activeArea("/tasks", "?id=27")).toBe("today")
     expect(activeArea("/tasks", "?view=all")).toBe("work")
     expect(activeArea("/tasks", "?qaFilter=overdue")).toBe("work")
     expect(activeAreaLink("/tasks?view=my_day", "/tasks", "?view=weekly")).toBe(false)
-    expect(activeAreaLink("/tasks?view=all", "/tasks", "?view=weekly")).toBe(true)
+    expect(activeAreaLink("/tasks?view=tareas", "/tasks", "?view=weekly")).toBe(true)
     expect(activeArea("/projects/17", "")).toBe("work")
     expect(activeArea("/digests/19/edit", "")).toBe("summaries")
     expect(activeArea("/users", "")).toBe("settings")

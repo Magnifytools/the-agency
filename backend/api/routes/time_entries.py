@@ -32,6 +32,7 @@ from backend.schemas.time_entry import (
 from backend.api.deps import get_current_user, require_admin, require_module
 from backend.services.csv_utils import build_csv_response
 from backend.services.project_lifecycle import ensure_project_allows_timer
+from backend.services.hours_carryover import project_month_budget
 from backend.services.time_budget import (
     build_budget_status,
     build_closing_status,
@@ -40,6 +41,7 @@ from backend.services.time_budget import (
 )
 from backend.services.task_lifecycle import stamp_task_status
 from backend.services.temporal import as_utc_instant, business_today, business_zone
+from backend.services.incident_timer_conditions import TIMER_CAP_MINUTES
 from backend.services.time_entry_dates import manual_time_entry_date, time_entry_civil_period
 from backend.services.time_writes import (
     create_manual_time_entry,
@@ -143,22 +145,6 @@ async def create_time_entry(
 
     # Save attributes before they expire (async SQLAlchemy lazy-load guard)
     entry_id = entry.id
-    entry_task_id = body.task_id
-    entry_user_id = current_user.id
-    entry_minutes = body.minutes
-
-    # Automation hook: time_entry_created
-    try:
-        from backend.api.routes.automations import execute_automations
-        await execute_automations("time_entry_created", {
-            "time_entry_id": entry_id,
-            "task_id": entry_task_id,
-            "user_id": entry_user_id,
-            "minutes": entry_minutes,
-        }, db)
-    except Exception as e:
-        logger.debug("Automation hook time_entry_created failed (never break time entry creation): %s", e)
-        pass  # Never break time entry creation
 
     entry = await _load_time_entry_for_response(db, entry_id)
     if entry is None:
@@ -687,7 +673,7 @@ async def start_timer(
             elapsed = accumulated
         else:
             elapsed = accumulated + (now_stop - sa).total_seconds()
-        active.minutes = max(1, min(480, round(elapsed / 60)))
+        active.minutes = max(1, min(TIMER_CAP_MINUTES, round(elapsed / 60)))
         active.paused_at = None
         active.accumulated_seconds = 0
         await db.flush()
@@ -806,7 +792,8 @@ async def stop_timer(
         elapsed = accumulated
     else:
         elapsed = accumulated + (now - sa).total_seconds()
-    entry.minutes = max(1, min(480, round(elapsed / 60)))  # Cap at 8 hours
+    # Lo contado se recorta a 8 h; quien se lo dejó encendido puede decir lo real.
+    entry.minutes = body.minutes or max(1, min(TIMER_CAP_MINUTES, round(elapsed / 60)))
     entry.paused_at = None
     entry.accumulated_seconds = 0
     if body.notes:
@@ -982,11 +969,14 @@ async def get_project_time_budget(
         week_minutes = await _sum_minutes(week_start, week_start + timedelta(days=7))
         month_minutes = await _sum_minutes(month_start, next_month)
         weekly_budget, monthly_budget = effective_budgets(project)
+        month = await project_month_budget(db, project, monthly_budget, month_start)
         status_block = build_budget_status(
             weekly_budget,
-            monthly_budget,
+            month.budget,
             week_minutes,
             month_minutes,
+            month_base=month.base,
+            month_carried=month.carried,
         )
         return {
             "project_id": project.id,

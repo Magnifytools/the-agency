@@ -8,6 +8,7 @@ Endpoints:
 - PUT  /{id}              — update digest content/tone
 - PATCH /{id}/status      — change digest status
 - GET  /{id}/render       — render digest as Slack or Email HTML
+- GET  /{id}/pdf          — the client-facing digest as an A4 PDF
 - DELETE /{id}            — delete a digest (draft or admin)
 """
 
@@ -17,7 +18,7 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from sqlalchemy import exists, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -25,13 +26,14 @@ from sqlalchemy.orm import selectinload
 from backend.api.deps import require_module
 from backend.api.middleware.audit_log import log_audit
 from backend.api.utils.db_helpers import safe_refresh
-from backend.core.rate_limiter import ai_limiter
+from backend.core.rate_limiter import ai_limiter, pdf_export_limiter
 from backend.db.database import get_db
 from backend.core.modules import is_hidden
 from backend.db.models import (
     Delivery,
     DigestExternalDeliveryEvent,
     DigestStatus,
+    ExternalDeliveryAction,
     User,
     UserPermission,
     UserRole,
@@ -57,6 +59,8 @@ from backend.services.digest_generator import (
     DigestProviderError,
     generate_digest_content,
 )
+from backend.services import digest_seo_detail
+from backend.services.digest_pdf import digest_pdf
 from backend.services.digest_periods import (
     canonicalize_digest_content,
     resolve_digest_period,
@@ -368,8 +372,10 @@ async def generate_digest(
                 else "El proveedor de generación no está disponible.",
             },
         ) from exc
-    except ValueError:
+    except ValueError as exc:
         await db.rollback()
+        # El mensaje es nuestro (qué regla falló), sin datos del cliente.
+        logger.error("Digest generation invalid for client_id=%s: %s", request.client_id, exc)
         raise HTTPException(
             status_code=502,
             detail={
@@ -436,6 +442,27 @@ async def generate_batch_retired(
 # ---------------------------------------------------------------------------
 
 
+async def _confirmed_deliveries(db: AsyncSession, ids: list[int]) -> dict[int, tuple[datetime, Optional[str]]]:
+    """Versiones cuya ÚLTIMA acción de entrega externa es una confirmación
+    (la regla de ``delivery_is_confirmed``): cuándo y quién. Revocar la anula."""
+    rows = (await db.execute(
+        select(DigestExternalDeliveryEvent.digest_id, DigestExternalDeliveryEvent.action,
+               DigestExternalDeliveryEvent.created_at, User.full_name)
+        .join(User, User.id == DigestExternalDeliveryEvent.actor_id)
+        .where(DigestExternalDeliveryEvent.digest_id.in_(ids))
+        .order_by(DigestExternalDeliveryEvent.digest_id,
+                  DigestExternalDeliveryEvent.created_at.desc(), DigestExternalDeliveryEvent.id.desc())
+    )).all()
+    latest: dict[int, tuple] = {}
+    for digest_id, action, created_at, actor_name in rows:
+        latest.setdefault(digest_id, (action, created_at, actor_name))
+    return {
+        digest_id: (created_at, actor_name)
+        for digest_id, (action, created_at, actor_name) in latest.items()
+        if action == ExternalDeliveryAction.confirmed
+    }
+
+
 @router.get("", response_model=list[DigestResponse])
 async def list_digests(
     client_id: Optional[int] = Query(None),
@@ -484,9 +511,12 @@ async def list_digests(
     ))).all())
     can_write = await user_has_digest_permission(db, current_user.id, write=True)
     readable = await _readable_modules(db, current_user)
+    delivered = await _confirmed_deliveries(db, ids)
     responses = []
     for digest in digests:
         response = _to_response(digest, readable)
+        if digest.id in delivered:
+            response.delivered_at, response.delivered_by_name = delivered[digest.id]
         response.can_delete = (
             can_write
             and (current_user.role == UserRole.admin or digest.status != DigestStatus.sent)
@@ -533,12 +563,47 @@ async def get_digest(
     """Get a specific digest by ID."""
     digest = await authorize_digest(db, digest_id, current_user, write=False)
 
-    return _to_response(digest, await _readable_modules(db, current_user))
+    response = _to_response(digest, await _readable_modules(db, current_user))
+    # El editor enseña la foto del mes de Search Console con los totales.
+    seo = await _seo_for_render(db, digest)
+    if response.raw_context is not None and seo is not None:
+        response.raw_context["seo"] = seo
+    return response
+
+
+async def _seo_for_render(db: AsyncSession, digest: WeeklyDigest) -> dict | None:
+    """Bloque SEO para pintar: mientras la versión no ha salido de la app, con
+    la foto del mes recalculada; si ya salió, con la que se guardó."""
+    return await digest_seo_detail.seo_for_render(
+        db, digest, may_compute=not await _has_left_the_app(db, digest))
 
 
 # ---------------------------------------------------------------------------
 # PUT /{id} — Update digest content/tone
 # ---------------------------------------------------------------------------
+
+
+async def _has_distribution_evidence(db: AsyncSession, digest_id: int) -> bool:
+    """Hay rastro de que esta versión salió: un envío (Discord) o un evento de
+    entrega al cliente, confirmado o revocado."""
+    return bool(await db.scalar(
+        select(
+            or_(
+                exists().where(
+                    Delivery.source_kind == "digest", Delivery.source_id == digest_id
+                ),
+                exists().where(DigestExternalDeliveryEvent.digest_id == digest_id),
+            )
+        )
+    ))
+
+
+async def _has_left_the_app(db: AsyncSession, digest: WeeklyDigest) -> bool:
+    """Mientras no haya salido, guardar sobrescribe la misma versión; después,
+    un cambio crea otra para que quede lo que se envió (decisión de David, oct
+    2026: cada "Guardar" llenaba el historial de copias). ``sent`` es la marca
+    histórica del sistema antiguo y también cuenta."""
+    return digest.status == DigestStatus.sent or await _has_distribution_evidence(db, digest.id)
 
 
 @router.put("/{digest_id}", response_model=DigestResponse)
@@ -548,10 +613,14 @@ async def update_digest(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("digests", write=True)),
 ):
-    """Create a new digest version when content or tone changes.
+    """Guarda cambios de contenido o tono.
 
-    If only the tone changes (no content update), auto-regenerate
-    content using stored raw_context. Identical payloads return the same ID.
+    Si la versión no ha salido de la app (`_has_left_the_app`), se sobrescribe y
+    se devuelve el mismo id; si ya salió, se crea una versión nueva y la anterior
+    queda como se envió. Cambiar sólo el tono regenera con la IA desde el
+    `raw_context` en una versión nueva y deja la anterior: el reintento con la
+    misma clave se hace sobre el id de origen, que tiene que seguir existiendo.
+    Sin cambios, el mismo id.
     """
     digest = await authorize_digest(db, digest_id, current_user, write=True)
 
@@ -660,6 +729,19 @@ async def update_digest(
         generated_at = digest.generated_at
         edited_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
+    if not await _has_left_the_app(db, digest):
+        digest.content = next_content
+        digest.tone = next_tone
+        digest.edited_at = edited_at
+        await db.commit()
+        saved = (await db.execute(
+            select(WeeklyDigest)
+            .where(WeeklyDigest.id == digest_id)
+            .options(selectinload(WeeklyDigest.client), selectinload(WeeklyDigest.creator))
+            .execution_options(populate_existing=True)
+        )).scalar_one()
+        return _to_response(saved, await _readable_modules(db, current_user))
+
     # An edit/regeneration is a new durable source version. The original ID and
     # any Delivery receipts remain tied to the exact content they represented.
     version = WeeklyDigest(
@@ -739,7 +821,8 @@ async def render_digest(
     if digest.client and hasattr(digest.client, "slack_template"):
         client_template = digest.client.slack_template
 
-    seo = (digest.raw_context or {}).get("seo")
+    seo = await _seo_for_render(db, digest)
+    ga4 = (digest.raw_context or {}).get("ga4")
     if format == "slack":
         rendered = render_slack(
             content,
@@ -748,6 +831,7 @@ async def render_digest(
             period_start=digest.period_start,
             period_end=digest.period_end,
             seo=seo,
+            ga4=ga4,
         )
     elif format == "discord":
         rendered = render_discord(
@@ -756,6 +840,7 @@ async def render_digest(
             period_start=digest.period_start,
             period_end=digest.period_end,
             seo=seo,
+            ga4=ga4,
         )
     elif format == "email_plain":
         rendered = render_email_plain(
@@ -764,6 +849,7 @@ async def render_digest(
             period_start=digest.period_start,
             period_end=digest.period_end,
             seo=seo,
+            ga4=ga4,
         )
     else:
         rendered = render_email(
@@ -772,9 +858,52 @@ async def render_digest(
             period_start=digest.period_start,
             period_end=digest.period_end,
             seo=seo,
+            ga4=ga4,
         )
 
     return DigestRenderResponse(format=format, rendered=rendered)
+
+
+# ---------------------------------------------------------------------------
+# GET /{id}/pdf — El resumen en PDF (lo mismo que el email, en A4)
+# ---------------------------------------------------------------------------
+
+
+def pdf_response(data: bytes, filename: str, headers: dict[str, str] | None = None) -> Response:
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            **(headers or {}),
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+async def build_pdf_or_error(digest: WeeklyDigest, client_name: str, *,
+                             seo: dict | None = None) -> tuple[bytes, str]:
+    try:
+        return await digest_pdf(digest, client_name, seo=seo)
+    except TimeoutError:
+        logger.warning("PDF del resumen %s: tiempo agotado", digest.id)
+        raise HTTPException(status_code=504, detail="El PDF ha tardado demasiado. Inténtalo de nuevo.")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Este resumen no tiene contenido para el PDF")
+
+
+@router.get("/{digest_id}/pdf")
+async def digest_pdf_download(
+    digest_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("digests")),
+):
+    """PDF de la versión guardada, con las mismas reglas de acceso que verla."""
+    digest = await authorize_digest(db, digest_id, current_user, write=False)
+    pdf_export_limiter.check(current_user.id, max_requests=10, window_seconds=60)
+    client_name = digest.client.name if digest.client else ""
+    data, filename = await build_pdf_or_error(digest, client_name, seo=await _seo_for_render(db, digest))
+    return pdf_response(data, filename)
 
 
 # ---------------------------------------------------------------------------
@@ -805,17 +934,7 @@ async def delete_digest(
             status_code=409, detail="No puedes eliminar digests ya enviados"
         )
 
-    has_evidence = await db.scalar(
-        select(
-            or_(
-                exists().where(
-                    Delivery.source_kind == "digest", Delivery.source_id == digest_id
-                ),
-                exists().where(DigestExternalDeliveryEvent.digest_id == digest_id),
-            )
-        )
-    )
-    if has_evidence:
+    if await _has_distribution_evidence(db, digest_id):
         raise HTTPException(
             status_code=409,
             detail={

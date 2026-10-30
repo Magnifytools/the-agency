@@ -7,6 +7,9 @@ export * from "./types/task"
 export * from "./types/project"
 export * from "./types/finance"
 export * from "./types/integration"
+export * from "./types/web"
+export * from "./types/web-health"
+export * from "./types/seo-control"
 
 // --- Undo: journal de cambios ---
 // Una entrada = una acción del usuario (una transacción), no una fila tocada.
@@ -96,4 +99,19 @@ export interface OperationalUsage {
   dailys: { updates: number; authors: number; user_days: number }
   commands: { executed: number; failed: number; needs_input: number; needs_review: number; undone: number; terminal_total: number; success_percent: number | null; by_channel: { app: number; extension: number; unknown: number } }
   deliveries: { sent: number; failed: number; uncertain: number; expired: number; cancelled: number; pending: number; sending: number; terminal_total: number; confirmation_percent: number | null }
+}
+
+/** Idea o fallo de la app enviado con "Sugerencias o fallos". */
+export interface AppSuggestion {
+  id: number
+  text: string
+  /** Pantalla desde la que se envió (ruta interna). */
+  page_path: string | null
+  author_id: number | null
+  author_name: string | null
+  created_at: string
+  done_at: string | null
+  done_by_name: string | null
+  /** Pantallazos adjuntos (se ven en `suggestionsApi.imageUrl`). */
+  images: { id: number; name: string; size_bytes: number }[]
 }

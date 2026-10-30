@@ -19,6 +19,7 @@ vi.mock("@/lib/api", () => ({
   clientsApi: { update: mocks.update },
   engineApi: { listProjects: mocks.engineProjects },
   gscApi: { getStatus: mocks.gscStatus, listSites: vi.fn() },
+  ga4Api: { getStatus: vi.fn().mockResolvedValue({ configured: true, properties: [] }), sync: vi.fn() },
 }))
 vi.mock("@/lib/query-keys", () => ({ invalidateClientChange: vi.fn() }))
 
@@ -40,7 +41,7 @@ describe("ClientSettingsTab permissions", () => {
     mocks.canWrite = true
     mocks.update.mockResolvedValue({})
     mocks.engineProjects.mockResolvedValue([])
-    mocks.gscStatus.mockResolvedValue({ configured: true, connection: null, sites: [] })
+    mocks.gscStatus.mockResolvedValue({ configured: true, connections: [], sites: [] })
   })
 
   it("shows current analytics settings without a save action to a client reader", () => {
@@ -72,7 +73,7 @@ describe("ClientSettingsTab permissions", () => {
   it("shows how far the saved Search Console property has been imported", async () => {
     mocks.gscStatus.mockResolvedValue({
       configured: true,
-      connection: { status: "connected", google_email: "seo@magnify.ing", connected_by: "David", connected_at: "2026-10-01T10:00:00Z" },
+      connections: [{ id: 1, status: "connected", google_email: "seo@magnify.ing", connected_by: "David", connected_at: "2026-10-01T10:00:00Z" }],
       sites: [{ site_url: "https://example.com/", clients: [{ id: 5, name: "Ejemplo" }], backfilled: true,
                 last_data_date: "2026-10-15", last_synced_at: "2026-10-18T06:00:00Z", error_code: "no_access" }],
     })
@@ -80,5 +81,23 @@ describe("ClientSettingsTab permissions", () => {
 
     expect(await screen.findByText(/Datos importados hasta el 15 de octubre de 2026/)).toBeInTheDocument()
     expect(screen.getByText("La cuenta conectada no tiene acceso a esta propiedad.")).toBeInTheDocument()
+  })
+
+  it("edits the GA4 events that count as a lead only when they change", async () => {
+    const user = userEvent.setup()
+    show()
+    const events = screen.getByLabelText("Eventos que cuentan como lead")
+    expect(events).toHaveValue("generate_lead")
+    await user.clear(events)
+    await user.type(events, "generate_lead_*, form_enviado")
+    await user.click(screen.getByRole("button", { name: "Guardar" }))
+    expect(mocks.update).toHaveBeenCalledWith(5, expect.objectContaining({
+      ga4_lead_events: ["generate_lead_*", "form_enviado"],
+    }))
+  })
+
+  it("no longer links the client to Vigil", () => {
+    show()
+    expect(screen.queryByLabelText("Cliente en Vigil")).not.toBeInTheDocument()
   })
 })

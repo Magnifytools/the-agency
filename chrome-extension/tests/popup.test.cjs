@@ -221,6 +221,25 @@ test('timer and manual task selectors load all pages and preserve selection on a
   assert.equal(get('timer-error').classList.contains('hidden'), false);
 });
 
+test('timer and manual selectors hide pending tasks planned beyond two weeks, never started ones', async t => {
+  const { run, get, state } = await setup(t);
+  const horizon = run('timerHorizon()');
+  const later = run('timerHorizon(new Date(Date.now() + 86400000))');
+  state.rows = { '/api/tasks': [
+    { id: 1, title: 'Sin fecha', status: 'pending' },
+    { id: 2, title: 'En el límite', status: 'pending', scheduled_date: horizon },
+    { id: 3, title: 'Dentro de meses', status: 'pending', scheduled_date: later },
+    { id: 4, title: 'Planificada lejos pero vence pronto', status: 'pending', scheduled_date: later, due_date: `${horizon}T00:00:00` },
+    { id: 5, title: 'Empezada aunque sea futura', status: 'in_progress', scheduled_date: later },
+    { id: 6, title: 'Vence dentro de meses', status: 'pending', due_date: `${later}T00:00:00` },
+  ] };
+  await run('loadTimerTasks()');
+  for (const select of ['timer-task-select', 'manual-task-select']) {
+    const ids = [...get(select).options].map(o => o.value).filter(Boolean);
+    assert.deepEqual(ids, ['1', '2', '4', '5'], select);
+  }
+});
+
 test('malformed later page is an error, never a successful partial list', async t => {
   const { run, get, state } = await setup(t);
   state.malformed = true;
@@ -865,4 +884,85 @@ test('decision query opens source links and never offers undo', async t => {
   assert.match(get('command-receipt').textContent, /Para Nacho/);
   assert.match(get('command-receipt').textContent, /Los pospuestos quedan fuera/);
   assert.ok(![...get('command-receipt').querySelectorAll('button')].some(b => b.textContent === 'Deshacer'));
+});
+
+// Fallo de Nacho: "inicio una tarea nueva en la extensión, le doy a stop y luego
+// no la veo para retomarla". El backend falso aplica las mismas reglas que
+// GET /api/tasks (assigned_to=me y timer_scope=assigned_or_created).
+function installTaskBackend(h, { me = 2, seed = [] } = {}) {
+  const store = seed.map(task => ({ ...task }));
+  const listRequests = [];
+  const fallback = h.dom.window.fetch;
+  let nextId = 500;
+  const reply = (data, status = 200) => ({ ok: status < 300, status, json: async () => data });
+  h.dom.window.fetch = async (url, options = {}) => {
+    const u = new URL(url);
+    if (u.pathname === '/api/tasks' && options.method === 'POST') {
+      const body = JSON.parse(options.body);
+      const task = { id: nextId++, title: body.title, status: body.status || 'pending', client_id: body.client_id,
+        created_by: me, assigned_to: body.assigned_to ?? (body.assign_to_current_user ? me : null) };
+      store.push(task);
+      return reply(task, 201);
+    }
+    if (u.pathname === '/api/tasks' && !options.method) {
+      listRequests.push(u.searchParams);
+      const statuses = (u.searchParams.get('status') || '').split(',').filter(Boolean);
+      const scope = u.searchParams.get('timer_scope') || 'assigned';
+      const rows = store.filter(task => (!statuses.length || statuses.includes(task.status)) &&
+        (u.searchParams.get('assigned_to') !== 'me' || task.assigned_to === me ||
+          (scope === 'assigned_or_created' && task.assigned_to === null && task.created_by === me)));
+      return reply({ items: rows, total: rows.length, page: 1, page_size: 100 });
+    }
+    if (u.pathname === '/api/timer/start') {
+      const { task_id } = JSON.parse(options.body);
+      return reply({ id: 77, task_id, task_title: store.find(task => task.id === task_id).title, started_at: new Date().toISOString() });
+    }
+    if (u.pathname === '/api/timer/stop') return reply({ id: 77, duration_minutes: 1 });
+    return fallback(url, options);
+  };
+  return { store, listRequests };
+}
+
+test('a task created from the Timer and stopped can be resumed from Tareas', async t => {
+  const h = await setup(t);
+  await h.run('loadProjectsAndClients()');
+  const backend = installTaskBackend(h);
+
+  // Crear desde Timer → "+ Crear tarea"
+  h.get('quick-create-timer-link').click();
+  h.get('qc-timer-title').value = 'Revisar fichas de producto';
+  h.get('qc-timer-client').value = '1';
+  h.get('qc-timer-save').click();
+  for (let n = 0; n < 10; n++) await tick();
+  const created = backend.store.at(-1);
+  assert.equal(created.title, 'Revisar fichas de producto');
+  assert.equal(created.assigned_to, 2);
+
+  // Iniciar y detener el timer
+  h.get('timer-start-btn').click();
+  for (let n = 0; n < 10; n++) await tick();
+  assert.equal(h.get('timer-active').classList.contains('hidden'), false);
+  h.get('timer-stop-btn').click();
+  for (let n = 0; n < 10; n++) await tick();
+  assert.equal(h.get('timer-idle').classList.contains('hidden'), false);
+
+  // Sigue en el selector del Timer y en la pestaña Tareas, con su botón de play
+  assert.ok([...h.get('timer-task-select').options].some(option => option.value === String(created.id)));
+  await h.run('loadTasks()');
+  const card = h.get('tasks-list').querySelector(`.task-card[data-id="${created.id}"]`);
+  assert.ok(card, 'la tarea parada debe aparecer en Tareas');
+  assert.ok(card.querySelector('.task-play-btn'));
+});
+
+test('Tareas also lists own unassigned tasks left by older Timer captures', async t => {
+  const h = await setup(t);
+  const backend = installTaskBackend(h, { seed: [
+    { id: 1, title: 'Mía sin asignar', status: 'in_progress', created_by: 2, assigned_to: null },
+    { id: 2, title: 'De otra persona sin asignar', status: 'in_progress', created_by: 9, assigned_to: null },
+    { id: 3, title: 'Asignada a otra persona', status: 'in_progress', created_by: 2, assigned_to: 9 },
+  ] });
+  await h.run('loadTasks()');
+  const ids = [...h.get('tasks-list').querySelectorAll('.task-card')].map(card => card.dataset.id);
+  assert.deepEqual(ids, ['1']);
+  assert.equal(backend.listRequests.at(-1).get('timer_scope'), 'assigned_or_created');
 });

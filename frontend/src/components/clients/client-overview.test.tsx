@@ -1,0 +1,137 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { fireEvent, render, screen, within } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+import type { Client, ClientStatusRow, Task } from "@/lib/types"
+import { ClientOverview } from "./client-overview"
+
+const mocks = vi.hoisted(() => ({ contacts: vi.fn() }))
+vi.mock("@/lib/api", () => ({ contactsApi: { list: mocks.contacts } }))
+
+const client = { id: 5, name: "Parklex", context: "Fabricante de paneles. Decide Marta.", engine_project_id: 9 } as unknown as Client
+const status: ClientStatusRow = {
+  client_id: 5, client_name: "Parklex", status: "act",
+  reasons: ["3 tareas vencidas"],
+  seo: null,
+  digests: [{ cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "late" }],
+  digest: { cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "late" },
+  tasks: { overdue: 3, waiting: 1, followups_late: 1 },
+  month: { hours: 12.5 },
+  ready: { since: "2026-09-01", count: 7, items: [{ id: 9, title: "Informe de enlaces", completed_on: "2026-10-14" }] },
+}
+const task = (id: number, title: string, extra: Partial<Task>) => ({ id, title, status: "pending", due_date: null, ...extra }) as Task
+const tasks = [
+  task(1, "Entrega tarde", { due_date: "2020-01-10" }),
+  task(2, "Entrega futura", { due_date: "2099-01-10" }),
+  task(3, "Revisar textos", { status: "in_review" }),
+  task(4, "Accesos GSC", { status: "waiting", waiting_for: "cliente", follow_up_date: "2020-01-14" }),
+  task(5, "Hecha", { status: "completed" }),
+]
+
+function show(props: Partial<React.ComponentProps<typeof ClientOverview>> = {}) {
+  const onNavigate = vi.fn()
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={queryClient}>
+      <ClientOverview client={client} status={status} statusFailed={false} onRetryStatus={vi.fn()} tasks={tasks}
+        canReadDigests canReadContacts onNavigate={onNavigate} {...props} />
+    </QueryClientProvider>,
+  )
+  return { onNavigate }
+}
+
+const block = (title: string) => screen.getByRole("heading", { name: title }).closest("div.space-y-3") as HTMLElement
+
+describe("ClientOverview", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.contacts.mockResolvedValue([{ id: 1, name: "Marta", position: "CMO", email: "marta@parklex.es", is_primary: true }])
+  })
+
+  it("shows the status and the three blocks", async () => {
+    show()
+    expect(screen.getByText("3 tareas vencidas")).toBeInTheDocument()
+
+    const work = block("Trabajo")
+    expect(within(work).getByText(/4 abiertas · 12,5 h este mes/)).toBeInTheDocument()
+    expect(within(work).getByText("Entrega tarde")).toBeInTheDocument()
+    expect(within(work).queryByText("Accesos GSC")).not.toBeInTheDocument()
+    expect(within(work).queryByText("Hecha")).not.toBeInTheDocument()
+    expect(within(work).getByText("Por revisar (1)")).toBeInTheDocument()
+
+    // The Engine está congelado: la vista general no enlaza a Engine.
+    const results = block("Resultados")
+    expect(within(results).queryByRole("link", { name: /Engine|PDF/ })).not.toBeInTheDocument()
+    expect(within(results).queryByText("Ver SEO")).not.toBeInTheDocument()
+
+    const relation = block("Relación")
+    expect(await within(relation).findByText("Marta")).toBeInTheDocument()
+    expect(within(relation).getByText("Esperando al cliente (1)")).toBeInTheDocument()
+    expect(within(relation).getByText("Accesos GSC")).toBeInTheDocument()
+    expect(within(relation).getByText(/Fabricante de paneles/)).toBeInTheDocument()
+  })
+
+  it("shows what is ready to deliver in the work block", () => {
+    show()
+    const work = block("Trabajo")
+    expect(within(work).getByText("Listo para entregar (7)")).toBeInTheDocument()
+    expect(within(work).getByText(/Terminado desde el 1 sept/)).toBeInTheDocument()
+    expect(within(work).getByText("Informe de enlaces")).toBeInTheDocument()
+    expect(within(work).getByText("14 oct")).toBeInTheDocument()
+  })
+
+  it("says when nothing is pending to deliver", () => {
+    show({ status: { ...status, ready: { since: "2026-10-01", count: 0, items: [] } } })
+    expect(screen.getByText("Nada pendiente de contar.")).toBeInTheDocument()
+  })
+
+  it("leaves the ready block out when the status has none", () => {
+    show({ status: { ...status, ready: null } })
+    expect(screen.queryByText(/Listo para entregar/)).not.toBeInTheDocument()
+  })
+
+  it("links each block to its tab", () => {
+    const { onNavigate } = show()
+    fireEvent.click(screen.getByText("Ver tareas"))
+    fireEvent.click(screen.getByText("Abrir resúmenes"))
+    fireEvent.click(screen.getByText("Ver contexto"))
+    expect(onNavigate.mock.calls.map(([section]) => section)).toEqual(["tareas", "resumenes", "contexto"])
+  })
+
+  it("links SEO traffic to the Control SEO tab when the client has a Search Console property", () => {
+    const { onNavigate } = show({ client: { ...client, gsc_url: "sc-domain:parklex.es" } })
+    fireEvent.click(within(block("Resultados")).getByText("Ver Control SEO"))
+    expect(onNavigate).toHaveBeenCalledWith("control_seo")
+  })
+
+  it("leaves out what the viewer cannot read", () => {
+    show({ tasks: null, canReadDigests: false, canReadContacts: false })
+    expect(screen.getByText("Sin acceso a las tareas.")).toBeInTheDocument()
+    expect(screen.queryByText("Esperando al cliente (0)")).not.toBeInTheDocument()
+    expect(screen.queryByText("Abrir resúmenes")).not.toBeInTheDocument()
+    expect(screen.queryByText("Interlocutor")).not.toBeInTheDocument()
+    expect(mocks.contacts).not.toHaveBeenCalled()
+  })
+
+  it("offers a retry when the status fails", () => {
+    const onRetryStatus = vi.fn()
+    show({ status: undefined, statusFailed: true, onRetryStatus })
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }))
+    expect(onRetryStatus).toHaveBeenCalled()
+  })
+
+  it("no longer shows a Vigil block", () => {
+    show()
+    expect(screen.queryByText(/Abrir en Vigil/)).not.toBeInTheDocument()
+  })
+
+  it("shows GA4 visits, conversions and AI traffic from the last 28 days", () => {
+    show({ status: { ...status, ga4: {
+      current: { start: "2026-09-21", end: "2026-10-18", days: 28, sessions: 1234, key_events: 25, ai_sessions: 50, ai_key_events: 2.5 },
+      previous: null, vs_previous: { sessions_pct: 10, key_events_pct: 25, ai_sessions_pct: null }, as_of: "2026-10-18",
+    } } })
+    const results = block("Resultados")
+    expect(within(results).getByText(/1\.234 visitas · 25 conversiones/)).toBeInTheDocument()
+    expect(within(results).getByText(/Desde IA: 50 visitas · 2,5 conversiones/)).toBeInTheDocument()
+  })
+})

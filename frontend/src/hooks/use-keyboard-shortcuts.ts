@@ -12,6 +12,9 @@ export const DEFAULT_SHORTCUTS: Record<string, string> = {
   goto_projects: "G+P",
   goto_tasks: "G+A",
   goto_leads: "G+L",
+  goto_today: "G+H",
+  goto_alerts: "G+N",
+  goto_digests: "G+R",
   new_entry: "N",
   show_shortcuts: "?",
   undo: "Ctrl+Z",
@@ -19,7 +22,7 @@ export const DEFAULT_SHORTCUTS: Record<string, string> = {
 
 export const SHORTCUT_LABELS: Record<string, string> = {
   search: "Buscar",
-  capture: "Captura rápida",
+  capture: "Anotar",
   goto_dashboard: "Ir a Visión general",
   goto_inbox: "Ir a Por aclarar",
   goto_timesheet: "Ir a Horas",
@@ -27,6 +30,9 @@ export const SHORTCUT_LABELS: Record<string, string> = {
   goto_projects: "Ir a Proyectos",
   goto_tasks: "Ir a Tareas",
   goto_leads: "Ir a Pipeline",
+  goto_today: "Ir a Mi agenda",
+  goto_alerts: "Ir a Alertas",
+  goto_digests: "Ir a Resúmenes de clientes",
   new_entry: "Nueva entrada",
   show_shortcuts: "Mostrar atajos",
   undo: "Deshacer último cambio",
@@ -34,12 +40,15 @@ export const SHORTCUT_LABELS: Record<string, string> = {
 
 // Routes for chord navigation actions
 const ACTION_ROUTES: Record<string, string> = {
+  goto_today: "/tasks?view=my_day",
+  goto_alerts: "/incidents",
+  goto_digests: "/digests",
   goto_dashboard: "/dashboard",
   goto_inbox: "/inbox",
   goto_timesheet: "/timesheet",
   goto_clients: "/clients",
   goto_projects: "/projects",
-  goto_tasks: "/tasks?view=all",
+  goto_tasks: "/tasks?view=tareas",
   goto_leads: "/leads",
 }
 

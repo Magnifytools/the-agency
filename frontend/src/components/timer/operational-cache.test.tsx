@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ActiveTimerBar } from "./active-timer-bar"
 import { TimeLogDialog } from "./time-log-dialog"
-import { clientKeys, dashboardKeys, myWeekKeys, projectKeys, taskKeys, timeKeys } from "@/lib/query-keys"
+import { clientKeys, dashboardKeys, projectKeys, taskKeys, timeKeys } from "@/lib/query-keys"
 
 const api = vi.hoisted(() => ({
   active: vi.fn(),
@@ -35,7 +35,6 @@ function setup(element: React.ReactNode) {
     taskKeys.project(3),
     projectKeys.detail(3),
     dashboardKeys.overview(2026, 9),
-    myWeekKeys.week("2026-09-14"),
     clientKeys.summary(2),
   ]
   affectedKeys.forEach((key) => client.setQueryData(key, { cached: true }))

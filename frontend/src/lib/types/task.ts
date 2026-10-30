@@ -36,20 +36,24 @@ export interface Task {
   depends_on: number | null
   created_by: number | null
   scheduled_date: string | null
+  /** Orden manual (arrastrar); null = sin orden manual. Ver lib/task-rank.ts. */
+  sort_rank?: string | null
   waiting_for: string | null
   follow_up_date: string | null
   is_recurring: boolean
   recurrence_pattern: string | null
   recurrence_day: number | null
+  recurrence_weekdays?: number[] | null
   recurrence_end_date: string | null
   recurrence_anchor_date?: string | null
   recurrence_paused_at?: string | null
   recurrence_summary?: RecurrenceSummary | null
   recurring_parent_id: number | null
   recurrence_occurrence_date?: string | null
-  unit_cost: number | null
-  invoiced_at: string | null
   link_url: string | null
+  /** Procedimiento escrito en la plantilla recurrente; cada repetición guarda su copia. */
+  procedure_text?: string | null
+  procedure_url?: string | null
   created_at: string
   updated_at: string
   completed_at?: string | null
@@ -84,6 +88,13 @@ export interface ChecklistItem {
   updated_at: string
 }
 
+/** Subtarea que me toca en una tarea que lleva otra persona (Mi agenda). */
+export interface AgendaSubtask extends ChecklistItem {
+  task_title: string
+  task_assignee_name: string | null
+  client_name: string | null
+}
+
 export interface TaskCreate {
   title: string
   description?: string | null
@@ -106,15 +117,17 @@ export interface TaskCreate {
   is_recurring?: boolean
   recurrence_pattern?: string | null
   recurrence_day?: number | null
+  recurrence_weekdays?: number[] | null
   recurrence_end_date?: string | null
   recurrence_anchor_date?: string | null
   recurrence_paused?: boolean
   recurring_parent_id?: number | null
-  unit_cost?: number | null
   link_url?: string | null
+  procedure_text?: string | null
+  procedure_url?: string | null
 }
 
-export type TaskAgendaSection = "planned" | "carryover" | "unplanned" | "completed"
+export type TaskAgendaSection = "planned" | "carryover" | "unplanned" | "followups" | "completed"
 
 export interface TaskComment {
   id: number
@@ -122,6 +135,7 @@ export interface TaskComment {
   user_id: number
   text: string
   user_name: string | null
+  is_ai_draft: boolean
   created_at: string
   updated_at: string
 }

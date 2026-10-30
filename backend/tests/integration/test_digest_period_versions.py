@@ -2,6 +2,7 @@
 """Closed-period and durable digest-version regressions."""
 
 from datetime import date, datetime
+from uuid import uuid4
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -10,8 +11,11 @@ from sqlalchemy import func, select
 from backend.db.models import (
     Client,
     ClientStatus,
+    Delivery,
+    DigestExternalDeliveryEvent,
     DigestStatus,
     DigestTone,
+    ExternalDeliveryAction,
     WeeklyDigest,
 )
 from backend.schemas.digest import DigestContent
@@ -205,25 +209,22 @@ async def test_put_is_idempotent_or_creates_new_source_version(
     assert identical.status_code == 200, identical.text
     assert identical.json()["id"] == original.id
 
+    # Sin haber salido de la app, guardar sobrescribe la misma versión.
     changed_content = _content(title="Hecho corregido")
     changed = await admin_client.put(
         f"/api/digests/{original.id}",
         json={"content": changed_content, "tone": "cercano"},
     )
     assert changed.status_code == 200, changed.text
-    assert changed.json()["id"] != original.id
-    assert changed.json()["status"] == "draft"
+    assert changed.json()["id"] == original.id
+    assert changed.json()["status"] == "reviewed"
+    assert changed.json()["content"]["sections"]["done"][0]["title"] == "Hecho corregido"
     assert changed.json()["content"]["date"] == (
         "Período del 7 al 13 de septiembre de 2026"
     )
-
-    await db_session.refresh(original)
-    assert original.status == DigestStatus.reviewed
-    assert original.content["sections"]["done"][0]["title"] == "Hecho"
-    assert original.content["date"] == "FECHA IA HISTÓRICA"
     assert await db_session.scalar(select(func.count(WeeklyDigest.id)).where(
         WeeklyDigest.client_id == client.id
-    )) == 2
+    )) == 1
 
     regenerated_content = _content(title="Regenerado", date_text="otra inventada")
     with patch(
@@ -249,7 +250,43 @@ async def test_put_is_idempotent_or_creates_new_source_version(
     assert original.tone == DigestTone.cercano
     assert await db_session.scalar(select(func.count(WeeklyDigest.id)).where(
         WeeklyDigest.client_id == client.id
-    )) == 3
+    )) == 2
+
+
+@pytest.mark.parametrize("evidence", ["external_event", "discord_delivery", "legacy_sent"])
+async def test_once_it_left_the_app_saving_keeps_what_was_sent(admin_client, db_session, admin_user, evidence):
+    client = Client(name=f"Cliente entregado {evidence}", status=ClientStatus.active)
+    db_session.add(client)
+    await db_session.flush()
+    sent = WeeklyDigest(
+        client_id=client.id, period_start=date(2026, 10, 19), period_end=date(2026, 10, 25),
+        status=DigestStatus.sent if evidence == "legacy_sent" else DigestStatus.reviewed,
+        tone=DigestTone.cercano, content=_content(title="Lo que recibió el cliente"),
+        raw_context={"client_name": client.name}, generated_at=datetime(2026, 10, 26, 8),
+        created_by=admin_user.id,
+    )
+    db_session.add(sent)
+    await db_session.flush()
+    if evidence == "external_event":
+        db_session.add(DigestExternalDeliveryEvent(
+            digest_id=sent.id, action=ExternalDeliveryAction.confirmed, actor_id=admin_user.id,
+            request_key=uuid4().hex, request_hash="a" * 64))
+    elif evidence == "discord_delivery":
+        db_session.add(Delivery(
+            id=str(uuid4()), dedupe_key=uuid4().hex, actor_id=admin_user.id, source_kind="digest",
+            source_id=sent.id, source_version="v1", destination_key="discord", payload={},
+            status="sent", available_at=datetime(2026, 10, 26, 9), expires_at=datetime(2026, 10, 27, 9),
+        ))
+    await db_session.flush()
+
+    changed = await admin_client.put(
+        f"/api/digests/{sent.id}",
+        json={"content": _content(title="Corregido después"), "tone": "cercano"},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["id"] != sent.id
+    await db_session.refresh(sent)
+    assert sent.content["sections"]["done"][0]["title"] == "Lo que recibió el cliente"
 
 
 async def test_retired_batch_keeps_existing_draft(db_session, admin_client, admin_user):
@@ -311,3 +348,60 @@ def test_all_renderers_ignore_generated_date_when_period_is_available():
     assert all("FECHA INVENTADA" not in value for value in rendered)
     assert "Resumen diario" not in rendered[1]
     assert "**📊 Resumen — Magnify" in rendered[1]
+
+
+async def test_el_historial_dice_que_version_se_entrego_y_quien(admin_client, db_session, admin_user):
+    client = Client(name="Cliente con historial de entregas", status=ClientStatus.active)
+    db_session.add(client)
+    await db_session.flush()
+
+    def version(day: int) -> WeeklyDigest:
+        return WeeklyDigest(
+            client_id=client.id, period_start=date(2026, 10, 19), period_end=date(2026, 10, 25),
+            status=DigestStatus.reviewed, tone=DigestTone.cercano, content=_content(),
+            raw_context={"client_name": client.name}, generated_at=datetime(2026, 10, day, 8),
+            created_by=admin_user.id,
+        )
+
+    delivered, revoked, draft = version(26), version(27), version(28)
+    db_session.add_all([delivered, revoked, draft])
+    await db_session.flush()
+
+    def event(digest: WeeklyDigest, action: ExternalDeliveryAction, minute: int):
+        return DigestExternalDeliveryEvent(
+            digest_id=digest.id, action=action, actor_id=admin_user.id,
+            request_key=uuid4().hex, request_hash="a" * 64, created_at=datetime(2026, 10, 28, 9, minute))
+
+    db_session.add_all([
+        event(delivered, ExternalDeliveryAction.confirmed, 0),
+        event(revoked, ExternalDeliveryAction.confirmed, 1),
+        event(revoked, ExternalDeliveryAction.revoked, 2),
+    ])
+    await db_session.flush()
+
+    res = await admin_client.get(f"/api/digests?client_id={client.id}")
+    assert res.status_code == 200, res.text
+    by_id = {row["id"]: row for row in res.json()}
+    assert by_id[delivered.id]["delivered_at"].startswith("2026-10-28T09:00")
+    assert by_id[delivered.id]["delivered_by_name"] == admin_user.full_name
+    assert by_id[revoked.id]["delivered_at"] is None
+    assert by_id[draft.id]["delivered_at"] is None and by_id[draft.id]["delivered_by_name"] is None
+
+
+async def test_la_busqueda_global_encuentra_resumenes_por_cliente(admin_client, db_session, admin_user):
+    client = Client(name="Buscable Resúmenes SL", status=ClientStatus.active)
+    db_session.add(client)
+    await db_session.flush()
+    digest = WeeklyDigest(
+        client_id=client.id, period_start=date(2026, 9, 1), period_end=date(2026, 9, 30),
+        status=DigestStatus.draft, tone=DigestTone.cercano, content=_content(),
+        raw_context={"client_name": client.name}, generated_at=datetime(2026, 10, 2, 8),
+        created_by=admin_user.id,
+    )
+    db_session.add(digest)
+    await db_session.flush()
+    res = await admin_client.get("/api/search", params={"q": "Buscable Resúmenes"})
+    assert res.status_code == 200, res.text
+    assert res.json()["digests"] == [{
+        "id": digest.id, "client_name": client.name, "period_start": "2026-09-01", "period_end": "2026-09-30",
+    }]

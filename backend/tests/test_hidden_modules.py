@@ -110,7 +110,7 @@ class TestRoutersRegistrados:
         "prefijo",
         [
             "/api/reports", "/api/cfo", "/api/vault", "/api/automations",
-            "/api/leads", "/api/growth", "/api/proposals",
+            "/api/growth", "/api/proposals",
             "/api/holded", "/api/income", "/api/expenses", "/api/taxes",
             "/api/forecasts", "/api/billing", "/api/communications",
             "/api/invitations", "/api/investments",
@@ -127,6 +127,8 @@ class TestRoutersRegistrados:
             "/api/auth/me", "/api/clients", "/api/projects", "/api/tasks",
             "/api/time-entries", "/api/dashboard/overview", "/api/digests",
             "/api/dailys", "/api/inbox", "/api/users", "/api/notifications",
+            # leads: Pipeline, reactivado el 28 oct 2026 (CRM del análisis de Ruk Lab).
+            "/api/leads",
             # search: 0 llamadas pero es la paleta ⌘K del shell, se queda
             "/api/search",
             # pm: el panel "Asistente PM" vive dentro del dashboard
@@ -135,10 +137,8 @@ class TestRoutersRegistrados:
             # ofrecer "Enviar a Discord" en el Resumen Diario — y ese envío se usa
             "/api/discord/settings",
             "/api/dailys/{daily_id}/send-discord",
-            # my-week: la PANTALLA está oculta, pero este router sirve los
-            # festivos de empresa que se gestionan desde Ajustes, y Ajustes se
-            # conserva
-            "/api/my-week/holidays",
+            # festivos de empresa: Ajustes → Festivos y el plan de la mañana
+            "/api/holidays",
         ],
     )
     def test_el_nucleo_sigue_registrado(self, rutas, ruta):
@@ -218,35 +218,3 @@ def test_search_y_pm_no_estan_ocultos():
     """
     assert "search" not in HIDDEN_MODULES
     assert "pm" not in HIDDEN_MODULES
-
-
-def test_arrancar_la_app_no_carga_sklearn_ni_numpy():
-    """Un módulo oculto no debe costar memoria ni tiempo de arranque.
-
-    `main.py` importa TODOS los routers y luego decide cuáles registra, así que
-    ocultar `core_updates` no evitaba que `core_update_service` arrastrase
-    sklearn + numpy en su cabecera: ~98 MB de RSS y 1,2 s de arranque en cada
-    boot de producción, para un módulo con 0 llamadas en 77 días. El import es
-    perezoso desde entonces.
-
-    Va en un subproceso limpio porque la propia suite de tests importa medio
-    mundo y `sys.modules` de este proceso no dice nada.
-    """
-    import subprocess
-
-    code = (
-        "import sys; import backend.main; "
-        "print(any(m.startswith('sklearn') for m in sys.modules) or 'numpy' in sys.modules)"
-    )
-    salida = subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=str(Path(__file__).resolve().parents[2]),
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
-    assert salida.returncode == 0, salida.stderr[-2000:]
-    assert salida.stdout.strip().splitlines()[-1] == "False", (
-        "Alguien ha vuelto a importar sklearn/numpy en la cabecera de un módulo "
-        "que se carga al arrancar. Muévelo dentro de la función que lo usa."
-    )

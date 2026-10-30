@@ -1,15 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
-import { beforeEach, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import userEvent from "@testing-library/user-event"
 
-import { categoriesApi, myWeekApi, usersApi } from "@/lib/api"
+import { categoriesApi, holidaysApi, usersApi } from "@/lib/api"
+import { HIDDEN_MODULES, setRuntimeHiddenModules } from "@/lib/hidden-modules"
 import SettingsPage from "./settings-page"
 
 const auth = vi.hoisted(() => ({ isAdmin: false, user: { id: 12, role: "member", preferences: { shortcuts: { goto_leads: "G+Y" } } } }))
 
-beforeEach(() => { auth.isAdmin = false })
+// Estas pruebas tratan un atajo guardado de un módulo OCULTO. El Pipeline ya no
+// lo está (28 oct 2026), así que aquí se oculta a propósito.
+beforeEach(() => {
+  auth.isAdmin = false
+  setRuntimeHiddenModules([...HIDDEN_MODULES, "leads"])
+})
+afterEach(() => setRuntimeHiddenModules([...HIDDEN_MODULES]))
 
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ user: auth.user, isAdmin: auth.isAdmin, hasPermission: () => false, refreshUser: vi.fn() }),
@@ -19,9 +26,11 @@ vi.mock("@/components/job-runtime-status", () => ({ JobRuntimeStatusPanel: () =>
 vi.mock("@/lib/api", () => ({
   usersApi: { update: vi.fn() },
   categoriesApi: { list: vi.fn() },
-  myWeekApi: { listHolidays: vi.fn(), createHoliday: vi.fn(), deleteHoliday: vi.fn() },
+  holidaysApi: { list: vi.fn(), create: vi.fn(), delete: vi.fn() },
   calendarApi: { getStatus: vi.fn().mockResolvedValue({ connected: false }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn() },
-  gscApi: { getStatus: vi.fn().mockResolvedValue({ configured: true, connection: null, sites: [] }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn(), listSites: vi.fn() },
+  gscApi: { getStatus: vi.fn().mockResolvedValue({ configured: true, connections: [], sites: [] }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn(), listSites: vi.fn() },
+  ga4Api: { getStatus: vi.fn().mockResolvedValue({ configured: true, properties: [] }), sync: vi.fn() },
+  extensionApi: { info: vi.fn().mockResolvedValue({ version: "2.2.7", filename: "the-agency-extension-v2.2.7.zip", download_url: "/api/extension/download", released_on: null, releases: [] }) },
 }))
 
 it("does not render the scheduled-process panel or anchor for a member", async () => {
@@ -56,15 +65,15 @@ it("captures a sequential navigation chord and saves the executable binding", as
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)
   await userEvent.click(screen.getAllByRole("button", { name: "Editar" })[2])
-  fireEvent.keyDown(window, { key: "h" })
+  fireEvent.keyDown(window, { key: "y" })
   expect(screen.getByText("Presiona G…")).toBeInTheDocument()
   fireEvent.keyDown(window, { key: "g" })
   expect(screen.getByText("G, luego una letra…")).toBeInTheDocument()
-  fireEvent.keyDown(window, { key: "h" })
+  fireEvent.keyDown(window, { key: "y" })
   await userEvent.click(screen.getByRole("button", { name: "OK" }))
-  expect(screen.getByText("G+H")).toBeInTheDocument()
+  expect(screen.getByText("G+Y")).toBeInTheDocument()
   await userEvent.click(screen.getByRole("button", { name: "Guardar cambios" }))
-  expect(usersApi.update).toHaveBeenCalledWith(12, expect.objectContaining({ preferences: expect.objectContaining({ shortcuts: expect.objectContaining({ goto_dashboard: "G+H" }) }) }))
+  expect(usersApi.update).toHaveBeenCalledWith(12, expect.objectContaining({ preferences: expect.objectContaining({ shortcuts: expect.objectContaining({ goto_dashboard: "G+Y" }) }) }))
 })
 
 it("rejects a chord already assigned to an active navigation action", async () => {
@@ -92,7 +101,7 @@ it("keeps unsupported modifier combinations in edit mode", async () => {
 it("names the category creation and editing controls", async () => {
   auth.isAdmin = true
   vi.mocked(categoriesApi.list).mockResolvedValue([{ id: 4, name: "SEO", default_minutes: 60, created_at: "2026-09-21T00:00:00Z", updated_at: "2026-09-21T00:00:00Z" }])
-  vi.mocked(myWeekApi.listHolidays).mockResolvedValue([])
+  vi.mocked(holidaysApi.list).mockResolvedValue([])
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)
 
@@ -109,7 +118,7 @@ it("names the category creation and editing controls", async () => {
 it("associates holiday labels and names its date and name fields", async () => {
   auth.isAdmin = true
   vi.mocked(categoriesApi.list).mockResolvedValue([])
-  vi.mocked(myWeekApi.listHolidays).mockResolvedValue([])
+  vi.mocked(holidaysApi.list).mockResolvedValue([])
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><SettingsPage /></MemoryRouter></QueryClientProvider>)
 

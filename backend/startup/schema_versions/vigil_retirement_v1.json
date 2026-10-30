@@ -1,0 +1,7 @@
+{
+  "version": "20261023_vigil_retirement_v1",
+  "drop_tables": ["vigil_summary"],
+  "drop_columns": {
+    "clients": ["vigil_slug"]
+  }
+}

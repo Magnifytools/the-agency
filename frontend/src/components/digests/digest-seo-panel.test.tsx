@@ -1,18 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { DigestSeoPanel } from "./digest-seo-panel"
 import type { DigestSeo } from "@/lib/types"
-
-const mocks = vi.hoisted(() => ({ getClient: vi.fn(), getConfig: vi.fn() }))
-
-vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ hasPermission: () => true }) }))
-vi.mock("@/lib/api", () => ({
-  clientsApi: { get: mocks.getClient },
-  engineApi: { getConfig: mocks.getConfig },
-}))
 
 const ok: DigestSeo = {
   status: "ok",
@@ -25,21 +16,11 @@ const ok: DigestSeo = {
 }
 
 function show(seo: DigestSeo, onIncludeChange = vi.fn()) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={queryClient}>
-      <DigestSeoPanel seo={seo} clientId={5} include canWrite onIncludeChange={onIncludeChange} />
-    </QueryClientProvider>,
-  )
+  render(<DigestSeoPanel seo={seo} include canWrite onIncludeChange={onIncludeChange} />)
   return onIncludeChange
 }
 
 describe("DigestSeoPanel", () => {
-  beforeEach(() => {
-    mocks.getClient.mockResolvedValue({ id: 5, engine_project_id: 81 })
-    mocks.getConfig.mockResolvedValue({ engine_frontend_url: "https://engine.example" })
-  })
-
   it("shows the month against the previous one and lets the writer leave it out", async () => {
     const onIncludeChange = show(ok)
 
@@ -50,11 +31,11 @@ describe("DigestSeoPanel", () => {
     expect(onIncludeChange).toHaveBeenCalledWith(false)
   })
 
-  it("links to the client's reports in The Engine for the PDF", async () => {
+  it("no longer links to The Engine's frozen PDF", () => {
     show(ok)
 
-    const link = await screen.findByRole("link", { name: /informe SEO en PDF/ })
-    expect(link).toHaveAttribute("href", "https://engine.example/p/81/reports")
+    expect(screen.queryByRole("link")).not.toBeInTheDocument()
+    expect(screen.queryByText(/The Engine/)).not.toBeInTheDocument()
   })
 
   it("explains why a monthly summary has no Search Console block", () => {
@@ -63,5 +44,41 @@ describe("DigestSeoPanel", () => {
     expect(screen.getByRole("status")).toHaveTextContent("todavía no tiene datos finales de todo el mes")
     expect(screen.getByRole("status")).toHaveTextContent("28 de septiembre de 2026")
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
+  })
+
+  it("shows the full year-on-year line", () => {
+    show({ ...ok, year_ago: { ...ok.month, start: "2025-09-01", end: "2025-09-30" }, vs_year_ago: { clicks_pct: 75, impressions_pct: null, ctr_delta: 0.51, position_delta: -0.4 } })
+
+    const line = screen.getByText(/Respecto a septiembre de 2025/)
+    expect(line).toHaveTextContent("clics +75,0 %, CTR +0,51 p. p., posición media ▼ 0,4.")
+    expect(line).not.toHaveTextContent("impresiones")
+  })
+
+  it("shows the month's snapshot: top searches and pages, opportunities and brand", () => {
+    show({
+      ...ok,
+      detail: {
+        status: "ok",
+        site_url: "https://www.ejemplo.com/",
+        month: { start: "2026-09-01", end: "2026-09-30" },
+        previous: { start: "2026-08-01", end: "2026-08-31" },
+        queries: [
+          { key: "zapatillas running", clicks: 300, impressions: 9000, position: 4, clicks_pct: 50, position_delta: 1, is_new: false },
+          { key: "zapatillas trail", clicks: 40, impressions: 5000, position: 9.5, clicks_pct: null, position_delta: null, is_new: true },
+        ],
+        pages: [{ key: "https://www.ejemplo.com/running/", label: "/running/", clicks: 320, impressions: 9500, position: 4.2, clicks_pct: 52.4, position_delta: 0.9, is_new: false }],
+        opportunities: [{ key: "zapatillas trail", clicks: 40, impressions: 5000, position: 9.5 }],
+        brand: { brand: 252, non_brand: 346, unclassified: 102, previous: { brand: 260, non_brand: 210, unclassified: 50 }, non_brand_pct: 64.8, brand_pct: -3.1 },
+      },
+    })
+
+    expect(screen.getByText("Búsquedas que más visitas trajeron")).toBeInTheDocument()
+    expect(screen.getByText("zapatillas running")).toBeInTheDocument()
+    expect(screen.getByText("nueva")).toBeInTheDocument()
+    expect(screen.getByText("/running/")).toHaveAttribute("title", "https://www.ejemplo.com/running/")
+    expect(screen.getAllByText("Frente a agosto")).toHaveLength(2)
+    expect(screen.getByText(/posición 9,5 · 5.000 impresiones/)).toBeInTheDocument()
+    expect(screen.getByText("Sin detallar por Google")).toBeInTheDocument()
+    expect(screen.getByText("+64,8 %")).toBeInTheDocument()
   })
 })

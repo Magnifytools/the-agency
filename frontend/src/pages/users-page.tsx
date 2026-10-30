@@ -32,11 +32,11 @@ const ALL_MODULES: { key: string; label: string; group: string; hint: string }[]
   { key: "timesheet", label: "Timesheet", group: "General", hint: "Timer, time entries y registro de horas" },
   { key: "pm", label: "PM", group: "General", hint: "Vista de project manager y asignaciones" },
   { key: "digests", label: "Digests", group: "General", hint: "Resúmenes semanales con IA para clientes" },
-  { key: "billing", label: "Facturación", group: "General", hint: "Facturación por tarea y control de costes" },
   { key: "communications", label: "Comunicaciones", group: "General", hint: "Seguimiento de emails y contactos" },
+  { key: "credentials", label: "Accesos", group: "General", hint: "Contraseñas compartidas: sólo ve las que le compartan" },
+  { key: "web", label: "Webs", group: "General", hint: "Disponibilidad de las webs: ver (lectura) y gestionar URLs (escritura). Slack, sólo admin" },
   { key: "growth", label: "Pipeline + Buffer", group: "Crecimiento", hint: "CRM de leads y buffer de ideas ICE" },
   { key: "proposals", label: "Presupuestos", group: "Crecimiento", hint: "Creación y envío de propuestas" },
-  { key: "reports", label: "Informes", group: "Crecimiento", hint: "Informes y métricas de rendimiento" },
   { key: "finance_dashboard", label: "Dashboard Financiero", group: "Finanzas", hint: "Resumen financiero global" },
   { key: "finance_income", label: "Ingresos", group: "Finanzas", hint: "Registro y gestión de ingresos" },
   { key: "finance_expenses", label: "Gastos", group: "Finanzas", hint: "Registro y categorización de gastos" },
@@ -47,6 +47,9 @@ const ALL_MODULES: { key: string; label: string; group: string; hint: string }[]
 ]
 
 const MODULE_GROUPS = [...new Set(ALL_MODULES.map((m) => m.group))]
+// Un usuario puede conservar filas de módulos ya eliminados (p. ej. "billing").
+// No se reenvían al guardar: el backend rechaza módulos que no reconoce.
+const KNOWN_MODULES = new Set(ALL_MODULES.map((m) => m.key))
 
 export default function UsersPage() {
   const queryClient = useQueryClient()
@@ -150,7 +153,7 @@ export default function UsersPage() {
 
   const handleSavePermissions = () => {
     const perms: UserPermission[] = Object.entries(permissionsState)
-      .filter(([, v]) => v.read || v.write)
+      .filter(([module, v]) => KNOWN_MODULES.has(module) && (v.read || v.write))
       .map(([module, v]) => ({ module, can_read: v.read, can_write: v.write }))
     permissionsMutation.mutate(perms)
   }
@@ -198,7 +201,7 @@ export default function UsersPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-        <h2 className="text-2xl font-bold uppercase tracking-wide">Equipo</h2>
+        <h1 className="text-2xl font-bold uppercase tracking-wide">Equipo</h1>
         {currentUser?.role === "admin" && (
           <Button onClick={() => setIsInviteOpen(true)} className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" /> Invitar Miembro

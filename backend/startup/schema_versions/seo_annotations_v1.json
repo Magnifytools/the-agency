@@ -1,0 +1,25 @@
+{
+  "version": "20261027_seo_annotations_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS seo_annotations (\n id SERIAL PRIMARY KEY,\n client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,\n date DATE NOT NULL,\n text VARCHAR(160) NOT NULL,\n created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT ck_seo_annotations_text CHECK (length(btrim(text)) > 0)\n)",
+    "CREATE INDEX IF NOT EXISTS ix_seo_annotations_client_date ON seo_annotations (client_id, date)"
+  ],
+  "columns": {
+    "seo_annotations": {
+      "id": ["int4", false, null],
+      "client_id": ["int4", false, null],
+      "date": ["date", false, null],
+      "text": ["varchar", false, 160],
+      "created_by": ["int4", true, null],
+      "created_at": ["timestamptz", false, null]
+    }
+  },
+  "primary_keys": {
+    "seo_annotations": ["id"]
+  },
+  "foreign_keys": [
+    {"table": "seo_annotations", "column": "client_id", "references": "clients", "on_delete": "c"},
+    {"table": "seo_annotations", "column": "created_by", "references": "users", "on_delete": "n"}
+  ],
+  "unique_indexes": []
+}

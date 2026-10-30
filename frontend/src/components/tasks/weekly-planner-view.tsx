@@ -25,6 +25,8 @@ interface Props {
   onScheduleChange: (taskId: number, date: string | null) => void
   onOpenEdit: (task: Task) => void
   canWrite?: boolean
+  /** Aviso bajo "Sin planificar" cuando la lista viene recortada. */
+  unscheduledNote?: string
 }
 
 const DAY_NAMES = ["Lun", "Mar", "Mié", "Jue", "Vie"]
@@ -231,7 +233,7 @@ function TaskCardOverlay({ task }: { task: Task }) {
 }
 
 // ─── Main Component ───────────────────────────────────────────
-export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onScheduleChange, onOpenEdit, canWrite = true }: Props) {
+export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onScheduleChange, onOpenEdit, canWrite = true, unscheduledNote }: Props) {
   const [activeTask, setActiveTask] = useState<Task | null>(null)
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 639px)").matches)
   const [openDays, setOpenDays] = useState<Set<string>>(new Set())
@@ -388,7 +390,7 @@ export function WeeklyPlannerView({ tasks, weekOffset, onWeekOffsetChange, onSch
         )}
 
         {/* Unscheduled section */}
-        <DroppableColumn id="unscheduled" label="Sin planificar">
+        <DroppableColumn id="unscheduled" label="Sin planificar" sublabel={unscheduledNote}>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-1.5">
             {(tasksByDate["unscheduled"] || []).map((task) => (
               <DraggableTaskCard key={task.id} task={task} onOpenEdit={onOpenEdit} canWrite={canWrite} />

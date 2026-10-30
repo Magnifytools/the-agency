@@ -177,6 +177,8 @@ export interface ActivityEvent {
   user_name: string | null
   contact_name?: string | null
   icon: string
+  /** A dónde lleva pulsar el evento (tarea, resumen…); null si no tiene página propia. */
+  link_url?: string | null
 }
 
 export interface WeeklyTimesheetTask {
@@ -252,84 +254,21 @@ export interface SearchResults {
   projects: { id: number; name: string; client_name: string | null; status: string }[]
   tasks: { id: number; title: string; client_name: string | null; status: string }[]
   leads: { id: number; company_name: string; contact_name: string | null; status: string }[]
+  digests?: { id: number; client_name: string; period_start: string; period_end: string }[]
+  notes?: { id: number; text: string; status: string }[]
 }
 
-// Invitations
-export interface Invitation {
-  id: number
-  email: string
-  role: UserRole
-  invited_by: number
-  inviter_name: string | null
-  expires_at: string
-  accepted_at: string | null
-  created_at: string
-}
 
-export interface InvitationCreateResult extends Invitation {
-  token: string
-}
-
-export interface InvitationCreate {
-  email: string
-  role?: UserRole
-  modules?: string[]
-}
-
-// ── Automation Rules ──────────────────────────────────────
-
-export type AutomationTrigger = "task_completed" | "task_overdue" | "phase_completed" | "project_status_changed" | "time_entry_created" | "communication_logged" | "daily_check"
-export type AutomationActionType = "create_task" | "change_task_status" | "change_project_status" | "assign_user" | "send_notification" | "send_discord" | "create_insight"
-
-export interface AutomationRule {
-  id: number
-  name: string
-  description: string | null
-  trigger: AutomationTrigger
-  conditions: Record<string, unknown>
-  action_type: AutomationActionType
-  action_config: Record<string, unknown>
-  is_active: boolean
-  run_count: number
-  last_run_at: string | null
-  created_by: number | null
-  creator_name: string | null
-  created_at: string
-  updated_at: string
-  recent_logs?: AutomationLogEntry[]
-}
-
-export interface AutomationLogEntry {
-  id: number
-  rule_id: number
-  rule_name: string | null
-  trigger_event: string
-  trigger_data: Record<string, unknown> | null
-  action_result: Record<string, unknown> | null
-  success: boolean
-  outcome: "success" | "skipped" | "error"
-  error_message: string | null
-  executed_at: string
-}
-
-export interface AutomationRuleCreate {
-  name: string
-  description?: string | null
-  trigger: AutomationTrigger
-  conditions?: Record<string, unknown>
-  action_type: AutomationActionType
-  action_config?: Record<string, unknown>
-  is_active?: boolean
-}
-
-export interface AutomationTriggerOption {
-  key: AutomationTrigger
-  label: string
-  description: string
-}
-
-export interface AutomationActionOption {
-  key: AutomationActionType
-  label: string
-  description: string
+/** Fila "Operación" del dashboard. `null` = sin acceso a la fuente de esa cifra. */
+export interface DashboardOperations {
+  recurring_fee: { total: number; clients: number } | null
+  projects_at_risk: { count: number; items: { id: number; name: string; reasons: string[] }[] } | null
+  clients_to_act: { count: number; items: { id: number; name: string; reason: string | null }[] } | null
+  digests_unsent: {
+    count: number
+    month: string
+    period_start: string
+    period_end: string
+    items: { id: number; name: string; reason?: string | null }[]
+  } | null
 }

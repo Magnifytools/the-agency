@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TaskSeoImpact } from "@/components/tasks/task-seo-impact";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { TimerButton } from "@/components/timer/timer-button";
+import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  ChevronDown,
+  ChevronUp,
   Clock,
+  Copy,
   Download,
+  ExternalLink,
   Paperclip,
   Pause,
   Play,
   Plus,
   RotateCcw,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +28,7 @@ import {
   usersApi,
 } from "@/lib/api";
 import type { RecurrenceSummary, Task, TaskCreate, TaskPriority, TaskStatus } from "@/lib/types";
+import { RECURRENCE_PATTERNS, WEEKDAY_LABELS, ruleForPattern, toggleWeekday } from "@/lib/recurrence";
 import { invalidateTaskChange, projectKeys, taskKeys } from "@/lib/query-keys";
 import { getErrorMessage } from "@/lib/utils";
 import { useAuth } from "@/context/auth-context";
@@ -29,8 +39,13 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useBusinessDate } from "@/hooks/use-business-date";
+import { useFileUpload } from "@/hooks/use-file-upload";
+import { UploadProgress } from "@/components/ui/upload-progress";
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates";
 import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status";
+import { PublishCheckBlock } from "@/components/tasks/publish-check-block";
+import { CommentInput } from "@/components/tasks/comment-input";
+import { mentionCandidates, mentionName, splitMentions } from "@/lib/mentions";
 
 type Defaults = {
   clientId?: number | null;
@@ -48,6 +63,20 @@ export interface TaskPanelProps {
   onOpenChange: (open: boolean) => void;
   onSaved?: (task: Task) => void;
   onOpenTime?: (task: Task) => void;
+  /** Pasar a la tarea anterior o siguiente de la lista sin cerrar el panel. */
+  navigation?: TaskPanelNavigation;
+}
+
+export interface TaskPanelNavigation {
+  position: number;
+  total: number;
+  onNavigate: (direction: 1 | -1) => void;
+}
+
+/** ↑/↓ mueven entre tareas sólo si no se está escribiendo ni eligiendo en un campo. */
+function isEditingField(target: EventTarget | null) {
+  return target instanceof HTMLElement
+    && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 }
 
 const EMPTY: TaskCreate = {
@@ -69,9 +98,12 @@ const EMPTY: TaskCreate = {
   is_recurring: false,
   recurrence_pattern: null,
   recurrence_day: null,
+  recurrence_weekdays: null,
   recurrence_end_date: null,
   recurrence_anchor_date: null,
   link_url: null,
+  procedure_text: null,
+  procedure_url: null,
 };
 
 function fromTask(task?: Task, defaults?: Defaults): TaskCreate {
@@ -101,9 +133,12 @@ function fromTask(task?: Task, defaults?: Defaults): TaskCreate {
     is_recurring: task.is_recurring,
     recurrence_pattern: task.recurrence_pattern,
     recurrence_day: task.recurrence_day,
+    recurrence_weekdays: task.recurrence_weekdays ?? null,
     recurrence_end_date: task.recurrence_end_date,
     recurrence_anchor_date: task.recurrence_anchor_date,
     link_url: task.link_url,
+    procedure_text: task.procedure_text ?? null,
+    procedure_url: task.procedure_url ?? null,
   };
 }
 
@@ -134,6 +169,7 @@ export function TaskPanel({
   onOpenChange,
   onSaved,
   onOpenTime,
+  navigation,
 }: TaskPanelProps) {
   const queryClient = useQueryClient();
   const { hasPermission, user, isAdmin } = useAuth();
@@ -150,6 +186,9 @@ export function TaskPanel({
   const [recurrencePreview, setRecurrencePreview] = useState<RecurrencePreview | null>(null);
   const [legacyComparison, setLegacyComparison] = useState<LegacyComparison | null>(null);
   const [restoreConflict, setRestoreConflict] = useState<string | null>(null);
+  const [initialDraft, setInitialDraft] = useState<string | null>(null);
+  // Lo que se hará (cerrar o pasar a otra tarea) si se aceptan perder los cambios.
+  const [discardThen, setDiscardThen] = useState<(() => void) | null>(null);
   const initializedFor = useRef<string | null>(null);
   const contextKey = `${taskId ?? "new"}:${defaults?.clientId ?? ""}:${defaults?.projectId ?? ""}:${defaults?.phaseId ?? ""}:${defaults?.initialStatus ?? ""}`;
 
@@ -174,6 +213,8 @@ export function TaskPanel({
     queryFn: () => usersApi.listAll(),
     enabled: open,
   });
+  const mentionPeople = useMemo(() => mentionCandidates(users), [users]);
+  const mentionNames = useMemo(() => users.map(mentionName), [users]);
   const { data: categories = [] } = useQuery({
     queryKey: ["categories"],
     queryFn: () => categoriesApi.list(),
@@ -214,7 +255,9 @@ export function TaskPanel({
     if (initializedFor.current === contextKey) return;
     // Opening a different entity deliberately starts a fresh draft; retries keep it intact.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDraft(fromTask(taskQuery.data, defaults));
+    const fresh = fromTask(taskQuery.data, defaults);
+    setDraft(fresh);
+    setInitialDraft(JSON.stringify(fresh));
     setSecondaryOpen(false);
     initializedFor.current = contextKey;
   }, [open, taskId, taskQuery.data, defaults, contextKey]);
@@ -230,19 +273,23 @@ export function TaskPanel({
     setDraft((current) => ({ ...current, [key]: value }));
   };
   const recurrencePaused = !!taskQuery.data?.recurrence_paused_at;
-  const recurrenceDraftKey = JSON.stringify({
+  // La misma clave para la vista previa y para la comparación del calendario antiguo.
+  const recurrenceKey = (anchor: string | null | undefined) => JSON.stringify({
     contextKey,
     open,
     is_recurring: draft.is_recurring,
     recurrence_pattern: draft.recurrence_pattern,
     recurrence_day: draft.recurrence_day,
-    recurrence_anchor_date: draft.recurrence_anchor_date,
+    recurrence_weekdays: draft.recurrence_weekdays,
+    recurrence_anchor_date: anchor,
     recurrence_end_date: draft.recurrence_end_date,
+    assigned_to: draft.assigned_to,
     client_id: draft.client_id,
     project_id: draft.project_id,
     phase_id: draft.phase_id,
     recurrencePaused,
   });
+  const recurrenceDraftKey = recurrenceKey(draft.recurrence_anchor_date);
   const recurrenceSummary = recurrencePreview?.key === recurrenceDraftKey
     ? recurrencePreview.summary
     : taskQuery.data?.recurrence_summary;
@@ -281,8 +328,10 @@ export function TaskPanel({
         is_recurring: !!draft.is_recurring,
         recurrence_pattern: draft.recurrence_pattern,
         recurrence_day: draft.recurrence_day,
+        recurrence_weekdays: draft.recurrence_weekdays,
         recurrence_end_date: draft.recurrence_end_date,
         recurrence_paused: recurrencePaused,
+        assigned_to: draft.assigned_to,
         client_id: draft.client_id,
         project_id: draft.project_id,
         phase_id: draft.phase_id,
@@ -333,19 +382,7 @@ export function TaskPanel({
     },
     onMutate: () => legacySourceKey,
     onSuccess: ({ current, proposed }, _variables, sourceKey) => {
-      const proposedKey = JSON.stringify({
-        contextKey,
-        open,
-        is_recurring: draft.is_recurring,
-        recurrence_pattern: draft.recurrence_pattern,
-        recurrence_day: draft.recurrence_day,
-        recurrence_anchor_date: draft.recurrence_anchor_date ?? businessToday,
-        recurrence_end_date: draft.recurrence_end_date,
-        client_id: draft.client_id,
-        project_id: draft.project_id,
-        phase_id: draft.phase_id,
-        recurrencePaused,
-      });
+      const proposedKey = recurrenceKey(draft.recurrence_anchor_date ?? businessToday);
       if (sourceKey === legacySourceKey) setLegacyComparison({ key: proposedKey, sourceKey, current, proposed, anchor: draft.recurrence_anchor_date ?? businessToday });
     },
     onError: (error) => toast.error(getErrorMessage(error, "No se pudo comparar los calendarios")),
@@ -370,14 +407,14 @@ export function TaskPanel({
     onError: (error) =>
       toast.error(getErrorMessage(error, "No se pudo añadir al checklist")),
   });
-  const upload = useMutation({
-    mutationFn: (file: File) => tasksApi.attachments.upload(taskId!, file),
-    onSuccess: () => void attachmentsQuery.refetch(),
-    onError: (error) =>
-      toast.error(getErrorMessage(error, "No se pudo adjuntar el archivo")),
+  const upload = useFileUpload({
+    upload: (file, onProgress) =>
+      tasksApi.attachments.upload(taskId!, file, onProgress),
+    onUploaded: () => void attachmentsQuery.refetch(),
   });
   const addComment = useMutation({
-    mutationFn: () => tasksApi.comments.create(taskId!, newComment.trim()),
+    mutationFn: ({ text, mentionIds }: { text: string; mentionIds: number[] }) =>
+      tasksApi.comments.create(taskId!, text, mentionIds),
     onSuccess: () => {
       setNewComment("");
       void commentsQuery.refetch();
@@ -385,6 +422,23 @@ export function TaskPanel({
     onError: (error) =>
       toast.error(getErrorMessage(error, "No se pudo publicar el comentario")),
   });
+  const generateDraft = useMutation({
+    mutationFn: () => tasksApi.draft(taskId!),
+    onSuccess: () => {
+      toast.success("Borrador añadido a los comentarios. Revísalo antes de usarlo.");
+      void commentsQuery.refetch();
+    },
+    onError: (error) =>
+      toast.error(getErrorMessage(error, "No se pudo generar el borrador")),
+  });
+  const copyDraft = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Borrador copiado");
+    } catch {
+      toast.error("No se pudo copiar el borrador");
+    }
+  };
   const updateChecklist = useMutation({
     mutationFn: ({
       itemId,
@@ -399,13 +453,19 @@ export function TaskPanel({
         due_date: string | null;
       }>;
     }) => tasksApi.checklist.update(taskId!, itemId, data),
-    onSuccess: () => void checklistQuery.refetch(),
+    onSuccess: () => {
+      void checklistQuery.refetch();
+      void queryClient.invalidateQueries({ queryKey: taskKeys.subtasks() });
+    },
     onError: (error) =>
       toast.error(getErrorMessage(error, "No se pudo actualizar el checklist")),
   });
   const deleteChecklist = useMutation({
     mutationFn: (itemId: number) => tasksApi.checklist.delete(taskId!, itemId),
-    onSuccess: () => void checklistQuery.refetch(),
+    onSuccess: () => {
+      void checklistQuery.refetch();
+      void queryClient.invalidateQueries({ queryKey: taskKeys.subtasks() });
+    },
     onError: (error) =>
       toast.error(getErrorMessage(error, "No se pudo eliminar del checklist")),
   });
@@ -440,6 +500,8 @@ export function TaskPanel({
   const loadedTask = taskQuery.data;
   const isRetired = !!loadedTask?.retired_at;
   const canOperate = canWrite && !isRetired;
+  const savedProcedureText = loadedTask?.procedure_text ?? null;
+  const savedProcedureUrl = loadedTask?.procedure_url ?? null;
   const statusPresentation = taskStatusPresentation(draft.status ?? "pending", draft.scheduled_date);
   const enteringWaiting = draft.status === "waiting" && loadedTask?.status !== "waiting";
   const waitingDetailsChanged = draft.status === "waiting" && (!!enteringWaiting
@@ -485,10 +547,72 @@ export function TaskPanel({
       toast.error(getErrorMessage(error, "No se pudo restaurar la tarea. Actualiza y vuelve a intentarlo."));
     },
   });
+  const unsaved = open && canWrite && initialDraft !== null && JSON.stringify(draft) !== initialDraft;
+  useUnsavedChangesWarning(unsaved);
+  // Escape, clic fuera, "Cerrar" o pasar a otra tarea con cambios sin guardar:
+  // se pregunta antes de tirarlos.
+  const unlessUnsaved = (action: () => void) => {
+    if (unsaved && !save.isPending) setDiscardThen(() => action);
+    else action();
+  };
+  const requestOpenChange = (next: boolean) => {
+    if (next) onOpenChange(true);
+    else unlessUnsaved(() => onOpenChange(false));
+  };
+  const navigate = (direction: 1 | -1) => {
+    if (!navigation) return;
+    const target = navigation.position + direction;
+    if (target < 1 || target > navigation.total) return;
+    unlessUnsaved(() => navigation.onNavigate(direction));
+  };
+  const navigateRef = useRef(navigate);
+  useEffect(() => { navigateRef.current = navigate; });
+  useEffect(() => {
+    if (!open || !navigation || discardThen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (isEditingField(event.target)) return;
+      event.preventDefault();
+      navigateRef.current(event.key === "ArrowDown" ? 1 : -1);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, navigation, discardThen]);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+    <ConfirmDialog
+      open={discardThen !== null}
+      onOpenChange={(next) => { if (!next) setDiscardThen(null); }}
+      title="¿Descartar los cambios?"
+      description="Has cambiado la tarea y no la has guardado. Si sigues, esos cambios se pierden."
+      cancelLabel="Seguir editando"
+      confirmLabel="Descartar cambios"
+      onConfirm={() => { const action = discardThen; setDiscardThen(null); action?.(); }}
+    />
+    <Dialog open={open} onOpenChange={requestOpenChange} variant="side">
       <DialogHeader>
-        <DialogTitle>{taskId ? "Detalle de tarea" : "Nueva tarea"}</DialogTitle>
+        <div className="flex items-center justify-between gap-2 pr-8">
+          <DialogTitle>{taskId ? "Detalle de tarea" : "Nueva tarea"}</DialogTitle>
+          <div className="flex items-center gap-1">
+            {loadedTask && canWrite && !isRetired && loadedTask.status !== "completed" && (
+              <TimerButton taskId={loadedTask.id} taskTitle={loadedTask.title} />
+            )}
+            {navigation && taskId && (
+              <div role="group" aria-label="Pasar a otra tarea" className="flex items-center gap-0.5">
+                <span className="mono px-1 text-xs text-muted-foreground" aria-live="polite">{navigation.position} de {navigation.total}</span>
+                <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Tarea anterior" title="Tarea anterior (↑)"
+                  disabled={navigation.position <= 1} onClick={() => navigate(-1)}>
+                  <ChevronUp className="h-4 w-4" />
+                </Button>
+                <Button type="button" variant="ghost" size="icon" className="h-7 w-7" aria-label="Tarea siguiente" title="Tarea siguiente (↓)"
+                  disabled={navigation.position >= navigation.total} onClick={() => navigate(1)}>
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       </DialogHeader>
       {taskQuery.isError && (
         <div role="alert" className="space-y-2 text-sm">
@@ -537,7 +661,9 @@ export function TaskPanel({
               <Label htmlFor="task-panel-title">Título</Label>
               <Input
                 id="task-panel-title"
-                autoFocus
+                // Sólo al crear: en una existente el foco queda fuera de los
+                // campos para pasar de tarea con ↑/↓ nada más abrirla.
+                autoFocus={!taskId}
                 value={draft.title}
                 onChange={(e) => change("title", e.target.value)}
                 disabled={!canWrite}
@@ -714,48 +840,6 @@ export function TaskPanel({
                 </Select>
               </div>
               <div>
-                <Label htmlFor="task-panel-category">Categoría</Label>
-                <Select
-                  id="task-panel-category"
-                  value={draft.category_id ?? ""}
-                  onChange={(e) =>
-                    change(
-                      "category_id",
-                      e.target.value ? Number(e.target.value) : null,
-                    )
-                  }
-                  disabled={!canOperate}
-                >
-                  <option value="">Sin categoría</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="task-panel-phase">Fase</Label>
-                <Select
-                  id="task-panel-phase"
-                  value={draft.phase_id ?? ""}
-                  onChange={(e) =>
-                    change(
-                      "phase_id",
-                      e.target.value ? Number(e.target.value) : null,
-                    )
-                  }
-                  disabled={!canOperate || !draft.project_id}
-                >
-                  <option value="">Sin fase</option>
-                  {projectQuery.data?.phases?.map((phase) => (
-                    <option key={phase.id} value={phase.id}>
-                      {phase.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
                 <Label htmlFor="task-panel-due">Fecha límite</Label>
                 <Input
                   id="task-panel-due"
@@ -810,6 +894,89 @@ export function TaskPanel({
               <Label htmlFor="task-panel-link">Enlace</Label>
               <Input id="task-panel-link" type="url" value={draft.link_url ?? ""} onChange={(event) => change("link_url", event.target.value || null)} disabled={!canWrite} />
             </div>
+            {taskId && loadedTask?.status === "completed" && loadedTask.link_url && (
+              <PublishCheckBlock taskId={taskId} canWrite={canWrite} />
+            )}
+            {loadedTask?.status === "completed" && loadedTask.completed_at && loadedTask.link_url && loadedTask.client_id && (
+              <TaskSeoImpact clientId={loadedTask.client_id} url={loadedTask.link_url} completedAt={loadedTask.completed_at} />
+            )}
+            {draft.is_recurring ? (
+              <details open={!!(savedProcedureText || savedProcedureUrl)}>
+                <summary className="cursor-pointer text-sm font-medium">
+                  Procedimiento
+                </summary>
+                <div className="mt-2 space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Cada repetición nueva copia estos pasos y empieza con la checklist sin marcar. Cambiarlos no afecta a las repeticiones ya creadas.
+                  </p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="task-panel-procedure">Pasos</Label>
+                    <Textarea
+                      id="task-panel-procedure"
+                      value={draft.procedure_text ?? ""}
+                      onChange={(e) => change("procedure_text", e.target.value || null)}
+                      placeholder={"1. Exportar los datos\n2. Revisar…"}
+                      disabled={!canOperate}
+                      rows={6}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="task-panel-procedure-url">Documento de referencia</Label>
+                    <Input
+                      id="task-panel-procedure-url"
+                      type="url"
+                      placeholder="https://"
+                      value={draft.procedure_url ?? ""}
+                      onChange={(e) => change("procedure_url", e.target.value || null)}
+                      disabled={!canOperate}
+                    />
+                  </div>
+                </div>
+              </details>
+            ) : (savedProcedureText || savedProcedureUrl) && (
+              <details open>
+                <summary className="cursor-pointer text-sm font-medium">
+                  Procedimiento
+                </summary>
+                <div className="mt-2 space-y-2 rounded-md border border-border p-3 text-sm">
+                  {savedProcedureText && <p className="whitespace-pre-wrap">{savedProcedureText}</p>}
+                  {savedProcedureUrl && (
+                    <a
+                      href={savedProcedureUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 underline underline-offset-2"
+                    >
+                      Abrir documento de referencia
+                      <ExternalLink className="size-3" aria-hidden="true" />
+                    </a>
+                  )}
+                  {loadedTask?.recurring_parent_title && (
+                    <p className="text-xs text-muted-foreground">
+                      Copiado de {loadedTask.recurring_parent_title} al crear esta repetición. Se cambia en la plantilla.
+                    </p>
+                  )}
+                  {taskId && savedProcedureText && canOperate && (
+                    <div className="space-y-1 border-t border-border pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={generateDraft.isPending}
+                        aria-busy={generateDraft.isPending}
+                        onClick={() => generateDraft.mutate()}
+                      >
+                        <Sparkles className="mr-1 size-3" aria-hidden="true" />
+                        {generateDraft.isPending ? "Generando borrador… (hasta 2 min)" : "Generar borrador"}
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        La IA redacta un primer borrador siguiendo estos pasos con el contexto del cliente. Se guarda en los comentarios; no se envía ni cambia la tarea.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </details>
+            )}
             <details open={draft.status === "waiting"}>
               <summary className="cursor-pointer text-sm font-medium">
                 Espera y seguimiento
@@ -853,11 +1020,57 @@ export function TaskPanel({
               </div>
               {waitingError && <p role="alert" className="mt-2 text-sm text-destructive">{waitingError}</p>}
             </details>
-            <details>
+            {/* Lo que no se toca en cada tarea va plegado: categoría, fase, dependencia y recurrencia. */}
+            <details open={!!(draft.category_id || draft.phase_id || draft.depends_on || draft.is_recurring)}>
               <summary className="cursor-pointer text-sm font-medium">
-                Dependencias y recurrencia
+                Más opciones
+                <span className="ml-1 font-normal text-muted-foreground">· categoría, fase, dependencia y recurrencia</span>
               </summary>
                 <div className="mt-2 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="task-panel-category">Categoría</Label>
+                  <Select
+                    id="task-panel-category"
+                    value={draft.category_id ?? ""}
+                    onChange={(e) =>
+                      change(
+                        "category_id",
+                        e.target.value ? Number(e.target.value) : null,
+                      )
+                    }
+                    disabled={!canOperate}
+                  >
+                    <option value="">Sin categoría</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="task-panel-phase">Fase</Label>
+                  <Select
+                    id="task-panel-phase"
+                    value={draft.phase_id ?? ""}
+                    onChange={(e) =>
+                      change(
+                        "phase_id",
+                        e.target.value ? Number(e.target.value) : null,
+                      )
+                    }
+                    disabled={!canOperate || !draft.project_id}
+                  >
+                    <option value="">Sin fase</option>
+                    {projectQuery.data?.phases?.map((phase) => (
+                      <option key={phase.id} value={phase.id}>
+                        {phase.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                </div>
                 {taskQuery.data?.recurring_parent_title && taskQuery.data.recurrence_occurrence_date && (
                   <p className="text-sm text-muted-foreground">
                     Prevista por {taskQuery.data.recurring_parent_title} para {taskQuery.data.recurrence_occurrence_date}. La fecha programada se puede ajustar sin cambiar esta referencia.
@@ -894,20 +1107,22 @@ export function TaskPanel({
                       { setRecurrencePreview(null); setDraft((current) => ({
                         ...current,
                         is_recurring: event.target.checked,
-                        recurrence_pattern: event.target.checked
-                          ? (current.recurrence_pattern ?? "weekly")
-                          : null,
-                        recurrence_day: event.target.checked
-                          ? (current.recurrence_pattern === "monthly"
-                            ? Math.min(Math.max(current.recurrence_day ?? 1, 1), 28)
-                            : Math.min(Math.max(current.recurrence_day ?? 0, 0), 4))
-                          : null,
+                        ...(event.target.checked
+                          ? ruleForPattern(current, current.recurrence_pattern ?? "weekly")
+                          : { recurrence_pattern: null, recurrence_day: null, recurrence_weekdays: null }),
                         recurrence_end_date: event.target.checked
                           ? current.recurrence_end_date
                           : null,
                         recurrence_anchor_date: event.target.checked
                           ? current.recurrence_anchor_date
                           : null,
+                        // Sin plantilla no hay procedimiento: se descarta lo no guardado.
+                        procedure_text: event.target.checked
+                          ? current.procedure_text
+                          : (taskQuery.data?.procedure_text ?? null),
+                        procedure_url: event.target.checked
+                          ? current.procedure_url
+                          : (taskQuery.data?.procedure_url ?? null),
                       })); }
                     }
                     disabled={!canOperate}
@@ -926,10 +1141,7 @@ export function TaskPanel({
                           const pattern = e.target.value;
                           setDraft((current) => ({
                             ...current,
-                            recurrence_pattern: pattern,
-                            recurrence_day: pattern === "monthly"
-                              ? Math.min(Math.max(current.recurrence_day ?? 1, 1), 28)
-                              : Math.min(Math.max(current.recurrence_day ?? 0, 0), 4),
+                            ...ruleForPattern(current, pattern),
                             recurrence_anchor_date: pattern === "biweekly" && !(taskQuery.data?.is_recurring && taskQuery.data.recurrence_pattern === "biweekly" && !taskQuery.data.recurrence_anchor_date) && !current.recurrence_anchor_date
                               ? businessToday
                               : current.recurrence_anchor_date,
@@ -937,15 +1149,31 @@ export function TaskPanel({
                         }}
                         disabled={!canOperate}
                       >
-                        <option value="daily">Diaria</option>
-                        <option value="weekly">Semanal</option>
-                        <option value="biweekly">Cada dos semanas</option>
-                        <option value="monthly">Mensual</option>
+                        {RECURRENCE_PATTERNS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                       </Select>
                     </div>
                     <div>
+                      {draft.recurrence_pattern === "weekdays" ? (
+                        <fieldset>
+                          <legend className="text-sm font-medium">Días</legend>
+                          <div className="flex flex-wrap gap-1 pt-1.5">
+                            {WEEKDAY_LABELS.map((label, day) => (
+                              <label key={label} className="flex items-center gap-1 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={draft.recurrence_weekdays?.includes(day) ?? false}
+                                  onChange={() => change("recurrence_weekdays", toggleWeekday(draft.recurrence_weekdays, day))}
+                                  disabled={!canOperate}
+                                  aria-label={label}
+                                />
+                                {label.slice(0, 2)}
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                      ) : <>
                       <Label htmlFor="task-panel-recurrence-day">Día</Label>
-                      {draft.recurrence_pattern === "monthly" ? <Input
+                      {draft.recurrence_pattern === "monthly" || draft.recurrence_pattern === "quarterly" ? <Input
                         id="task-panel-recurrence-day"
                         type="number"
                         min="1"
@@ -957,10 +1185,11 @@ export function TaskPanel({
                         id="task-panel-recurrence-day"
                         value={String(draft.recurrence_day ?? 0)}
                         onChange={(e) => change("recurrence_day", Number(e.target.value))}
-                        disabled={!canOperate || draft.recurrence_pattern === "daily"}
+                        disabled={!canOperate || draft.recurrence_pattern === "daily" || draft.recurrence_pattern === "last_business_day"}
                       >
-                        <option value="0">Lunes</option><option value="1">Martes</option><option value="2">Miércoles</option><option value="3">Jueves</option><option value="4">Viernes</option>
+                        {WEEKDAY_LABELS.map((label, day) => <option key={label} value={day}>{label}</option>)}
                       </Select>}
+                      </>}
                     </div>
                     <div>
                       <Label htmlFor="task-panel-recurrence-end">
@@ -996,6 +1225,21 @@ export function TaskPanel({
                           Plantilla antigua: mantiene el calendario actual. Compara las próximas fechas antes de cambiarlo.
                         </p>
                       )}
+                    </div>
+                  )}
+                  {draft.recurrence_pattern === "quarterly" && (
+                    <div>
+                      <Label htmlFor="task-panel-recurrence-quarter">Empieza en el mes de</Label>
+                      <Input
+                        id="task-panel-recurrence-quarter"
+                        type="date"
+                        value={draft.recurrence_anchor_date ?? ""}
+                        onChange={(e) => change("recurrence_anchor_date", e.target.value || null)}
+                        disabled={!canOperate}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Sin fecha: enero, abril, julio y octubre.
+                      </p>
                     </div>
                   )}
                   <div className="flex flex-wrap items-center gap-2">
@@ -1036,6 +1280,12 @@ export function TaskPanel({
                       <p className="font-medium">{recurrenceSummary.label}</p>
                       {recurrenceSummary.reason && <p className="mt-1 text-muted-foreground">{recurrenceSummary.reason}</p>}
                       {recurrenceSummary.next_dates.length > 0 && <p className="mt-1 text-muted-foreground">Próximas: {recurrenceSummary.next_dates.join(" · ")}</p>}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {draft.recurrence_pattern === "daily"
+                          ? "No se crea en los festivos de quien la lleva."
+                          : "Si cae en fin de semana o en un festivo de quien la lleva, se crea el siguiente día hábil."}
+                        {" "}Si algún día no llega a crearse, se recupera en los 7 días siguientes.
+                      </p>
                     </div>
                   )}
                   {legacyComparison && (legacyComparison.sourceKey === legacySourceKey || comparisonReady) && (
@@ -1064,6 +1314,11 @@ export function TaskPanel({
                 <div className="mt-3 space-y-5">
                   <section className="space-y-2">
                     <h3 className="text-sm font-medium">Checklist</h3>
+                    {loadedTask?.is_recurring && (
+                      <p className="text-xs text-muted-foreground">
+                        Cada repetición empieza con una copia de esta checklist, sin marcar y sin fechas.
+                      </p>
+                    )}
                     {checklistQuery.isError && (
                       <LoadError
                         label="checklist"
@@ -1202,14 +1457,56 @@ export function TaskPanel({
                         Cargando comentarios…
                       </p>
                     )}
-                    {commentsQuery.data?.map((item) => (
+                    {commentsQuery.data?.map((item) => item.is_ai_draft ? (
+                      <article
+                        key={item.id}
+                        aria-label={`Borrador de IA pedido por ${item.user_name ?? "Usuario"}`}
+                        className="space-y-2 rounded border border-dashed border-border p-2 text-sm"
+                      >
+                        <header className="flex items-start gap-2">
+                          <div className="flex-1">
+                            <p className="font-medium">Borrador de IA — revisar antes de usar</p>
+                            <p className="text-xs text-muted-foreground">
+                              Pedido por {item.user_name ?? "Usuario"} ·{" "}
+                              {parseApiInstant(item.created_at).toLocaleString("es-ES", { dateStyle: "medium", timeStyle: "short" })}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            aria-label="Copiar borrador"
+                            onClick={() => void copyDraft(item.text)}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          {canWrite && (
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              aria-label="Eliminar borrador de IA"
+                              disabled={deleteComment.isPending}
+                              onClick={() => deleteComment.mutate(item.id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          )}
+                        </header>
+                        <div className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-mono text-xs">
+                          {item.text}
+                        </div>
+                      </article>
+                    ) : (
                       <div
                         key={item.id}
                         className="flex items-start gap-2 rounded bg-muted p-2 text-sm"
                       >
-                        <p className="flex-1">
+                        <p className="flex-1 whitespace-pre-wrap break-words">
                           <strong>{item.user_name ?? "Usuario"}:</strong>{" "}
-                          {item.text}
+                          {splitMentions(item.text, mentionNames).map((part, index) => part.mention
+                            ? <span key={index} className="font-medium text-brand">{part.text}</span>
+                            : part.text)}
                         </p>
                         {canWrite && (
                           <Button
@@ -1226,23 +1523,13 @@ export function TaskPanel({
                       </div>
                     ))}
                     {canWrite && (
-                      <div className="flex gap-2">
-                        <Input
-                          aria-label="Nuevo comentario"
-                          value={newComment}
-                          onChange={(event) =>
-                            setNewComment(event.target.value)
-                          }
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          disabled={addComment.isPending || !newComment.trim()}
-                          onClick={() => addComment.mutate()}
-                        >
-                          Comentar
-                        </Button>
-                      </div>
+                      <CommentInput
+                        value={newComment}
+                        onChange={setNewComment}
+                        candidates={mentionPeople}
+                        pending={addComment.isPending}
+                        onSubmit={(text, mentionIds) => addComment.mutate({ text, mentionIds })}
+                      />
                     )}
                   </section>
                   <section className="space-y-2">
@@ -1291,15 +1578,21 @@ export function TaskPanel({
                       </div>
                     ))}
                     {canWrite && (
-                      <Input
-                        aria-label="Adjuntar archivo"
-                        type="file"
-                        disabled={upload.isPending}
-                        onChange={(event) =>
-                          event.target.files?.[0] &&
-                          upload.mutate(event.target.files[0])
-                        }
-                      />
+                      <>
+                        <UploadProgress state={upload.uploading} />
+                        <Input
+                          aria-label="Adjuntar archivo"
+                          type="file"
+                          disabled={upload.isUploading}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            // Vaciar el input: volver a elegir el mismo archivo
+                            // tras un error también tiene que subirlo.
+                            event.target.value = "";
+                            if (file) upload.upload(file);
+                          }}
+                        />
+                      </>
                     )}
                   </section>
                 </div>
@@ -1319,7 +1612,7 @@ export function TaskPanel({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => onOpenChange(false)}
+                onClick={() => requestOpenChange(false)}
               >
                 Cerrar
               </Button>
@@ -1336,5 +1629,6 @@ export function TaskPanel({
         )
       )}
     </Dialog>
+    </>
   );
 }

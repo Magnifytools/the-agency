@@ -1,19 +1,42 @@
-import { useRef, useState } from "react"
+import { useState } from "react"
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  pointerWithin,
+  rectIntersection,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core"
+import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import type { Task, TaskStatus } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Pencil, Eye, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX, Repeat } from "lucide-react"
+import { Pencil, Eye, Clock, AlertTriangle, User, GripVertical, UserX, CalendarX, Repeat, ChevronDown } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { businessDateString, formatCivilDate } from "@/lib/dates"
 import { taskStatusPresentation, type TaskStatusGroup } from "@/lib/task-status"
+import { boardDrop } from "./board-drop"
+import { byManualRank, orderAfterDrop } from "@/lib/task-rank"
 
 interface Props {
   tasks: Task[]
-  onStatusChange: (taskId: number, newStatus: TaskStatus) => void
+  /** Soltar una tarea: la columna destino en el orden en que queda y, si cambia de columna, su estado. */
+  onMove: (task: Task, orderedIds: number[], status?: TaskStatus) => void
   onOpenEdit: (task: Task, initialStatus?: TaskStatus) => void
   canWrite?: boolean
+  /** Columna "Hecho" con lo completado recientemente (plegada al empezar). */
+  showCompleted?: boolean
+  completedHint?: string
 }
 
 const columns: Array<{ status: TaskStatusGroup; label: string; color: string; bgColor: string }> = [
@@ -21,6 +44,7 @@ const columns: Array<{ status: TaskStatusGroup; label: string; color: string; bg
   { status: "in_progress", label: "En curso", color: "text-blue-400", bgColor: "bg-blue-950/60 border-blue-700" },
   { status: "waiting", label: "En espera", color: "text-orange-400", bgColor: "bg-orange-950/60 border-orange-700" },
   { status: "in_review", label: "En revisión", color: "text-purple-400", bgColor: "bg-purple-950/60 border-purple-700" },
+  { status: "completed", label: "Hecho", color: "text-emerald-400", bgColor: "bg-emerald-950/50 border-emerald-800" },
 ]
 
 const priorityColors: Record<string, string> = {
@@ -44,192 +68,295 @@ const formatMinutes = (mins: number) => {
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
-export function KanbanBoard({ tasks, onStatusChange, onOpenEdit, canWrite = true }: Props) {
-  const dragTaskRef = useRef<Task | null>(null)
-  const [dragOverColumn, setDragOverColumn] = useState<TaskStatusGroup | null>(null)
+type DropData = { task?: Task; status?: TaskStatusGroup }
 
-  const handleDragStart = (e: React.DragEvent, task: Task) => {
-    dragTaskRef.current = task
-    e.dataTransfer.effectAllowed = "move"
-    // Make ghost semi-transparent
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = "0.5"
-    }
-  }
+// Con el puntero manda lo que hay debajo (una tarjeta antes que su columna);
+// sin él (táctil a medio arrastre), lo que más se solapa con la tarjeta.
+const collision: CollisionDetection = (args) => {
+  const hits = pointerWithin(args)
+  if (!hits.length) return rectIntersection(args)
+  const cards = hits.filter((hit) => (args.droppableContainers.find((container) => container.id === hit.id)?.data.current as DropData | undefined)?.task)
+  return cards.length ? cards : hits
+}
 
-  const handleDragEnd = (e: React.DragEvent) => {
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = "1"
-    }
-    setDragOverColumn(null)
-    dragTaskRef.current = null
-  }
+function BoardColumn({ status, label, color, bgColor, count, collapsed, onToggle, hint, children }: {
+  status: TaskStatusGroup
+  label: string
+  color: string
+  bgColor: string
+  count: number
+  collapsed?: boolean
+  onToggle?: () => void
+  hint?: string
+  children: React.ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `column-${status}`, data: { status } })
+  return (
+    <section
+      ref={setNodeRef}
+      aria-label={`Columna ${label}`}
+      className={cn(
+        "rounded-xl border p-3 transition-all",
+        collapsed ? "min-h-0" : "min-h-[300px]",
+        bgColor,
+        isOver && "ring-2 ring-brand ring-offset-2",
+      )}
+    >
+      <div className="flex items-center justify-between mb-3 px-1 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={cn("text-sm font-bold uppercase tracking-wider", color)}>{label}</span>
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5">{count}</Badge>
+        </div>
+        {onToggle && (
+          <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs" onClick={onToggle} aria-expanded={!collapsed}>
+            {collapsed ? "Mostrar" : "Ocultar"}
+            <ChevronDown className={cn("h-3 w-3 ml-1 transition-transform", !collapsed && "rotate-180")} />
+          </Button>
+        )}
+      </div>
+      {hint && <p className="-mt-2 mb-3 px-1 text-[10px] text-muted-foreground">{hint}</p>}
+      {collapsed ? (
+        <div className={cn(
+          "text-center py-3 text-xs text-muted-foreground border-2 border-dashed rounded-lg",
+          isOver ? "border-brand bg-brand/5 text-brand" : "border-transparent",
+        )}>
+          {isOver ? "Soltar aquí" : "Arrastra aquí para cerrarla"}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {children}
+          {count === 0 && (
+            <div className={cn(
+              "text-center py-8 text-xs text-muted-foreground border-2 border-dashed rounded-lg transition-colors",
+              isOver ? "border-brand bg-brand/5 text-brand" : "border-transparent",
+            )}>
+              {isOver ? "Soltar aquí" : "Sin tareas"}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
 
-  const handleDragOver = (e: React.DragEvent, status: TaskStatusGroup) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = "move"
-    setDragOverColumn(status)
-  }
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    // Only clear if leaving the column (not entering a child)
-    const relatedTarget = e.relatedTarget as HTMLElement | null
-    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-      setDragOverColumn(null)
-    }
-  }
-
-  const handleDrop = (e: React.DragEvent, newStatus: TaskStatusGroup) => {
-    e.preventDefault()
-    setDragOverColumn(null)
-    const task = dragTaskRef.current
-    if (task && taskStatusPresentation(task.status, task.scheduled_date).group !== newStatus) {
-      if (newStatus === "waiting") {
-        onOpenEdit(task, "waiting")
-        toast.message("Completa Respuesta pendiente, responsable y fecha para poner la tarea en espera.")
-      }
-      else onStatusChange(task.id, newStatus)
-    }
-    dragTaskRef.current = null
-  }
-
-  const todayStr = businessDateString()
+function TaskCardBody({ task, canWrite, onOpenEdit, todayStr }: {
+  task: Task
+  canWrite: boolean
+  onOpenEdit?: (task: Task) => void
+  todayStr: string
+}) {
+  const isCompleted = task.status === "completed"
+  const isOverdue = task.due_date && task.due_date < todayStr && !isCompleted
+  const isUnassigned = !task.assigned_to && !isCompleted
+  const noDate = !task.due_date && !isCompleted
+  const detail = taskStatusPresentation(task.status, task.scheduled_date).detail
+  // Enter en un botón de la tarjeta no debe llegar al arrastre de la tarjeta.
+  const stopKeys = (event: React.KeyboardEvent) => event.stopPropagation()
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {columns.map((col) => {
-        const colTasks = tasks.filter((t) => taskStatusPresentation(t.status, t.scheduled_date).group === col.status)
-        const isDragOver = dragOverColumn === col.status
-
-        return (
-          <div
-            key={col.status}
-            className={cn(
-              "rounded-xl border p-3 min-h-[300px] transition-all",
-              col.bgColor,
-              isDragOver && "ring-2 ring-brand ring-offset-2 scale-[1.01]"
-            )}
-            onDragOver={canWrite ? (e) => handleDragOver(e, col.status) : undefined}
-            onDragLeave={canWrite ? handleDragLeave : undefined}
-            onDrop={canWrite ? (e) => handleDrop(e, col.status) : undefined}
-          >
-            {/* Column header */}
-            <div className="flex items-center justify-between mb-3 px-1">
-              <div className="flex items-center gap-2">
-                <span className={cn("text-sm font-bold uppercase tracking-wider", col.color)}>
-                  {col.label}
-                </span>
-                <Badge variant="outline" className="text-[10px] h-5 px-1.5">
-                  {colTasks.length}
-                </Badge>
-              </div>
-            </div>
-
-            {/* Task cards */}
-            <div className="space-y-2">
-              {colTasks.map((task) => {
-                const isOverdue = task.due_date && task.due_date < todayStr && task.status !== "completed"
-                const isUnassigned = !task.assigned_to && task.status !== "completed"
-                const noDate = !task.due_date && task.status !== "completed"
-
-                return (
-                  <Card
-                    key={task.id}
-                    draggable={canWrite}
-                    onDragStart={canWrite ? (e) => handleDragStart(e, task) : undefined}
-                    onDragEnd={canWrite ? handleDragEnd : undefined}
-                    className={cn(
-                      "hover:shadow-md transition-all group border",
-                      canWrite && "cursor-grab active:cursor-grabbing",
-                      isOverdue && "border-red-300 bg-red-50/50 text-black [&_.text-muted-foreground]:text-black/60"
-                    )}
-                  >
-                    <CardContent className="p-3">
-                      {/* Priority indicator + title */}
-                      <div className="flex items-start gap-2">
-                        <GripVertical className="h-4 w-4 text-muted-foreground/40 mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <div className={cn("h-2 w-2 rounded-full shrink-0", priorityColors[task.priority] || "bg-slate-300")} />
-                            <span className="text-xs text-muted-foreground">{priorityLabels[task.priority] || task.priority}</span>
-                          </div>
-                          <p className="text-sm font-medium leading-snug line-clamp-2 inline-flex items-center gap-1">
-                            {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
-                            {task.title}
-                          </p>
-                          {taskStatusPresentation(task.status, task.scheduled_date).detail && <p className="text-[10px] text-muted-foreground">{taskStatusPresentation(task.status, task.scheduled_date).detail}</p>}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                          onClick={() => onOpenEdit(task)}
-                          aria-label={`${canWrite ? "Editar" : "Ver"} tarea ${task.title}`}
-                        >
-                          {canWrite ? <Pencil className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                        </Button>
-                      </div>
-
-                      {/* Meta row */}
-                      <div className="flex items-center gap-2 mt-2 flex-wrap">
-                        {task.client_name && (
-                          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded truncate max-w-[120px]">
-                            {task.client_name}
-                          </span>
-                        )}
-                        {task.estimated_minutes && (
-                          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                            <Clock className="h-2.5 w-2.5" />
-                            {formatMinutes(task.estimated_minutes)}
-                          </span>
-                        )}
-                        {task.assigned_user_name && (
-                          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                            <User className="h-2.5 w-2.5" />
-                            {task.assigned_user_name.split(" ")[0]}
-                          </span>
-                        )}
-                        {isOverdue && (
-                          <span className="text-[10px] text-red-500 flex items-center gap-0.5 font-medium">
-                            <AlertTriangle className="h-2.5 w-2.5" />
-                            Atrasada
-                          </span>
-                        )}
-                        {task.due_date && !isOverdue && (
-                          <span className="text-[10px] text-muted-foreground">
-                            {formatCivilDate(task.due_date, { day: "numeric", month: "short" })}
-                          </span>
-                        )}
-                        {isUnassigned && (
-                          <span className="text-[10px] text-orange-500 flex items-center gap-0.5 font-medium">
-                            <UserX className="h-2.5 w-2.5" />
-                            Sin responsable
-                          </span>
-                        )}
-                        {noDate && (
-                          <span className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5">
-                            <CalendarX className="h-2.5 w-2.5" />
-                            Sin fecha
-                          </span>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-
-              {colTasks.length === 0 && (
-                <div className={cn(
-                  "text-center py-8 text-xs text-muted-foreground border-2 border-dashed rounded-lg transition-colors",
-                  isDragOver ? "border-brand bg-brand/5 text-brand" : "border-transparent"
-                )}>
-                  {isDragOver ? "Soltar aquí" : "Sin tareas"}
-                </div>
-              )}
-            </div>
+    <CardContent className="p-3">
+      <div className="flex items-start gap-2">
+        {canWrite && <GripVertical className="h-4 w-4 text-muted-foreground/40 mt-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-1">
+            <div className={cn("h-2 w-2 rounded-full shrink-0", priorityColors[task.priority] || "bg-slate-300")} />
+            <span className="text-xs text-muted-foreground">{priorityLabels[task.priority] || task.priority}</span>
           </div>
-        )
-      })}
-    </div>
+          <button
+            type="button"
+            onClick={() => onOpenEdit?.(task)}
+            onKeyDown={stopKeys}
+            className={cn(
+              "text-sm font-medium leading-snug line-clamp-2 inline-flex items-center gap-1 text-left hover:underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand",
+              isCompleted && "line-through text-muted-foreground",
+            )}
+          >
+            {task.recurring_parent_id && <Repeat className="w-3 h-3 text-muted-foreground shrink-0" />}
+            {task.title}
+          </button>
+          {detail && <p className="text-[10px] text-muted-foreground">{detail}</p>}
+        </div>
+        {onOpenEdit && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity shrink-0"
+            onClick={() => onOpenEdit(task)}
+            onKeyDown={stopKeys}
+            aria-label={`${canWrite ? "Editar" : "Ver"} tarea ${task.title}`}
+          >
+            {canWrite ? <Pencil className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+          </Button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        {task.client_name && (
+          <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded truncate max-w-[120px]">
+            {task.client_name}
+          </span>
+        )}
+        {task.estimated_minutes && (
+          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+            <Clock className="h-2.5 w-2.5" />
+            {formatMinutes(task.estimated_minutes)}
+          </span>
+        )}
+        {task.assigned_user_name && (
+          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+            <User className="h-2.5 w-2.5" />
+            {task.assigned_user_name.split(" ")[0]}
+          </span>
+        )}
+        {isOverdue && (
+          <span className="text-[10px] text-red-500 flex items-center gap-0.5 font-medium">
+            <AlertTriangle className="h-2.5 w-2.5" />
+            Atrasada
+          </span>
+        )}
+        {task.due_date && !isOverdue && (
+          <span className="text-[10px] text-muted-foreground">
+            {formatCivilDate(task.due_date, { day: "numeric", month: "short" })}
+          </span>
+        )}
+        {isUnassigned && (
+          <span className="text-[10px] text-orange-500 flex items-center gap-0.5 font-medium">
+            <UserX className="h-2.5 w-2.5" />
+            Sin responsable
+          </span>
+        )}
+        {noDate && (
+          <span className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5">
+            <CalendarX className="h-2.5 w-2.5" />
+            Sin fecha
+          </span>
+        )}
+      </div>
+    </CardContent>
+  )
+}
+
+function SortableTaskCard({ task, status, canWrite, onOpenEdit, todayStr }: {
+  task: Task
+  status: TaskStatusGroup
+  canWrite: boolean
+  onOpenEdit: (task: Task) => void
+  todayStr: string
+}) {
+  const { attributes, listeners, setNodeRef, isDragging, transform, transition } = useSortable({
+    id: task.id,
+    data: { task, status },
+    disabled: !canWrite,
+  })
+  const isOverdue = task.due_date && task.due_date < todayStr && task.status !== "completed"
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      {...(canWrite ? attributes : {})}
+      {...(canWrite ? listeners : {})}
+      data-task-card={task.id}
+      className={cn(
+        "hover:shadow-md transition-all group border touch-manipulation",
+        canWrite && "cursor-grab active:cursor-grabbing",
+        isDragging && "opacity-40",
+        isOverdue && "border-red-300 bg-red-50/50 text-black [&_.text-muted-foreground]:text-black/60",
+      )}
+    >
+      <TaskCardBody task={task} canWrite={canWrite} onOpenEdit={onOpenEdit} todayStr={todayStr} />
+    </Card>
+  )
+}
+
+export function KanbanBoard({ tasks, onMove, onOpenEdit, canWrite = true, showCompleted = false, completedHint }: Props) {
+  const [activeTask, setActiveTask] = useState<Task | null>(null)
+  const [completedCollapsed, setCompletedCollapsed] = useState(true)
+  const todayStr = businessDateString()
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+  const visibleColumns = showCompleted ? columns : columns.filter((column) => column.status !== "completed")
+  // Dentro de cada columna, el orden manual primero; el resto como llega.
+  const columnTasks = (status: TaskStatusGroup) => byManualRank(
+    tasks.filter((task) => taskStatusPresentation(task.status, task.scheduled_date).group === status),
+  )
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const task = (event.active.data.current as { task?: Task } | undefined)?.task
+    if (task) setActiveTask(task)
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveTask(null)
+    const task = (event.active.data.current as DropData | undefined)?.task
+    const over = event.over?.data.current as DropData | undefined
+    const target = over?.status
+    if (!task || !target) return
+    const drop = boardDrop(task, target)
+    if (drop.kind === "waiting") {
+      onOpenEdit(task, "waiting")
+      toast.message("Completa Respuesta pendiente, responsable y fecha para poner la tarea en espera.")
+      return
+    }
+    const ids = columnTasks(target).map((item) => item.id)
+    const ordered = orderAfterDrop(ids, task.id, over?.task ? over.task.id : null)
+    if (drop.kind === "status") onMove(task, ordered, drop.status)
+    else if (ordered.some((id, index) => id !== ids[index])) onMove(task, ordered)
+  }
+
+  return (
+    <DndContext
+      sensors={canWrite ? sensors : []}
+      collisionDetection={collision}
+      onDragStart={canWrite ? handleDragStart : undefined}
+      onDragEnd={canWrite ? handleDragEnd : undefined}
+      onDragCancel={() => setActiveTask(null)}
+      accessibility={{
+        screenReaderInstructions: { draggable: "Arrastra la tarea dentro de su columna para ordenarla o a otra columna para cambiar su estado. Con teclado: espacio para cogerla, flechas para moverla, espacio para soltarla y Escape para cancelar." },
+        announcements: {
+          onDragStart: () => "Moviendo tarea.",
+          onDragOver: ({ over }) => {
+            const status = (over?.data.current as DropData | undefined)?.status
+            const label = columns.find((column) => column.status === status)?.label
+            return label ? `Sobre la columna ${label}.` : "Fuera de las columnas."
+          },
+          onDragEnd: ({ over }) => over ? "Tarea soltada." : "Tarea devuelta a su sitio.",
+          onDragCancel: () => "Movimiento cancelado.",
+        },
+      }}
+    >
+      <div className={cn("grid grid-cols-1 md:grid-cols-2 gap-4", showCompleted ? "xl:grid-cols-5" : "xl:grid-cols-4")}>
+        {visibleColumns.map((col) => {
+          const colTasks = columnTasks(col.status)
+          const isCompletedColumn = col.status === "completed"
+          return (
+            <BoardColumn
+              key={col.status}
+              {...col}
+              count={colTasks.length}
+              collapsed={isCompletedColumn && completedCollapsed}
+              onToggle={isCompletedColumn ? () => setCompletedCollapsed((value) => !value) : undefined}
+              hint={isCompletedColumn ? completedHint : undefined}
+            >
+              <SortableContext id={`column-${col.status}`} items={colTasks.map((task) => task.id)} strategy={verticalListSortingStrategy}>
+                {colTasks.map((task) => (
+                  <SortableTaskCard key={task.id} task={task} status={col.status} canWrite={canWrite} onOpenEdit={onOpenEdit} todayStr={todayStr} />
+                ))}
+              </SortableContext>
+            </BoardColumn>
+          )
+        })}
+      </div>
+      <DragOverlay dropAnimation={null}>
+        {activeTask ? (
+          <Card className="shadow-lg border rotate-1 w-[260px]">
+            <TaskCardBody task={activeTask} canWrite todayStr={todayStr} />
+          </Card>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   )
 }

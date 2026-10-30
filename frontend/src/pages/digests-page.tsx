@@ -3,16 +3,20 @@ import DOMPurify from "dompurify"
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy } from "lucide-react"
+import { FileText, Sparkles, Send, Eye, Copy, Pencil, Loader2, MessageCircle, Trash2, ClipboardCopy, FileDown } from "lucide-react"
 import { DeliveryReceipts, deliveryToast } from "@/components/delivery-receipts"
 import { useAuth } from "@/context/auth-context"
 import { DigestCohort } from "@/components/digests/digest-cohort"
+import { ActionMenu } from "@/components/ui/action-menu"
+import { DigestMonthlyCycle } from "@/components/digests/digest-monthly-cycle"
 import { reportPolicyApi, reportPolicyKeys } from "@/lib/report-policy-api"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
-import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type IndividualDigestIntent } from "@/lib/digest-generation-recovery"
+import { clearDigestGeneration, httpStatus as httpStatusOf, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type IndividualDigestIntent } from "@/lib/digest-generation-recovery"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { downloadPdfWithToast } from "@/components/digests/download-pdf-button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
@@ -22,7 +26,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useSearchParams } from "react-router-dom"
 
 const toneLabels: Record<DigestTone, string> = {
   formal: "Formal",
@@ -98,7 +102,9 @@ function DigestList() {
   const [discordPreviewContent, setDiscordPreviewContent] = useState("")
   const [discordIsEditing, setDiscordIsEditing] = useState(false)
   const [digestToDelete, setDigestToDelete] = useState<Digest | null>(null)
+  const [discardPending, setDiscardPending] = useState(false)
   const initialRecovery = useRef(readDigestGenerations(userId))
+  const hasPendingCohort = initialRecovery.current.intents.some((intent) => intent.kind === "cohort")
   const [generationStorageFailed] = useState(initialRecovery.current.failed)
   const [pendingIndividual, setPendingIndividual] = useState<IndividualDigestIntent | null>(() =>
     initialRecovery.current.intents.find((intent): intent is IndividualDigestIntent => intent.kind === "individual") ?? null,
@@ -358,12 +364,41 @@ function DigestList() {
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => void recoveryQuery.refetch()}>{recoveryQuery.isFetching ? "Comprobando…" : "Comprobar resultado"}</Button>
             {canWrite && <Button size="sm" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => pendingIndividual && generateMutation.mutate(pendingIndividual)}>Reintentar la misma solicitud</Button>}
+            {/* Salida si nunca llega a generarse: sólo tras comprobar que no hay versión. */}
+            {recoveryQuery.isError && httpStatusOf(recoveryQuery.error) === 404 && (
+              <Button size="sm" variant="ghost" disabled={recoveryQuery.isFetching || generateMutation.isPending} onClick={() => setDiscardPending(true)}>Descartar la solicitud</Button>
+            )}
           </div>
           {recoveryQuery.isError && <p>{(recoveryQuery.error as { response?: { status?: number } })?.response?.status === 404 ? "Todavía no hay una versión confirmada. Puedes comprobar de nuevo o reintentar la misma solicitud." : "No se pudo comprobar el resultado. La solicitud sigue guardada."}</p>}
         </>}
       </div>}
 
-      <DigestCohort clientId={filterClient || undefined} expectedPeriod={expectedPeriod} />
+      <ConfirmDialog
+        open={discardPending}
+        onOpenChange={setDiscardPending}
+        title="¿Descartar esta solicitud?"
+        description="No consta ninguna versión creada con ella. Se olvida y podrás preparar el resumen de nuevo."
+        confirmLabel="Descartar"
+        onConfirm={() => {
+          if (pendingIndividual) {
+            clearDigestGeneration(userId, pendingIndividual.operation_key)
+            setPendingIndividual(null)
+          }
+          setDiscardPending(false)
+        }}
+      />
+
+      {!filterClient && <DigestMonthlyCycle />}
+
+      {/* Con el bloque "Para entregar" arriba, preparar en lote es una herramienta
+          secundaria: plegada, salvo que venga de un aviso, de un cliente filtrado
+          o con una selección pendiente de confirmar. */}
+      <details className="group rounded-lg border border-border" open={!!filterClient || !!expectedPeriod || hasPendingCohort}>
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">Preparar varios a la vez</summary>
+        <div className="border-t border-border">
+          <DigestCohort clientId={filterClient || undefined} expectedPeriod={expectedPeriod} />
+        </div>
+      </details>
 
       <div><h2 className="text-lg font-semibold">Historial de versiones</h2><p className="text-sm text-muted-foreground">{canWrite ? "Abre una versión para revisar su texto y confirmar la entrega al cliente. Discord es distribución interna." : "Abre una versión para consultar su texto y sus fuentes."}</p></div>
       {/* Filters */}
@@ -413,7 +448,8 @@ function DigestList() {
                 <TableHead>Cliente</TableHead>
                 <TableHead>Periodo</TableHead>
                 <TableHead>Tono</TableHead>
-                <TableHead>Estado</TableHead>
+                <TableHead>Entrega al cliente</TableHead>
+                <TableHead>Estado interno</TableHead>
                 <TableHead>Generado</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
@@ -421,15 +457,15 @@ function DigestList() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     <Loader2 className="w-6 h-6 mx-auto animate-spin opacity-40" />
                   </TableCell>
                 </TableRow>
               ) : isError && !digestPages ? (
-                <TableRow><TableCell colSpan={6}><div role="alert" className="py-4 text-center">No se pudo cargar el historial. <Button variant="outline" size="sm" onClick={() => void refetch()}>Reintentar historial</Button></div></TableCell></TableRow>
+                <TableRow><TableCell colSpan={7}><div role="alert" className="py-4 text-center">No se pudo cargar el historial. <Button variant="outline" size="sm" onClick={() => void refetch()}>Reintentar historial</Button></div></TableCell></TableRow>
               ) : digests.length === 0 ? (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={6} className="py-12">
+                  <TableCell colSpan={7} className="py-12">
                     <div className="flex flex-col items-center">
                       <FileText className="h-8 w-8 text-muted-foreground/30 mb-3" />
                       <p className="text-sm font-medium text-foreground mb-1">Sin resúmenes</p>
@@ -440,13 +476,22 @@ function DigestList() {
               ) : (
                 digests.map((digest) => (
                   <TableRow key={digest.id}>
-                    <TableCell className="font-medium">{digest.client_name || "—"}</TableCell>
+                    <TableCell className="font-medium">
+                      <Link to={`/digests/${digest.id}/edit`} className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm">{digest.client_name || "—"}</Link>
+                    </TableCell>
                     <TableCell>
-                      {digest.period_start && digest.period_end
-                        ? `${format(new Date(digest.period_start + "T12:00:00"), "d MMM yyyy", { locale: es })} — ${format(new Date(digest.period_end + "T12:00:00"), "d MMM yyyy", { locale: es })}`
-                        : "—"}
+                      <Link to={`/digests/${digest.id}/edit`} className="hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand rounded-sm">
+                        {digest.period_start && digest.period_end
+                          ? `${format(new Date(digest.period_start + "T12:00:00"), "d MMM yyyy", { locale: es })} — ${format(new Date(digest.period_end + "T12:00:00"), "d MMM yyyy", { locale: es })}`
+                          : "—"}
+                      </Link>
                     </TableCell>
                     <TableCell>{toneLabels[digest.tone]}</TableCell>
+                    <TableCell>
+                      {digest.delivered_at
+                        ? <span className="text-sm"><Badge variant="success">Entregado</Badge> <span className="text-xs text-muted-foreground">{format(new Date(digest.delivered_at), "d MMM", { locale: es })}{digest.delivered_by_name ? ` · ${digest.delivered_by_name}` : ""}</span></span>
+                        : <span className="text-sm text-muted-foreground">Sin entregar</span>}
+                    </TableCell>
                     <TableCell>
                       {canWrite ? <Select
                         value={digest.status}
@@ -477,62 +522,19 @@ function DigestList() {
                         >
                           {canWrite ? <Pencil className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Vista previa"
-                          aria-label={`Ver vista previa del resumen de ${digest.client_name}, versión #${digest.id}`}
-                          onClick={() => handlePreview(digest, "slack")}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <span className="w-px h-5 bg-border mx-0.5" />
-                        {/* Copiar para pegar en Slack / email */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Copiar Slack"
-                          aria-label={`Copiar para Slack el resumen de ${digest.client_name}, versión #${digest.id}`}
-                          onClick={() => handleQuickCopy(digest, "slack")}
-                        >
-                          <ClipboardCopy className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Copiar Email (texto plano)"
-                          aria-label={`Copiar para email el resumen de ${digest.client_name}, versión #${digest.id}`}
-                          onClick={() => handleQuickCopy(digest, "email_plain")}
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                        </Button>
-                        {canWrite && <><span className="w-px h-5 bg-border mx-0.5" />
-                        {/* Discord (interno) */}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          title="Discord (interno)"
-                          aria-label={`Revisar y compartir en Discord interno el resumen de ${digest.client_name}, versión #${digest.id}`}
-                          onClick={() => handleDiscordPreview(digest)}
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                        </Button></>}
-                        {canWrite && digest.status !== "sent" && digest.can_delete === true && (
-                          <>
-                            <span className="w-px h-5 bg-border mx-0.5" />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              title="Eliminar"
-                              aria-label={`Eliminar resumen de ${digest.client_name}, versión #${digest.id}`}
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => handleDelete(digest)}
-                              disabled={deleteMutation.isPending}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </>
-                        )}
+                        <ActionMenu
+                          label={`Más acciones del resumen de ${digest.client_name}, versión #${digest.id}`}
+                          items={[
+                            { label: "Vista previa", icon: <Eye className="w-4 h-4" />, onSelect: () => handlePreview(digest, "slack") },
+                            { label: "Descargar PDF", icon: <FileDown className="w-4 h-4" />, onSelect: () => void downloadPdfWithToast(() => digestsApi.pdf(digest.id)) },
+                            { label: "Copiar para Slack", icon: <ClipboardCopy className="w-4 h-4" />, onSelect: () => handleQuickCopy(digest, "slack") },
+                            { label: "Copiar para email (texto)", icon: <FileText className="w-4 h-4" />, onSelect: () => handleQuickCopy(digest, "email_plain") },
+                            ...(canWrite ? [{ label: "Discord interno…", icon: <MessageCircle className="w-4 h-4" />, onSelect: () => handleDiscordPreview(digest) }] : []),
+                            ...(canWrite && digest.status !== "sent" && digest.can_delete === true
+                              ? [{ label: "Eliminar", icon: <Trash2 className="w-4 h-4" />, destructive: true, disabled: deleteMutation.isPending, onSelect: () => handleDelete(digest) }]
+                              : []),
+                          ]}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>

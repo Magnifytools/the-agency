@@ -16,7 +16,7 @@ from backend.db.models import (
     UserRole,
 )
 from backend.services.notification_checks import RETIRED_CHECK_TYPES, NotificationChecks
-from backend.services.temporal import business_today
+from backend.services.temporal import business_today, utc_now_naive
 
 
 def use_session(monkeypatch, db_session):
@@ -29,12 +29,12 @@ def use_session(monkeypatch, db_session):
 
 async def emit(db, user_id, cycle):
     checks = await NotificationChecks.load(db, user_id)
-    if not checks.has("billing_reminder", "project", 123, cycle):
+    if not checks.has("periodic_check", "project", 123, cycle):
         await checks.create(
-            type="billing_reminder",
+            type="periodic_check",
             entity_type="project",
             entity_id=123,
-            title="Revisar facturación",
+            title="Revisar proyecto",
             message="Condición de prueba",
         )
     await db.commit()
@@ -55,18 +55,32 @@ async def test_read_does_not_recreate_check_but_new_cycle_can(db_session, admin_
 async def test_existing_read_legacy_check_is_adopted(db_session, admin_user):
     legacy = Notification(
         user_id=admin_user.id,
-        type="billing_reminder",
+        type="periodic_check",
         title="Existente",
         entity_type="project",
         entity_id=123,
         is_read=True,
-        created_at=datetime.now(),
+        created_at=utc_now_naive(),
     )
     db_session.add(legacy)
     await db_session.commit()
     await emit(db_session, admin_user.id, business_today())
     assert legacy.dedupe_key is not None
     assert legacy.is_read is True
+    assert (await db_session.execute(select(func.count(Notification.id)))).scalar() == 1
+
+
+async def test_legacy_check_created_late_utc_belongs_to_the_madrid_day(db_session, admin_user):
+    """23:30 UTC del 25 de octubre ya es el 26 en Madrid: ese aviso es del ciclo del 26."""
+    legacy = Notification(
+        user_id=admin_user.id, type="periodic_check", title="Existente",
+        entity_type="project", entity_id=123, is_read=True,
+        created_at=datetime(2026, 10, 25, 23, 30),
+    )
+    db_session.add(legacy)
+    await db_session.commit()
+    await emit(db_session, admin_user.id, date(2026, 10, 26))
+    assert legacy.dedupe_key is not None
     assert (await db_session.execute(select(func.count(Notification.id)))).scalar() == 1
 
 

@@ -1,2 +1,6 @@
 User-agent: *
+# Páginas públicas para la verificación de Google OAuth: se pueden leer (así
+# se ve su noindex), pero no se indexan. El resto de la app, fuera.
+Allow: /acerca
+Allow: /privacidad
 Disallow: /

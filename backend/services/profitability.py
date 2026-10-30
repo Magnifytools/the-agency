@@ -20,24 +20,8 @@ eso se pasan como parámetros en vez de fijarlos aquí.
 """
 from __future__ import annotations
 
-from typing import Optional
 
 from backend.schemas.dashboard import ProfitabilityStatus
-
-
-def format_billing_detail(project_name: str, billing_amount: Optional[float]) -> str:
-    """Una línea del detalle de la alerta de facturación.
-
-    ``billing_amount`` es nullable. Sin guarda, el f-string original
-    (``f"{p.name}: {p.billing_amount}€"``) renderizaba el ``None`` de Python
-    tal cual y en producción se leía "Taxfix ES+UK ...: None€".
-
-    Un importe ausente se dice, no se finge con un 0 €: son cosas distintas y
-    la acción que pide el usuario también (configurar la tarifa, no cobrar 0).
-    """
-    if billing_amount is None:
-        return f"{project_name}: sin importe configurado"
-    return f"{project_name}: {float(billing_amount):.2f}€"
 
 
 def classify_profitability(

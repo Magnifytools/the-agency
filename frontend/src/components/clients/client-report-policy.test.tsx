@@ -9,49 +9,60 @@ const api = vi.hoisted(() => ({ getPolicy: vi.fn(), updatePolicy: vi.fn(), respo
 const auth = vi.hoisted(() => ({ isAdmin: true, user: { id: 1 } }))
 vi.mock("@/lib/report-policy-api", () => ({ reportPolicyApi: api }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => auth }))
-const unconfigured = { client_id: 1, configured: false, enabled: false, cadence: "weekly", responsible_user_id: null, responsible_name: null, revision: 0 }
-const configured = { ...unconfigured, configured: true, enabled: true, responsible_user_id: 2, responsible_name: "Nacho", responsible_active: true, responsible_can_prepare: true, revision: 3 }
+const unconfigured = { client_id: 1, configured: false, enabled: false, weekly_enabled: false, monthly_enabled: false, responsible_user_id: null, responsible_name: null, revision: 0 }
+const configured = { ...unconfigured, configured: true, enabled: true, weekly_enabled: true, responsible_user_id: 2, responsible_name: "Nacho", responsible_active: true, responsible_can_prepare: true, revision: 3 }
+const MONTHLY = "Informe mensual · mes anterior completo"
+const WEEKLY = "Seguimiento semanal · última semana cerrada"
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   return render(<QueryClientProvider client={client}><MemoryRouter><ClientReportPolicy clientId={1} clientName="Acme" /></MemoryRouter></QueryClientProvider>)
 }
 beforeEach(() => { vi.resetAllMocks(); auth.isAdmin = true; api.getPolicy.mockResolvedValue(unconfigured); api.responsibles.mockResolvedValue([{ id: 2, full_name: "Nacho" }]); api.updatePolicy.mockResolvedValue(configured) })
-it("requires explicit opt-in and a responsible, then saves a monthly policy at revision zero", async () => {
-  setup(); fireEvent.click(await screen.findByRole("button", { name: "Configurar resumen" }))
-  expect(screen.getByRole("checkbox")).not.toBeChecked()
-  fireEvent.click(screen.getByRole("checkbox"))
+it("starts with nothing on, requires a responsible and saves both cadences at revision zero", async () => {
+  setup(); fireEvent.click(await screen.findByRole("button", { name: "Configurar resúmenes" }))
+  expect(screen.getByLabelText(MONTHLY)).not.toBeChecked()
+  expect(screen.getByLabelText(WEEKLY)).not.toBeChecked()
+  fireEvent.click(screen.getByLabelText(MONTHLY))
   expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeDisabled()
-  fireEvent.change(screen.getByLabelText("Frecuencia"), { target: { value: "monthly" } })
+  fireEvent.click(screen.getByLabelText(WEEKLY))
   fireEvent.change(screen.getByLabelText("Responsable"), { target: { value: "2" } })
   fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }))
-  await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith(1, { enabled: true, cadence: "monthly", responsible_user_id: 2, revision: 0 }))
+  await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith(1, { monthly_enabled: true, weekly_enabled: true, responsible_user_id: 2, revision: 0 }))
+})
+it("saves with both cadences off and no responsible", async () => {
+  setup(); fireEvent.click(await screen.findByRole("button", { name: "Configurar resúmenes" }))
+  fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }))
+  await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith(1, { monthly_enabled: false, weekly_enabled: false, responsible_user_id: null, revision: 0 }))
 })
 it("keeps local edits after network failure", async () => {
   api.updatePolicy.mockRejectedValue(new Error("offline")); setup()
-  fireEvent.click(await screen.findByRole("button", { name: "Configurar resumen" }))
-  fireEvent.change(screen.getByLabelText("Frecuencia"), { target: { value: "monthly" } })
+  fireEvent.click(await screen.findByRole("button", { name: "Configurar resúmenes" }))
+  fireEvent.click(screen.getByLabelText(MONTHLY))
+  fireEvent.change(screen.getByLabelText("Responsable"), { target: { value: "2" } })
   fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }))
   expect(await screen.findByRole("alert")).toHaveTextContent("Tu selección se conserva")
-  expect(screen.getByLabelText("Frecuencia")).toHaveValue("monthly")
+  expect(screen.getByLabelText(MONTHLY)).toBeChecked()
 })
 it("does not overwrite a newer policy after revision conflict", async () => {
   api.getPolicy.mockResolvedValue(configured)
   const conflict = new AxiosError("conflict")
-  conflict.response = { status: 409, data: { detail: { code: "policy_changed", current: { ...configured, revision: 4, cadence: "monthly" } } } } as AxiosError["response"]
+  conflict.response = { status: 409, data: { detail: { code: "policy_changed", current: { ...configured, revision: 4, monthly_enabled: true } } } } as AxiosError["response"]
   api.updatePolicy.mockRejectedValueOnce(conflict)
-  setup(); fireEvent.click(await screen.findByRole("button", { name: "Cambiar frecuencia o responsable" }))
+  setup(); fireEvent.click(await screen.findByRole("button", { name: "Cambiar resúmenes o responsable" }))
   fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }))
   await screen.findByText(/Otra persona cambió/)
   expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeDisabled()
-  expect(screen.getByLabelText("Frecuencia")).toHaveValue("weekly")
+  expect(screen.getByLabelText(MONTHLY)).not.toBeChecked()
   fireEvent.click(screen.getByRole("button", { name: "Cargar configuración actual" }))
-  expect(screen.getByLabelText("Frecuencia")).toHaveValue("monthly")
+  expect(screen.getByLabelText(MONTHLY)).toBeChecked()
   fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }))
-  await waitFor(() => expect(api.updatePolicy).toHaveBeenLastCalledWith(1, expect.objectContaining({ revision: 4, cadence: "monthly" })))
+  await waitFor(() => expect(api.updatePolicy).toHaveBeenLastCalledWith(1, expect.objectContaining({ revision: 4, monthly_enabled: true, weekly_enabled: true })))
 })
 it("shows responsible members the policy without querying admin-only candidates or edit controls", async () => {
   auth.isAdmin = false; api.getPolicy.mockResolvedValue(configured); setup()
   await screen.findByText("Nacho")
+  expect(screen.getByText("Informe mensual").nextSibling).toHaveTextContent("No")
+  expect(screen.getByText("Seguimiento semanal").nextSibling).toHaveTextContent("Activo · última semana cerrada")
   expect(api.responsibles).not.toHaveBeenCalled()
-  expect(screen.queryByRole("button", { name: /Cambiar frecuencia/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: /Cambiar resúmenes/ })).not.toBeInTheDocument()
 })

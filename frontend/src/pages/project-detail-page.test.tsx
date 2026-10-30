@@ -35,8 +35,6 @@ vi.mock("@/hooks/use-business-date", () => ({ useBusinessDate: () => api.today }
 vi.mock("@/components/projects/project-work-summary", () => ({ ProjectWorkSummary: () => null }))
 vi.mock("@/components/projects/project-task-list", () => ({ ProjectTaskList: () => <div>Lista de tareas</div> }))
 vi.mock("@/components/projects/project-phase-kanban", () => ({ ProjectPhaseKanban: () => null }))
-vi.mock("@/components/projects/evidence-list", () => ({ EvidenceList: () => null }))
-vi.mock("@/components/projects/project-billing-tab", () => ({ ProjectBillingTab: () => null }))
 vi.mock("@/components/projects/project-ideas-tab", () => ({ ProjectIdeasTab: () => null }))
 vi.mock("@/components/gantt/gantt-chart", () => ({ GanttChart: () => null }))
 vi.mock("@/components/tasks/task-panel", () => ({ TaskPanel: () => null }))
@@ -280,6 +278,33 @@ describe("recurring project monthly cycle", () => {
     await waitFor(() => expect(api.monthlyCycle).toHaveBeenCalledWith(42, "2026-08"))
     expect(await screen.findByText("Diferencia con presupuesto actual")).toBeInTheDocument()
     expect(screen.getByText("Presupuesto actual de referencia")).toBeInTheDocument()
+  })
+
+  it("explains the hours carried from last month in the cycle", async () => {
+    api.monthlyCycle.mockImplementation((_id: number, month: string) => Promise.resolve({
+      project_id: 42, month, period_start: `${month}-01`, period_end: "2026-10-01",
+      planned_count: 0, completed_in_month_count: 0, total_minutes: 90, used_hours: 1.5,
+      budget_hours: 12, base_budget_hours: 10, carried_hours: 2, remaining_hours: 10.5, tasks: [],
+    }))
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/42"]}><Routes><Route path="/projects/:id" element={<ProjectDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+
+    expect(await screen.findByText("10h del mes + 2h que sobraron el mes anterior. Aviso temprano al 75 %.")).toBeInTheDocument()
+    expect(screen.getByText(/1\.5h \/ 12h/)).toBeInTheDocument()
+  })
+
+  it("turns the hours carryover on from the edit form", async () => {
+    api.get.mockResolvedValue({ ...staleProject, id: 42, name: "Retainer SEO", owner_id: null, requires_task_review: false, hours_carryover: false })
+    api.update.mockResolvedValue({ ...staleProject, hours_carryover: true })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/42"]}><Routes><Route path="/projects/:id" element={<ProjectDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
+
+    await userEvent.click(await screen.findByRole("button", { name: "Editar" }))
+    const carryover = screen.getByRole("checkbox", { name: /Pasar al mes siguiente las horas que sobren/ })
+    expect(carryover).not.toBeChecked()
+    await userEvent.click(carryover)
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Guardar/ }))
+    await waitFor(() => expect(api.update).toHaveBeenCalledWith(42, expect.objectContaining({ hours_carryover: true })))
   })
 
   it("keeps recurrence templates out of operational work with a global edit path", async () => {

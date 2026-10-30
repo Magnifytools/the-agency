@@ -52,8 +52,10 @@ from sqlalchemy.orm import Session
 
 from backend.db.models import (
     ChangeLog,
+    TaskTimeBlock,
     Client,
     ClientContact,
+    ClientScopeRequest,
     GrowthIdea,
     Lead,
     LeadActivity,
@@ -126,6 +128,10 @@ class _Spec:
     rank: int            # 0 = padre, 1 = hijo (manda el orden de restauración)
 
 
+#: Accesos (``Credential`` y sus tablas) NO entran nunca: el snapshot guardaría
+#: la contraseña cifrada en ``change_logs`` y el undo podría resucitar una
+#: contraseña ya rotada. Lo guarda ``test_accesos_quedan_fuera_del_journal``.
+#:
 #: Padres (rank 0) e hijos "propios" (rank 1). Los hijos entran porque se borran
 #: en cascada con el padre: sin ellos, deshacer un borrado devolvería la tarea
 #: pero se habría comido su checklist en silencio.
@@ -134,10 +140,15 @@ _SPECS: dict[type, _Spec] = {
     Project:       _Spec("project",       "name",         "projects", "Proyecto",  False, 0),
     Client:        _Spec("client",        "name",         "clients",  "Cliente",   False, 0),
     ClientContact: _Spec("client_contact", "name",        "clients",  "Contacto",  False, 1),
+    # Peticiones extra: las escribe una persona a mano y borrar una por error es
+    # justo lo que el Deshacer debe cubrir. Hija del cliente (cascada).
+    ClientScopeRequest: _Spec("client_scope_request", "title", "clients", "Petición extra", True, 1),
     Lead:          _Spec("lead",          "company_name", "growth",   "Lead",      False, 0),
     GrowthIdea:    _Spec("growth_idea",   "title",        "growth",   "Idea",      True,  0),
     ProjectPhase:  _Spec("project_phase", "name",         "projects", "Fase",      True,  1),
     TaskChecklist: _Spec("task_checklist", "text",        "tasks",    "Subtarea",  True,  1),
+    # Bloques con hora de Mi agenda: hijos de la tarea (se borran con ella).
+    TaskTimeBlock: _Spec("task_time_block", "display_label", "tasks", "Bloque",   False, 1),
     TimeEntry:     _Spec("time_entry",     "notes",       "timesheet", "Registro de tiempo", False, 1),
     LeadActivity:  _Spec("lead_activity", "title",        "growth",   "Actividad", True,  1),
 }
@@ -263,8 +274,9 @@ def _diff(obj: Any) -> tuple[dict[str, Any], dict[str, Any]]:
     return before, after
 
 
-def _label_of(spec: _Spec, data: dict[str, Any]) -> str:
-    raw = data.get(spec.label_attr)
+def _label_of(spec: _Spec, data: dict[str, Any], obj: Any = None) -> str:
+    # Un label que no es columna (p. ej. la franja horaria de un bloque) se lee del objeto.
+    raw = data.get(spec.label_attr) if spec.label_attr in data or obj is None else getattr(obj, spec.label_attr, None)
     text = str(raw).strip() if raw not in (None, "") else "(sin título)"
     if len(text) > 80:
         text = text[:77] + "…"
@@ -320,7 +332,7 @@ def _capture(session: Session, flush_context, instances) -> None:
             continue
         after = _snapshot(obj)
         ops.append(_Op(spec=spec, action="create", obj=obj, after=after,
-                       name=_label_of(spec, after)))
+                       name=_label_of(spec, after, obj)))
     for obj in session.dirty:
         if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
             continue
@@ -339,7 +351,7 @@ def _capture(session: Session, flush_context, instances) -> None:
         ops.append(_Op(spec=spec, action="update", obj=obj,
                        entity_id=getattr(obj, "id", None),
                        before=before, after=after,
-                       name=_label_of(spec, _snapshot(obj))))
+                       name=_label_of(spec, _snapshot(obj), obj)))
     for obj in session.deleted:
         if isinstance(obj, TimeEntry) and not session.info.get(_MANUAL_TIME_KEY):
             continue
@@ -349,7 +361,7 @@ def _capture(session: Session, flush_context, instances) -> None:
         before = _snapshot(obj)
         ops.append(_Op(spec=spec, action="delete", obj=obj,
                        entity_id=getattr(obj, "id", None),
-                       before=before, name=_label_of(spec, before)))
+                       before=before, name=_label_of(spec, before, obj)))
 
 
 @event.listens_for(Session, "after_flush")

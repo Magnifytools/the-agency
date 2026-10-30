@@ -3,19 +3,20 @@ import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Loader2, RefreshCw, Sparkles } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
-import { reportPolicyApi, reportPolicyKeys, type CohortGenerateResult, type GenerationPreviewItem, type ReportScope } from "@/lib/report-policy-api"
+import { CADENCE_LABEL, previewItemKey, reportPolicyApi, reportPolicyKeys, type CohortGenerateResult, type GenerationPreviewItem, type ReportScope } from "@/lib/report-policy-api"
 import { digestsApi } from "@/lib/api"
 import type { DigestTone } from "@/lib/types"
 import { getErrorMessage } from "@/lib/utils"
 import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type CohortDigestIntent } from "@/lib/digest-generation-recovery"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 
 const reasons: Record<string, string> = {
   eligible: "Pendiente de preparar", client_inactive: "Cliente inactivo", internal_client: "Cliente interno: fuera de los resúmenes para clientes",
-  policy_missing: "Falta configurar la frecuencia y el responsable", policy_disabled: "Preparación periódica desactivada",
+  policy_missing: "Falta configurar los resúmenes y el responsable", policy_disabled: "Ni informe mensual ni seguimiento semanal activados",
   responsible_unavailable: "El responsable no está disponible o no puede preparar resúmenes", already_exists: "Este período ya tiene un resumen",
   policy_changed: "La configuración cambió. Actualiza la selección", permission_changed: "Los permisos cambiaron",
   period_changed: "El período cambió. Actualiza la selección", concurrent_generation: "Otra generación está en curso", generation_failed: "No se pudo generar. Puedes volver a intentarlo tras actualizar",
@@ -23,6 +24,8 @@ const reasons: Record<string, string> = {
 const internalStates: Record<string, string> = { pending: "En cola", sending: "En curso", sent: "Confirmado en Discord", failed: "Fallido", uncertain: "Sin confirmación", cancelled: "Cancelado", expired: "Caducado" }
 const statuses = { draft: "Borrador", reviewed: "Revisado", sent: "Marcado como enviado (histórico)" }
 const itemKey = (item: GenerationPreviewItem) => [item.client_id, item.policy_revision, item.period_start, item.period_end].join(":")
+// Un cliente con las dos cadencias tiene dos filas: se nombra cada una.
+const rowName = (item: GenerationPreviewItem) => item.cadence ? `${item.client_name} · ${CADENCE_LABEL[item.cadence]}` : item.client_name
 const selectable = (item: GenerationPreviewItem) => item.eligible && item.policy_revision !== null && !!item.period_start && !!item.period_end
 function civilDate(value: string) { return new Intl.DateTimeFormat("es", { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${value}T12:00:00`)) }
 
@@ -42,6 +45,7 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
   const [results, setResults] = useState<(CohortGenerateResult & { name: string })[]>([])
   const [needsRefresh, setNeedsRefresh] = useState(false)
   const [submitError, setSubmitError] = useState("")
+  const [discardPending, setDiscardPending] = useState(false)
   const alive = useRef(true)
   const initialRecovery = useRef(readDigestGenerations(userId))
   const [generationStorageFailed] = useState(initialRecovery.current.failed)
@@ -55,6 +59,10 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
   const expectedPeriodChanged = !!expectedPeriod && clientRows.length > 0 && rows.length === 0
   const expectedPeriodUnavailable = !!expectedPeriod && clientRows.length === 0
   const chosen = rows.filter(item => selectable(item) && selected.includes(itemKey(item)))
+  const resultName = (result: CohortGenerateResult) => {
+    const row = clientRows.find(item => previewItemKey(item) === previewItemKey(result)) ?? clientRows.find(item => item.client_id === result.client_id)
+    return row ? (previewItemKey(row) === previewItemKey(result) ? rowName(row) : row.client_name) : `Cliente #${result.client_id}`
+  }
   const finishCohort = (intent: CohortDigestIntent) => {
     clearDigestGeneration(userId, intent.operation_key)
     setPendingCohort(null)
@@ -72,12 +80,12 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
   const recoveredCount = recovery.data?.filter(result => result.status === "fulfilled").length ?? 0
   useEffect(() => {
     if (!pendingCohort || !recovery.data || recoveredCount !== pendingCohort.items.length) return
-    setResults(recovery.data.flatMap((result, index) => result.status === "fulfilled" ? [{
-      client_id: pendingCohort.items[index].client_id,
-      outcome: "generated" as const,
-      digest_id: result.value.id,
-      name: clientRows.find(row => row.client_id === pendingCohort.items[index].client_id)?.client_name ?? `Cliente #${pendingCohort.items[index].client_id}`,
-    }] : []))
+    setResults(recovery.data.flatMap((result, index) => {
+      if (result.status !== "fulfilled") return []
+      const { client_id, period_start, period_end } = pendingCohort.items[index]
+      const recovered = { client_id, period_start, period_end, outcome: "generated" as const, digest_id: result.value.id }
+      return [{ ...recovered, name: resultName(recovered) }]
+    }))
     finishCohort(pendingCohort)
     setSubmitError("")
   // A full set of recovered rows confirms the persisted cohort operation.
@@ -88,7 +96,7 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
     mutationFn: (intent: CohortDigestIntent) => reportPolicyApi.generateCohort({ items: intent.items, tone: intent.tone }),
     onSuccess: (data, intent) => {
       if (!alive.current) return
-      setResults(data.results.map(result => ({ ...result, name: clientRows.find(item => item.client_id === result.client_id)?.client_name ?? `Cliente #${result.client_id}` })))
+      setResults(data.results.map(result => ({ ...result, name: resultName(result) })))
       finishCohort(intent)
       setSelected([])
       setSubmitError("")
@@ -136,7 +144,7 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
   return <Card>
     <CardContent className="p-4 sm:p-6 space-y-4">
       <div className="flex flex-wrap justify-between gap-3">
-        <div><h2 className="font-semibold text-lg">{canWrite ? "Preparar resúmenes pendientes" : "Resúmenes pendientes"}</h2><p className="text-sm text-muted-foreground">{canWrite ? "Selecciona los clientes que quieres preparar. Cada uno usa su frecuencia y último período cerrado." : "Consulta el período y el motivo de cada cliente."}</p>{expectedPeriod && <p className="mt-1 text-sm font-medium">Período del aviso: {civilDate(expectedPeriod.start)} — {civilDate(expectedPeriod.end)}</p>}</div>
+        <div><h2 className="font-semibold text-lg">{canWrite ? "Preparar resúmenes pendientes" : "Resúmenes pendientes"}</h2><p className="text-sm text-muted-foreground">{canWrite ? "Selecciona los resúmenes que quieres preparar: informe mensual (mes anterior) o seguimiento semanal (última semana cerrada)." : "Consulta el período y el motivo de cada cliente."}</p>{expectedPeriod && <p className="mt-1 text-sm font-medium">Período del aviso: {civilDate(expectedPeriod.start)} — {civilDate(expectedPeriod.end)}</p>}</div>
         <Button variant="outline" size="sm" disabled={busy} onClick={() => void refresh()}><RefreshCw className="size-4 mr-2" />{canWrite ? "Actualizar selección" : "Actualizar datos"}</Button>
       </div>
       <div className="flex flex-wrap items-end gap-3">
@@ -148,12 +156,12 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
         {expectedPeriodChanged && <div role="alert" className="text-sm rounded-lg border border-amber-500/40 p-3">La política actual usa otro período; no se preparará uno distinto desde este aviso. <Link className="underline" to={`/digests?client_id=${clientId}`}>Ver períodos actuales</Link></div>}
         {expectedPeriodUnavailable && <div role="alert" className="text-sm rounded-lg border border-amber-500/40 p-3">El cliente o su política ya no está disponible para este período. <Link className="underline" to={`/digests?client_id=${clientId}`}>Ver períodos actuales</Link></div>}
         <p className="text-sm text-muted-foreground">A {civilDate(query.data.as_of)}: {rows.filter(item => item.eligible).length} pendientes · {rows.filter(item => !item.eligible).length} fuera de esta selección.{clientId ? " Solo el cliente del filtro del historial." : ""}</p>
-        {rows.length === 0 && <p className="text-sm">{scope === "mine" ? "No hay clientes a tu cargo en esta selección. La frecuencia y el responsable se configuran en la ficha del cliente." : "No hay clientes en esta consulta."}</p>}
+        {rows.length === 0 && <p className="text-sm">{scope === "mine" ? "No hay clientes a tu cargo en esta selección. Los resúmenes y el responsable se configuran en la ficha del cliente." : "No hay clientes en esta consulta."}</p>}
         <ul className="divide-y rounded-lg border">
-          {rows.map(item => <li key={item.client_id} className="p-3 sm:p-4 flex items-start gap-3">
-            {canWrite && <input className="mt-1 shrink-0 size-4" type="checkbox" aria-label={`Preparar ${item.client_name}`} checked={chosen.some(row => row.client_id === item.client_id)} disabled={busy || !!pendingCohort || needsRefresh || !selectable(item) || (chosen.length >= 50 && !selected.includes(itemKey(item)))} onChange={event => setSelected(previous => event.target.checked ? [...previous, itemKey(item)] : previous.filter(key => key !== itemKey(item)))} />}
+          {rows.map(item => <li key={itemKey(item)} className="p-3 sm:p-4 flex items-start gap-3">
+            {canWrite && <input className="mt-1 shrink-0 size-4" type="checkbox" aria-label={`Preparar ${rowName(item)}`} checked={chosen.some(row => itemKey(row) === itemKey(item))} disabled={busy || !!pendingCohort || needsRefresh || !selectable(item) || (chosen.length >= 50 && !selected.includes(itemKey(item)))} onChange={event => setSelected(previous => event.target.checked ? [...previous, itemKey(item)] : previous.filter(key => key !== itemKey(item)))} />}
             <div className="min-w-0 flex-1 space-y-1">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h3 className="font-medium break-words">{item.client_name}</h3><span className="text-xs text-muted-foreground">{item.cadence === "weekly" ? "Semanal" : item.cadence === "monthly" ? "Mensual" : "Sin frecuencia"} · {item.responsible_name || "Sin responsable"}</span></div>
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><h3 className="font-medium break-words">{item.client_name}</h3><span className="text-xs text-muted-foreground">{item.cadence ? CADENCE_LABEL[item.cadence] : "Sin resúmenes activos"} · {item.responsible_name || "Sin responsable"}</span></div>
               <p className="text-sm">{item.period_start && item.period_end ? `${civilDate(item.period_start)} — ${civilDate(item.period_end)}` : "Sin período configurado"}</p>
               <p className="text-sm text-muted-foreground">{reasons[item.reason] ?? "No disponible. Actualiza la selección."}</p>
               {item.digest.latest_digest_id && <p className="text-sm"><Link className="text-primary underline underline-offset-2" to={`/digests/${item.digest.latest_digest_id}/edit`}>Ver versión #{item.digest.latest_digest_id}</Link> · {item.digest.version_count} {item.digest.version_count === 1 ? "versión" : "versiones"}{item.digest.latest_status ? ` · ${statuses[item.digest.latest_status]}` : ""}</p>}
@@ -171,16 +179,31 @@ function Cohort({ userId, isAdmin, canWrite, canViewClients, clientId, expectedP
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={recovery.isFetching || mutation.isPending} onClick={() => void recovery.refetch()}>{recovery.isFetching ? "Comprobando…" : "Comprobar resultado"}</Button>
             {canWrite && <Button size="sm" disabled={recovery.isFetching || mutation.isPending} onClick={() => pendingCohort && mutation.mutate(pendingCohort)}>Reintentar la misma selección</Button>}
+            {/* Salida si alguna no llega a generarse: sólo tras comprobar el resultado. */}
+            {recovery.data && recoveredCount < (pendingCohort?.items.length ?? 0) && (
+              <Button size="sm" variant="ghost" disabled={recovery.isFetching || mutation.isPending} onClick={() => setDiscardPending(true)}>Descartar la selección</Button>
+            )}
           </div>
           {recovery.isError && <p>No se pudo comprobar el resultado. Las claves siguen guardadas.</p>}
         </>}
       </div>}
+      <ConfirmDialog
+        open={discardPending}
+        onOpenChange={setDiscardPending}
+        title="¿Descartar esta selección?"
+        description={`${recoveredCount ? `Las ${recoveredCount} versiones confirmadas ya están en el historial. ` : ""}Las demás no se llegaron a crear: se olvidan y podrás prepararlas de nuevo.`}
+        confirmLabel="Descartar"
+        onConfirm={() => {
+          if (pendingCohort) finishCohort(pendingCohort)
+          setDiscardPending(false)
+        }}
+      />
       {submitError && <p role="alert" className="text-sm">{submitError}</p>}
       <div className="flex flex-wrap items-center justify-between gap-3">
         {canWrite && <p className="text-sm text-muted-foreground">{chosen.length} seleccionados · Máximo 50. Preparar no envía nada al cliente ni a Discord.</p>}
         {canWrite && <Button disabled={!chosen.length || busy || !!pendingCohort || query.isError || needsRefresh || generationStorageFailed} onClick={submitChosen}>{mutation.isPending ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Sparkles className="size-4 mr-2" />}{mutation.isPending ? "Preparando…" : `Preparar selección (${chosen.length})`}</Button>}
       </div>
-      {results.length > 0 && <section className="rounded-lg bg-muted p-3 space-y-2" aria-label="Resultado de la preparación" aria-live="polite"><h3 className="font-medium">Resultado de la selección</h3><ul className="space-y-2">{results.map(result => <li key={result.client_id} className="text-sm break-words"><strong>{result.name}</strong> · {result.outcome === "generated" ? "Generado" : result.outcome === "skipped" ? "Omitido" : "Fallido"}{result.reason ? ` · ${reasons[result.reason] ?? "Actualiza para comprobar el estado"}` : ""}{result.digest_id && <> · <Link className="text-primary underline underline-offset-2" to={`/digests/${result.digest_id}/edit`}>Abrir versión #{result.digest_id}</Link></>}</li>)}</ul></section>}
+      {results.length > 0 && <section className="rounded-lg bg-muted p-3 space-y-2" aria-label="Resultado de la preparación" aria-live="polite"><h3 className="font-medium">Resultado de la selección</h3><ul className="space-y-2">{results.map(result => <li key={previewItemKey(result)} className="text-sm break-words"><strong>{result.name}</strong> · {result.outcome === "generated" ? "Generado" : result.outcome === "skipped" ? "Omitido" : "Fallido"}{result.reason ? ` · ${reasons[result.reason] ?? "Actualiza para comprobar el estado"}` : ""}{result.digest_id && <> · <Link className="text-primary underline underline-offset-2" to={`/digests/${result.digest_id}/edit`}>Abrir versión #{result.digest_id}</Link></>}</li>)}</ul></section>}
     </CardContent>
   </Card>
 }

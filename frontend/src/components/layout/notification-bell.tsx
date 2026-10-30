@@ -25,6 +25,8 @@ function RecipientBell({ userId, onNavigate, showLabel }: { userId: number; onNa
   const navigate = useNavigate()
   const closeForNavigation = () => { setOpen(false); onNavigate?.() }
   const toggle = () => {
+    // Sin alertas pero con novedades, se abre directamente en Actividad.
+    if (!open) setView(count === 0 && unread > 0 ? "activity" : "incidents")
     if (!open && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect()
       const width = Math.min(384, window.innerWidth - 32)
@@ -94,6 +96,8 @@ function RecipientBell({ userId, onNavigate, showLabel }: { userId: number; onNa
         <Bell className="h-4 w-4" aria-hidden="true" />
         {showLabel && <span aria-hidden="true">Alertas</span>}
         {!pendingQuery.isError && count > 0 && <span aria-label={`${count} alertas pendientes`} className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground">{count > 99 ? "99+" : count}</span>}
+        {/* La actividad sin leer (te asignan algo, te cierran una sugerencia) también avisa. */}
+        {(pendingQuery.isError || count === 0) && unread > 0 && <span aria-label={`${unread} novedades sin leer`} className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-brand ring-2 ring-card" />}
       </button>
       {open && <div id={panelId} role="dialog" aria-label="Alertas y actividad" style={position} className={`fixed ${showLabel ? "z-[70]" : "z-50"} max-h-[min(32rem,calc(100dvh-8rem))] w-96 max-w-[calc(100vw-2rem)] overflow-auto rounded-xl border border-border bg-card shadow-xl`}>
         <div className="flex items-center gap-2 border-b border-border p-3">

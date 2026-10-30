@@ -20,10 +20,8 @@ const ClientDetailPage = lazy(() => import("@/pages/client-detail-page"))
 const TasksPage = lazy(() => import("@/pages/tasks-page"))
 const UsersPage = lazy(() => import("@/pages/users-page"))
 const TimesheetPage = lazy(() => import("@/pages/timesheet-page"))
-const BillingPage = lazy(() => import("@/pages/billing-page"))
 const ProjectsPage = lazy(() => import("@/pages/projects-page"))
 const ProjectDetailPage = lazy(() => import("@/pages/project-detail-page"))
-const ReportsPage = lazy(() => import("@/pages/reports-page"))
 const ProposalsPage = lazy(() => import("@/pages/proposals-page"))
 const LeadsPage = lazy(() => import("@/pages/leads-page"))
 const LeadDetailPage = lazy(() => import("@/pages/lead-detail-page"))
@@ -31,7 +29,6 @@ const DigestsPage = lazy(() => import("@/pages/digests-page"))
 const DigestEditPage = lazy(() => import("@/pages/digest-edit-page"))
 const GrowthPage = lazy(() => import("@/pages/growth-page"))
 const FinanceDashboardPage = lazy(() => import("@/pages/finance-dashboard-page"))
-const CfoPage = lazy(() => import("@/pages/cfo-page"))
 const IncomePage = lazy(() => import("@/pages/income-page"))
 const ExpensesPage = lazy(() => import("@/pages/expenses-page"))
 const TaxesPage = lazy(() => import("@/pages/taxes-page"))
@@ -43,13 +40,18 @@ const DiscordSettingsPage = lazy(() => import("@/pages/discord-settings-page"))
 const DailysPage = lazy(() => import("@/pages/dailys-page"))
 const CapacityPage = lazy(() => import("@/pages/capacity-page"))
 const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard-page"))
-const AgencyVaultPage = lazy(() => import("@/pages/agency-vault-page"))
 const InboxPage = lazy(() => import("@/pages/inbox-page"))
+const SuggestionsPage = lazy(() => import("@/pages/suggestions-page"))
 const DeliveryPage = lazy(() => import("@/pages/delivery-page"))
 const IncidentsPage = lazy(() => import("@/pages/incidents-page"))
-const MyWeekPage = lazy(() => import("@/pages/my-week-page"))
 const SettingsPage = lazy(() => import("@/pages/settings-page"))
-const AutomationsPage = lazy(() => import("@/pages/automations-page"))
+const PublicClientPage = lazy(() => import("@/pages/public-client-page"))
+const AboutPage = lazy(() => import("@/pages/public-legal").then((m) => ({ default: m.AboutPage })))
+const PrivacyPage = lazy(() => import("@/pages/public-legal").then((m) => ({ default: m.PrivacyPage })))
+const CredentialsPage = lazy(() => import("@/pages/credentials-page"))
+const WebPage = lazy(() => import("@/pages/web-page"))
+const WebChangesPage = lazy(() => import("@/pages/web-changes-page"))
+const WebChangeDetailPage = lazy(() => import("@/pages/web-change-detail-page"))
 
 function PageLoader() {
   return (
@@ -88,6 +90,11 @@ export default function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {/* Enlace de sólo lectura del cliente: sin login y fuera del shell. */}
+            {/* Páginas públicas para la verificación de Google OAuth (noindex). */}
+            <Route path="/acerca" element={<Suspense fallback={null}><AboutPage /></Suspense>} />
+            <Route path="/privacidad" element={<Suspense fallback={null}><PrivacyPage /></Suspense>} />
+            <Route path="/c/:token" element={<ErrorBoundary section="Enlace del cliente"><Suspense fallback={null}><PublicClientPage /></Suspense></ErrorBoundary>} />
             <Route
               element={
                 <ProtectedRoute>
@@ -108,6 +115,11 @@ export default function App() {
               <Route path="/leads" element={<PermissionRoute module="growth"><ErrorBoundary section="Leads"><Suspense fallback={<PageLoader />}><LeadsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/leads/:id" element={<PermissionRoute module="growth"><ErrorBoundary section="LeadDetail"><Suspense fallback={<PageLoader />}><LeadDetailPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/clients" element={<PermissionRoute module="clients"><ErrorBoundary section="Clients"><Suspense fallback={<PageLoader />}><ClientsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/web" element={<PermissionRoute module="web"><ErrorBoundary section="Disponibilidad"><Suspense fallback={<PageLoader />}><WebPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              {/* Enlaces del digest de Slack y de la incidencia: no cambiar sin cambiar services/web/digest.py */}
+              <Route path="/web/cambios" element={<PermissionRoute module="web"><ErrorBoundary section="CambiosWeb"><Suspense fallback={<PageLoader />}><WebChangesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/web/cambios/:id" element={<PermissionRoute module="web"><ErrorBoundary section="CambioWeb"><Suspense fallback={<PageLoader />}><WebChangeDetailPage /></Suspense></ErrorBoundary></PermissionRoute>} />
+              <Route path="/credentials" element={<PermissionRoute module="credentials"><ErrorBoundary section="Credentials"><Suspense fallback={<PageLoader />}><CredentialsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/clients/:id" element={<PermissionRoute module="clients"><ErrorBoundary section="ClientDetail"><Suspense fallback={<PageLoader />}><ClientDetailPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/tasks" element={<ErrorBoundary section="Tasks"><Suspense fallback={<PageLoader />}><TasksPage /></Suspense></ErrorBoundary>} />
               <Route path="/projects" element={<ErrorBoundary section="Projects"><Suspense fallback={<PageLoader />}><ProjectsPage /></Suspense></ErrorBoundary>} />
@@ -116,15 +128,12 @@ export default function App() {
               <Route path="/capacity" element={<PermissionRoute adminOnly><ErrorBoundary section="Capacity"><Suspense fallback={<PageLoader />}><CapacityPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/users" element={<PermissionRoute adminOnly><ErrorBoundary section="Users"><Suspense fallback={<PageLoader />}><UsersPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/timesheet" element={<ErrorBoundary section="Timesheet"><Suspense fallback={<PageLoader />}><TimesheetPage /></Suspense></ErrorBoundary>} />
-              <Route path="/billing" element={<PermissionRoute adminOnly><ErrorBoundary section="Billing"><Suspense fallback={<PageLoader />}><BillingPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/proposals" element={<PermissionRoute module="proposals"><ErrorBoundary section="Proposals"><Suspense fallback={<PageLoader />}><ProposalsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/digests" element={<PermissionRoute module="digests"><ErrorBoundary section="Digests"><Suspense fallback={<PageLoader />}><DigestsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/digests/:id/edit" element={<PermissionRoute module="digests"><ErrorBoundary section="DigestEdit"><Suspense fallback={<PageLoader />}><DigestEditPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/dailys" element={<ErrorBoundary section="Dailys"><Suspense fallback={<PageLoader />}><DailysPage /></Suspense></ErrorBoundary>} />
-              <Route path="/reports" element={<PermissionRoute module="reports"><ErrorBoundary section="Reports"><Suspense fallback={<PageLoader />}><ReportsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Finance — admin only */}
               <Route path="/finance" element={<PermissionRoute adminOnly><ErrorBoundary section="Finance"><Suspense fallback={<PageLoader />}><FinanceDashboardPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              <Route path="/finance/cfo" element={<PermissionRoute adminOnly><ErrorBoundary section="CFO"><Suspense fallback={<PageLoader />}><CfoPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/finance/income" element={<PermissionRoute adminOnly><ErrorBoundary section="Income"><Suspense fallback={<PageLoader />}><IncomePage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/finance/expenses" element={<PermissionRoute adminOnly><ErrorBoundary section="Expenses"><Suspense fallback={<PageLoader />}><ExpensesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/finance/taxes" element={<PermissionRoute adminOnly><ErrorBoundary section="Taxes"><Suspense fallback={<PageLoader />}><TaxesPage /></Suspense></ErrorBoundary></PermissionRoute>} />
@@ -134,13 +143,10 @@ export default function App() {
               {/* Holded Finance — admin only */}
               <Route path="/finance-holded" element={<PermissionRoute adminOnly><ErrorBoundary section="HoldedFinance"><Suspense fallback={<PageLoader />}><HoldedFinancePage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Agency */}
-              <Route path="/vault" element={<PermissionRoute adminOnly><ErrorBoundary section="Vault"><Suspense fallback={<PageLoader />}><AgencyVaultPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               <Route path="/inbox" element={<ErrorBoundary section="Inbox"><Suspense fallback={<PageLoader />}><InboxPage /></Suspense></ErrorBoundary>} />
-              <Route path="/my-week" element={<ErrorBoundary section="MyWeek"><Suspense fallback={<PageLoader />}><MyWeekPage /></Suspense></ErrorBoundary>} />
+              <Route path="/sugerencias" element={<ErrorBoundary section="Sugerencias"><Suspense fallback={<PageLoader />}><SuggestionsPage /></Suspense></ErrorBoundary>} />
               {/* Discord */}
               <Route path="/discord" element={<PermissionRoute adminOnly><ErrorBoundary section="Discord"><Suspense fallback={<PageLoader />}><DiscordSettingsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
-              {/* Automations */}
-              <Route path="/automations" element={<PermissionRoute adminOnly><ErrorBoundary section="Automations"><Suspense fallback={<PageLoader />}><AutomationsPage /></Suspense></ErrorBoundary></PermissionRoute>} />
               {/* Settings */}
               <Route path="/settings" element={<ErrorBoundary section="Settings"><Suspense fallback={<PageLoader />}><SettingsPage /></Suspense></ErrorBoundary>} />
             </Route>

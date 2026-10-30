@@ -11,7 +11,7 @@ from datetime import date
 
 from backend.db.models import DigestTone
 from backend.schemas.digest import DigestContent, DigestItem
-from backend.services import digest_seo
+from backend.services import digest_ga4, digest_seo
 from backend.services.digest_periods import format_digest_period
 
 # ---------------------------------------------------------------------------
@@ -33,9 +33,20 @@ SECTION_TITLES_PLURAL = {
 }
 
 
+# "metrics" (horas invertidas, tareas cerradas…) es para nosotros: sale en el
+# editor, pero en ningún formato que llegue al cliente. Email, texto plano y PDF
+# ya no la pintaban; Slack sí, por su plantilla (la de Fit la llevaba).
+CLIENT_SECTIONS = ("done", "need", "next")
+
+
 def _seo_block(content: DigestContent, seo: dict | None) -> dict | None:
     """El bloque de Search Console, si hay datos y no se ha quitado en el editor."""
     return seo if content.include_seo and digest_seo.is_available(seo) else None
+
+
+def _ga4_block(content: DigestContent, ga4: dict | None) -> dict | None:
+    """El bloque de GA4, si hay datos y no se ha quitado en el editor."""
+    return ga4 if content.include_ga4 and digest_ga4.is_available(ga4) else None
 
 
 def _section_titles(tone: DigestTone | None = None) -> dict[str, str]:
@@ -65,6 +76,7 @@ def render_discord(
     period_start: date | None = None,
     period_end: date | None = None,
     seo: dict | None = None,
+    ga4: dict | None = None,
 ) -> str:
     """Render digest content as Discord-formatted Markdown message."""
     titles = _section_titles(tone)
@@ -103,6 +115,10 @@ def render_discord(
     if seo_block:
         lines.extend(digest_seo.render_text(seo_block, bold="**"))
         lines.append("")
+    ga4_block = _ga4_block(content, ga4)
+    if ga4_block:
+        lines.extend(digest_ga4.render_text(ga4_block, bold="**"))
+        lines.append("")
 
     # Closing / AI note
     if content.closing:
@@ -119,6 +135,7 @@ def render_slack(
     period_start: date | None = None,
     period_end: date | None = None,
     seo: dict | None = None,
+    ga4: dict | None = None,
 ) -> str:
     """Render digest content as Slack mrkdwn text (paste-friendly).
 
@@ -126,8 +143,8 @@ def render_slack(
     Otherwise uses the default Magnify format.
     """
     if slack_template:
-        return _render_slack_custom(content, slack_template, period_start, period_end, seo)
-    return _render_slack_default(content, tone, period_start, period_end, seo)
+        return _render_slack_custom(content, slack_template, period_start, period_end, seo, ga4)
+    return _render_slack_default(content, tone, period_start, period_end, seo, ga4)
 
 
 def _render_slack_default(
@@ -136,6 +153,7 @@ def _render_slack_default(
     period_start: date | None = None,
     period_end: date | None = None,
     seo: dict | None = None,
+    ga4: dict | None = None,
 ) -> str:
     """Default Slack format — Magnify standard."""
     titles = _section_titles(tone)
@@ -150,7 +168,7 @@ def _render_slack_default(
 
     sections = content.sections
 
-    for key in ("done", "need", "next", "metrics"):
+    for key in CLIENT_SECTIONS:
         items = getattr(sections, key, [])
         if items:
             title = titles.get(key, key.capitalize())
@@ -164,6 +182,10 @@ def _render_slack_default(
     seo_block = _seo_block(content, seo)
     if seo_block:
         lines.extend(digest_seo.render_text(seo_block, bold="*"))
+        lines.append("")
+    ga4_block = _ga4_block(content, ga4)
+    if ga4_block:
+        lines.extend(digest_ga4.render_text(ga4_block, bold="*"))
         lines.append("")
 
     if content.closing:
@@ -179,6 +201,7 @@ def _render_slack_custom(
     period_start: date | None = None,
     period_end: date | None = None,
     seo: dict | None = None,
+    ga4: dict | None = None,
 ) -> str:
     """Custom per-client Slack format based on template config."""
     lines: list[str] = []
@@ -206,6 +229,8 @@ def _render_slack_custom(
     item_format = template.get("item_format", "simple")
     for sec in template.get("sections", []):
         key = sec.get("key", "")
+        if key not in CLIENT_SECTIONS:
+            continue
         title = sec.get("title", "")
         empty_text = sec.get("empty_text")
         items = getattr(sections_data, key, [])
@@ -235,6 +260,10 @@ def _render_slack_custom(
     seo_block = _seo_block(content, seo)
     if seo_block:
         lines.extend(digest_seo.render_text(seo_block, bold="*"))
+        lines.append("")
+    ga4_block = _ga4_block(content, ga4)
+    if ga4_block:
+        lines.extend(digest_ga4.render_text(ga4_block, bold="*"))
         lines.append("")
 
     # Closing — incluir siempre que exista, igual que el resto de canales
@@ -319,6 +348,7 @@ def render_email(
     period_end: date | None = None,
     logo_url: str | None = None,
     seo: dict | None = None,
+    ga4: dict | None = None,
 ) -> str:
     """Render digest content as a clean, minimal HTML email."""
     titles = _section_titles(tone)
@@ -338,6 +368,9 @@ def render_email(
     seo_block = _seo_block(content, seo)
     if seo_block:
         sections_html += digest_seo.render_html(seo_block, esc=_esc, dark=_DARK, gray=_GRAY, border=_BORDER)
+    ga4_block = _ga4_block(content, ga4)
+    if ga4_block:
+        sections_html += digest_ga4.render_html(ga4_block, esc=_esc, dark=_DARK, gray=_GRAY, border=_BORDER)
 
     return f"""\
 <!DOCTYPE html>
@@ -413,6 +446,7 @@ def render_email_plain(
     period_start: date | None = None,
     period_end: date | None = None,
     seo: dict | None = None,
+    ga4: dict | None = None,
 ) -> str:
     """Render digest content as plain text for email (no HTML)."""
     titles = _section_titles(tone)
@@ -449,6 +483,10 @@ def render_email_plain(
     seo_block = _seo_block(content, seo)
     if seo_block:
         lines.extend(digest_seo.render_text(seo_block))
+        lines.append("")
+    ga4_block = _ga4_block(content, ga4)
+    if ga4_block:
+        lines.extend(digest_ga4.render_text(ga4_block))
         lines.append("")
 
     if content.closing:

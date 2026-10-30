@@ -2,12 +2,14 @@ import { ProjectWorkSummary } from "@/components/projects/project-work-summary"
 import type { ProjectTaskItem, ProjectTaskGroup } from "@/lib/project-work"
 import { useBusinessDate } from "@/hooks/use-business-date"
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates"
+import { carryoverNote } from "@/lib/hours-carryover"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { useAuth } from "@/context/auth-context"
 import { ProjectTaskList } from "@/components/projects/project-task-list"
 import { useParams, Link, useNavigate, useSearchParams } from "react-router-dom"
+import { usePageTitle } from "@/hooks/use-page-title"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import {
@@ -39,8 +41,6 @@ import { Select } from "@/components/ui/select"
 import { getErrorMessage } from "@/lib/utils"
 import { GanttChart } from "@/components/gantt/gantt-chart"
 import { ProjectPhaseKanban } from "@/components/projects/project-phase-kanban"
-import { EvidenceList } from "@/components/projects/evidence-list"
-import { ProjectBillingTab } from "@/components/projects/project-billing-tab"
 import { ProjectIdeasTab } from "@/components/projects/project-ideas-tab"
 import { Breadcrumb } from "@/components/ui/breadcrumb"
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton"
@@ -91,7 +91,7 @@ export default function ProjectDetailPage() {
   const [showAddTaskDialog, setShowAddTaskDialog] = useState<number | null>(null)
   const [showSaveTemplateDialog, setShowSaveTemplateDialog] = useState(false)
   const [viewMode, setViewMode] = useState<"list" | "gantt" | "kanban">("list")
-  const [activeTab, setActiveTab] = useState<"tasks" | "ideas" | "evidence" | "billing">("tasks")
+  const [activeTab, setActiveTab] = useState<"tasks" | "ideas">("tasks")
   const [previewTaskId, setPreviewTaskId] = useState<number | null>(null)
   const [showMetrics, setShowMetrics] = useState(false)
   const [timeLogTask, setTimeLogTask] = useState<{ id: number; title: string; retired?: boolean } | null>(null)
@@ -113,6 +113,7 @@ export default function ProjectDetailPage() {
     queryFn: () => projectsApi.get(projectId),
     enabled: validId,
   })
+  usePageTitle(project?.name)
 
   const { data: tasksData, isLoading: tasksLoading, isError: tasksError, refetch: retryTasks } = useQuery({
     queryKey: taskKeys.project(projectId),
@@ -270,7 +271,9 @@ export default function ProjectDetailPage() {
   const primaryHoursUsed = hasTimeMetrics
     ? (project.is_recurring ? project.hours_used_month : project.hours_used)
     : null
-  const primaryHoursBudget = project.is_recurring ? project.effective_monthly_hours_budget : project.budget_hours
+  const primaryHoursBudget = project.is_recurring
+    ? (project.month_hours_budget ?? project.effective_monthly_hours_budget)
+    : project.budget_hours
 
   const formatDate = (date: string | null) => {
     if (!date) return "—"
@@ -285,7 +288,7 @@ export default function ProjectDetailPage() {
     <div className="space-y-6">
       {/* Breadcrumb + Header */}
       <Breadcrumb items={[
-        { label: "Inicio", href: "/dashboard" },
+        { label: "Inicio", href: "/" },
         { label: "Proyectos", href: "/projects" },
         { label: project.name },
       ]} />
@@ -481,9 +484,11 @@ export default function ProjectDetailPage() {
       {hasTimeMetrics && ((project.effective_weekly_hours_budget ?? 0) > 0 || (project.effective_monthly_hours_budget ?? 0) > 0) && (
         <HoursBudgetCard
           weeklyBudget={project.effective_weekly_hours_budget}
-          monthlyBudget={project.effective_monthly_hours_budget}
+          monthlyBudget={project.month_hours_budget ?? project.effective_monthly_hours_budget}
           usedWeek={project.hours_used_week!}
           usedMonth={project.hours_used_month!}
+          carried={project.month_hours_carried ?? null}
+          baseMonthly={project.effective_monthly_hours_budget}
         />
       )}
 
@@ -540,8 +545,8 @@ export default function ProjectDetailPage() {
         </div>}
       </details>
 
-      {/* Tab Toggle: Tasks / Evidence */}
-      {(isEnabled("growth") || isEnabled("evidence") || isEnabled("billing")) && <div className="flex flex-wrap items-center gap-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
+      {/* Tab Toggle: Tasks / Buffer */}
+      {isEnabled("growth") && <div className="flex flex-wrap items-center gap-1 bg-muted/30 p-1 w-fit rounded-lg border border-border">
         <Button
           variant={activeTab === "tasks" ? "default" : "ghost"}
           size="sm"
@@ -549,8 +554,8 @@ export default function ProjectDetailPage() {
         >
           Fases y Tareas
         </Button>
-        {/* Buffer, Documentos y Facturación pertenecen a módulos ocultos: sus
-            endpoints ya no están registrados, así que la pestaña tampoco. */}
+        {/* Buffer pertenece a un módulo oculto: sus endpoints ya no están
+            registrados, así que la pestaña tampoco. */}
         {isEnabled("growth") && (
           <Button
             variant={activeTab === "ideas" ? "default" : "ghost"}
@@ -560,39 +565,11 @@ export default function ProjectDetailPage() {
             Buffer
           </Button>
         )}
-        {isEnabled("evidence") && (
-          <Button
-            variant={activeTab === "evidence" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setActiveTab("evidence")}
-          >
-            Documentos
-          </Button>
-        )}
-        {isEnabled("billing") && (
-          <Button
-            variant={activeTab === "billing" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setActiveTab("billing")}
-          >
-            Facturación
-          </Button>
-        )}
       </div>}
 
       {/* Ideas Tab */}
       {activeTab === "ideas" && project && isEnabled("growth") && (
         <ProjectIdeasTab projectId={project.id} />
-      )}
-
-      {/* Evidence Tab */}
-      {activeTab === "evidence" && project && isEnabled("evidence") && (
-        <EvidenceList projectId={project.id} phases={project.phases} />
-      )}
-
-      {/* Billing Tab */}
-      {activeTab === "billing" && project && isEnabled("billing") && (
-        <ProjectBillingTab projectId={project.id} project={project} />
       )}
 
       {!canReadTasks && activeTab === "tasks" && <ProjectPhaseReadOnly phases={project.phases} />}
@@ -871,11 +848,9 @@ function EditProjectDialog({
     budget_hours: project.budget_hours?.toString() || "",
     weekly_hours_budget: project.weekly_hours_budget?.toString() || "",
     monthly_hours_budget: project.monthly_hours_budget?.toString() || "",
+    hours_carryover: project.hours_carryover,
     budget_amount: project.budget_amount?.toString() || "",
     monthly_fee: project.monthly_fee?.toString() || "",
-    billing_day: project.billing_day?.toString() || "",
-    billing_amount: project.billing_amount?.toString() || "",
-    next_billing_date: project.next_billing_date || "",
     scope: project.scope || "",
     gsc_url: project.gsc_url || "",
     ga4_property_id: project.ga4_property_id || "",
@@ -899,11 +874,9 @@ function EditProjectDialog({
         budget_hours: formData.budget_hours ? parseFloat(formData.budget_hours) : undefined,
         weekly_hours_budget: formData.weekly_hours_budget ? parseFloat(formData.weekly_hours_budget) : null,
         monthly_hours_budget: formData.monthly_hours_budget ? parseFloat(formData.monthly_hours_budget) : null,
+        hours_carryover: formData.hours_carryover,
         budget_amount: formData.budget_amount ? parseFloat(formData.budget_amount) : undefined,
         monthly_fee: formData.monthly_fee ? parseFloat(formData.monthly_fee) : undefined,
-        billing_day: formData.billing_day ? parseInt(formData.billing_day) : undefined,
-        billing_amount: formData.billing_amount ? parseFloat(formData.billing_amount) : undefined,
-        next_billing_date: formData.next_billing_date || undefined,
         scope: formData.scope || null,
         gsc_url: formData.gsc_url || undefined,
         ga4_property_id: formData.ga4_property_id || undefined,
@@ -1033,8 +1006,19 @@ function EditProjectDialog({
             />
           </div>
         </div>
+        <label className="flex items-start gap-2 rounded-md border p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={formData.hours_carryover}
+            onChange={(event) => setFormData({ ...formData, hours_carryover: event.target.checked })}
+          />
+          <span>
+            <span className="font-medium">Pasar al mes siguiente las horas que sobren (o el exceso)</span>
+            <span className="block text-xs text-muted-foreground">El techo del mes suma lo que no se gastó el mes anterior, o resta lo que se pasó. Sólo cuenta el mes anterior, sin acumular.</span>
+          </span>
+        </label>
         <p className="text-xs text-muted-foreground -mt-2">
-          La alerta usa el techo mensual (aviso al 80%, alerta al pasarse). El semanal es solo referencia visual; se permite compensar entre semanas.
+          El aviso usa el techo mensual (aviso temprano al 75 % y alerta al pasarse; le llega al responsable y a los admins). El semanal es solo referencia visual; se permite compensar entre semanas.
         </p>
 
         {/* --- Pricing model --- */}
@@ -1121,38 +1105,6 @@ function EditProjectDialog({
           <p className="text-xs text-muted-foreground">Para adjuntar la propuesta en PDF, usa la pestaña Documentos con tipo &ldquo;Propuesta&rdquo;</p>
         </div>
 
-        {/* --- Facturación --- */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="project-detail-page-field-15">Día factura (1-28)</Label>
-            <Input id="project-detail-page-field-15"
-              type="number"
-              min="1"
-              max="28"
-              value={formData.billing_day}
-              onChange={(e) => setFormData({ ...formData, billing_day: e.target.value })}
-              placeholder="Día del mes"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="project-detail-page-field-16">Importe factura (€)</Label>
-            <Input id="project-detail-page-field-16"
-              type="number"
-              step="0.01"
-              value={formData.billing_amount}
-              onChange={(e) => setFormData({ ...formData, billing_amount: e.target.value })}
-              placeholder="0.00"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="project-detail-page-field-17">Próxima factura</Label>
-            <Input id="project-detail-page-field-17"
-              type="date"
-              value={formData.next_billing_date}
-              onChange={(e) => setFormData({ ...formData, next_billing_date: e.target.value })}
-            />
-          </div>
-        </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="project-detail-page-field-18">Google Search Console URL</Label>
@@ -1266,11 +1218,14 @@ function SaveTemplateDialog({
 
 type BudgetStatus = "ok" | "warning" | "over"
 
+/** Aviso temprano al 75 % (el mismo umbral que el aviso del proyecto en la campana). */
+const MONTHLY_WARNING_RATIO = 0.75
+
 function budgetStatus(used: number, budget: number | null | undefined): BudgetStatus | null {
   if (!budget || budget <= 0) return null
   const pct = used / budget
   if (pct >= 1) return "over"
-  if (pct >= 0.8) return "warning"
+  if (pct >= MONTHLY_WARNING_RATIO) return "warning"
   return "ok"
 }
 
@@ -1365,7 +1320,7 @@ function MonthlyCycleCard({ cycle, month, currentMonth, loading, error, onMonthC
             <CycleMetric label={month === currentMonth ? "Horas restantes" : "Diferencia con presupuesto actual"} value={cycle.remaining_hours == null ? "Sin presupuesto" : `${cycle.remaining_hours.toFixed(1)}h`} />
           </div>
           <p className="text-xs text-muted-foreground">Finalizadas en el mes sólo cuenta tareas con fecha de finalización registrada dentro del mes.</p>
-          {cycle.budget_hours != null && cycle.used_hours != null && <HoursBudgetCard weeklyBudget={null} monthlyBudget={cycle.budget_hours} usedWeek={0} usedMonth={cycle.used_hours} showWeekly={false} monthLabel={month === currentMonth ? "Este mes" : "Presupuesto actual de referencia"} />}
+          {cycle.budget_hours != null && cycle.used_hours != null && <HoursBudgetCard weeklyBudget={null} monthlyBudget={cycle.budget_hours} usedWeek={0} usedMonth={cycle.used_hours} showWeekly={false} monthLabel={month === currentMonth ? "Este mes" : "Presupuesto actual de referencia"} carried={cycle.carried_hours ?? null} baseMonthly={cycle.base_budget_hours ?? null} />}
           <div>
             <p className="mb-2 text-sm font-medium">Tareas planificadas o finalizadas en el mes</p>
             {cycle.tasks.length ? <ul className="max-h-72 divide-y overflow-y-auto rounded-lg border">
@@ -1395,6 +1350,8 @@ function HoursBudgetCard({
   usedMonth,
   showWeekly = true,
   monthLabel = "Este mes",
+  carried = null,
+  baseMonthly = null,
 }: {
   weeklyBudget: number | null
   monthlyBudget: number | null
@@ -1402,6 +1359,8 @@ function HoursBudgetCard({
   usedMonth: number
   showWeekly?: boolean
   monthLabel?: string
+  carried?: number | null
+  baseMonthly?: number | null
 }) {
   const monthStatus = budgetStatus(usedMonth, monthlyBudget)
   const alert = monthStatus === "warning" || monthStatus === "over"
@@ -1422,8 +1381,11 @@ function HoursBudgetCard({
           label={monthLabel}
           used={usedMonth}
           budget={monthlyBudget}
-          note="Aviso al llegar al 80 % del presupuesto mensual."
+          note={carryoverNote(carried, baseMonthly) ?? "Aviso temprano al llegar al 75 % del presupuesto mensual."}
         />
+        {carried != null && monthlyBudget != null && monthlyBudget <= 0 && (
+          <p className="text-xs text-red-600">El exceso del mes anterior se ha comido todo el presupuesto de este mes.</p>
+        )}
       </CardContent>
     </Card>
   )

@@ -1,0 +1,11 @@
+{
+  "version": "20261023_web_changes_toggle_v1",
+  "sql": "ALTER TABLE client_web_settings ADD COLUMN IF NOT EXISTS changes_enabled BOOLEAN NOT NULL DEFAULT false",
+  "columns": {
+    "changes_enabled": [
+      "bool",
+      false,
+      "false"
+    ]
+  }
+}

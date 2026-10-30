@@ -4,13 +4,16 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { invalidateCalendarViews } from "@/lib/calendar-queries"
 import { useAuth } from "@/context/auth-context"
-import { usersApi, categoriesApi, myWeekApi, calendarApi } from "@/lib/api"
+import { usersApi, categoriesApi, holidaysApi, calendarApi } from "@/lib/api"
 import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS, isShortcutAvailable, isValidShortcutBinding, resolveShortcuts, shortcutConflict } from "@/hooks/use-keyboard-shortcuts"
 import { Pencil, Trash2, Plus, Check, X, MapPin, Calendar } from "lucide-react"
 import { CommunicationSchedules } from "@/components/communication-schedules"
 import { JobRuntimeStatusPanel } from "@/components/job-runtime-status"
 import { OperationalUsagePanel } from "@/components/admin/operational-usage"
 import { SearchConsoleSection } from "@/components/settings/search-console-section"
+import { Ga4Section } from "@/components/settings/ga4-section"
+import { ExtensionSection } from "@/components/settings/extension-section"
+import { BlocksCalendarCheckbox, CalendarBlocksPanel } from "@/components/settings/calendar-blocks-panel"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Button } from "@/components/ui/button"
 
@@ -103,7 +106,7 @@ export default function SettingsPage() {
 
   const holidaysQuery = useQuery({
     queryKey: ["holidays", currentYear],
-    queryFn: () => myWeekApi.listHolidays(currentYear),
+    queryFn: () => holidaysApi.list(currentYear),
     enabled: isAdmin,
   })
   const holidays = holidaysQuery.isError ? [] : (holidaysQuery.data ?? [])
@@ -121,7 +124,7 @@ export default function SettingsPage() {
 
   const createHolidayMut = useMutation({
     mutationFn: (data: { date: string; name: string; region?: string | null; locality?: string | null }) =>
-      myWeekApi.createHoliday(data),
+      holidaysApi.create(data),
     onSuccess: () => {
       refetchHolidays()
       setNewHolidayDate("")
@@ -134,7 +137,7 @@ export default function SettingsPage() {
   })
 
   const deleteHolidayMut = useMutation({
-    mutationFn: (id: number) => myWeekApi.deleteHoliday(id),
+    mutationFn: (id: number) => holidaysApi.delete(id),
     onSuccess: () => { refetchHolidays(); toast.success("Festivo eliminado") },
     onError: () => toast.error("Error al eliminar festivo"),
   })
@@ -281,6 +284,7 @@ export default function SettingsPage() {
     { id: "shortcuts", label: "Atajos de teclado" },
     ...(canManageCategories ? [{ id: "categories", label: "Categorías de tareas" }] : []),
     { id: "location", label: "Ubicación" },
+    { id: "extension", label: "Extensión de Chrome" },
     { id: "notifications", label: "Avisos" },
     ...(isAdmin ? [{ id: "scheduled-processes", label: "Procesos programados" }] : []),
     ...(isAdmin ? [{ id: "operational-usage", label: "Señales operativas" }] : []),
@@ -547,6 +551,8 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      <ExtensionSection />
+
       <CommunicationSchedules />
 
       {isAdmin && <JobRuntimeStatusPanel userId={user?.id} />}
@@ -556,6 +562,7 @@ export default function SettingsPage() {
       <CalendarSection />
 
       {isAdmin && <SearchConsoleSection />}
+      {isAdmin && <Ga4Section />}
 
       {/* Holiday management — admin only */}
       {isAdmin && (
@@ -711,11 +718,21 @@ export function CalendarSection() {
     } else if (calendarParam === "cancelled") {
       toast.info("Conexión de Google Calendar cancelada")
       window.history.replaceState({}, "", "/settings")
+    } else if (calendarParam === "blocks_on") {
+      toast.success("Bloques publicados en tu calendario «The Agency» de Google. Aparecen en un minuto")
+      window.history.replaceState({}, "", "/settings")
+      void invalidateCalendarViews(queryClient)
+    } else if (calendarParam === "blocks_denied") {
+      toast.info("Google no dio permiso para el calendario «The Agency»: los bloques siguen sin publicar")
+      window.history.replaceState({}, "", "/settings")
+      void invalidateCalendarViews(queryClient)
     } else if (calendarParam === "error") {
-      toast.error("Error al conectar Google Calendar")
+      toast.error(params.get("reason") === "blocks_calendar"
+        ? "Google Calendar conectado, pero no se pudo crear el calendario «The Agency». Vuelve a intentarlo"
+        : "Error al conectar Google Calendar")
       window.history.replaceState({}, "", "/settings")
     }
-  }, [calendarParam, queryClient])
+  }, [calendarParam, params, queryClient])
 
   const connectMut = useMutation({
     mutationFn: async () => {
@@ -725,11 +742,19 @@ export function CalendarSection() {
     onError: () => toast.error("Error al obtener URL de autorización"),
   })
 
+  // Con bloques publicados, desconectar pregunta antes qué hacer con su calendario.
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+  const [deleteBlocksCalendar, setDeleteBlocksCalendar] = useState(true)
+  const disconnect = () => (status?.blocks_calendar ? setConfirmDisconnect(true) : disconnectMut.mutate(false))
+
   const disconnectMut = useMutation({
     mutationFn: calendarApi.disconnect,
-    onSuccess: () => {
+    onSuccess: (result, deletedBlocks) => {
+      setConfirmDisconnect(false)
       void invalidateCalendarViews(queryClient)
-      toast.success("Google Calendar desconectado")
+      if (deletedBlocks && !result.blocks_calendar_deleted) toast.warning("Google no borró el calendario «The Agency»: bórralo tú desde Google Calendar")
+      if (result.google_revoked) toast.success("Google Calendar desconectado: acceso revocado en Google y reuniones importadas borradas")
+      else toast.warning("Google Calendar desconectado y reuniones importadas borradas, pero Google no confirmó la revocación: retira el acceso en myaccount.google.com/permissions")
     },
     onError: () => toast.error("Error al desconectar"),
   })
@@ -774,7 +799,7 @@ export function CalendarSection() {
                 {syncMut.isPending ? "Sincronizando…" : "Sincronizar ahora"}
               </button>
               <button
-                onClick={() => disconnectMut.mutate()}
+                onClick={disconnect}
                 disabled={disconnectMut.isPending}
                 className="px-3 py-1.5 text-xs text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
               >
@@ -785,6 +810,7 @@ export function CalendarSection() {
 
           <p className="text-sm text-muted-foreground">Última sincronización completa: {status?.last_synced_at ? new Date(status.last_synced_at).toLocaleString("es-ES", { timeZone: "Europe/Madrid" }) : "Pendiente"}. Los avisos de Google esperan una sincronización reciente.</p>
           <p className="text-sm"><a href="#notifications" className="underline">Configurar Avisos</a>: conectar el calendario no activa ningún envío.</p>
+          <CalendarBlocksPanel active={Boolean(status.blocks_calendar)} />
         </div>
       ) : status?.connection_status === "reconnect_required" ? (
         <div className="space-y-3">
@@ -800,7 +826,7 @@ export function CalendarSection() {
             {connectMut.isPending ? "Redirigiendo…" : "Reconectar Google Calendar"}
           </button>
           <button
-            onClick={() => disconnectMut.mutate()}
+            onClick={disconnect}
             disabled={disconnectMut.isPending}
             className="ml-3 px-3 py-2 text-sm border border-border rounded-xl hover:bg-muted/50 disabled:opacity-50"
           >
@@ -816,6 +842,16 @@ export function CalendarSection() {
           {connectMut.isPending ? "Redirigiendo…" : "Conectar Google Calendar"}
         </button>
       )}
+      <ConfirmDialog
+        open={confirmDisconnect}
+        onOpenChange={setConfirmDisconnect}
+        title="¿Desconectar Google Calendar?"
+        description="Se borra el permiso y se revoca en Google. Las reuniones importadas se borran y tus bloques dejan de publicarse (se quedan en Mi agenda)."
+        confirmLabel="Desconectar"
+        onConfirm={() => disconnectMut.mutate(deleteBlocksCalendar)}
+      >
+        <BlocksCalendarCheckbox checked={deleteBlocksCalendar} onChange={setDeleteBlocksCalendar} />
+      </ConfirmDialog>
     </div>
   )
 }

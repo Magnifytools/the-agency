@@ -29,6 +29,7 @@ from backend.db.models import (
 from backend.schemas.dashboard import (
     DashboardOverview,
     DashboardFinancialOverview,
+    DashboardOperations,
     ClientProfitability,
     ProfitabilityResponse,
     TeamMemberSummary,
@@ -41,7 +42,8 @@ from backend.api.deps import get_current_user, require_module, require_admin
 from backend.core.security import encrypt_vault_secret
 from backend.services.csv_utils import build_csv_response
 from backend.core.modules import is_enabled
-from backend.services.profitability import classify_profitability, format_billing_detail
+from backend.services.operations_summary import operations_summary
+from backend.services.profitability import classify_profitability
 from backend.api.utils.db_helpers import safe_refresh
 from backend.services.report_period import (
     MAX_REPORT_YEAR,
@@ -142,6 +144,17 @@ async def get_overview(
             else "mine"
         ),
     )
+
+
+@router.get("/operations", response_model=DashboardOperations)
+async def get_operations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("dashboard")),
+):
+    """Fila "Operación": cuota recurrente, proyectos en riesgo, clientes en
+    Actuar y resúmenes mensuales sin entregar. Cada cifra sale del servicio que
+    ya decide esa regla y sólo llega si quien mira puede leer su fuente."""
+    return await operations_summary(db, current_user)
 
 
 @router.get("/overview/financial", response_model=DashboardFinancialOverview)
@@ -852,7 +865,6 @@ async def alerts_summary(
     tasks_available = has_module_read(current_user, "tasks")
     timesheet_available = has_module_read(current_user, "timesheet")
     clients_available = has_module_read(current_user, "clients")
-    projects_available = has_module_read(current_user, "projects")
     is_admin = current_user.role == UserRole.admin
 
     # 1. Overdue tasks (all users, for admin view)
@@ -1013,31 +1025,6 @@ async def alerts_summary(
             "detail": overloaded_names[:5],
             "link": "/capacity",
         })
-
-    if is_admin and projects_available and is_enabled("finance") and is_enabled("billing"):
-        # 6. Billing: projects with upcoming or overdue billing
-        billing_result = await db.execute(
-            select(Project).where(
-                Project.status.in_([ProjectStatus.active, ProjectStatus.completed]),
-                Project.next_billing_date <= today + timedelta(days=3),
-                Project.next_billing_date.isnot(None),
-            )
-        )
-        billing_projects = billing_result.scalars().all()
-        if billing_projects:
-            overdue_billing = [p for p in billing_projects if p.next_billing_date <= today]
-            total_pending = sum(float(p.billing_amount or 0) for p in billing_projects)
-            alerts.append({
-                "type": "billing_reminders",
-                "severity": "critical" if overdue_billing else "warning",
-                "count": len(billing_projects),
-                "title": f"{len(billing_projects)} fechas de facturación por revisar ({total_pending:.0f}€)",
-                "detail": [
-                    format_billing_detail(p.name, p.billing_amount)
-                    for p in billing_projects[:5]
-                ],
-                "link": "/projects",
-            })
 
     total = sum(a["count"] for a in alerts)
     critical = sum(a["count"] for a in alerts if a["severity"] == "critical")

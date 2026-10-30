@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from backend.api.routes.report_policies import record_external_delivery_event
 from backend.db.models import (
     Client, ClientReportPolicy, ClientStatus, DigestExternalDeliveryEvent,
-    DigestStatus, DigestTone, ReportCadence, User, UserRole, WeeklyDigest,
+    DigestStatus, DigestTone, User, UserRole, WeeklyDigest,
 )
 from backend.schemas.digest import ExternalDeliveryEventCreate
 from backend.startup.report_policy_schema import ensure_report_policy_schema
@@ -32,8 +32,8 @@ async def test_report_upgrade_is_concurrent_idempotent_and_does_not_opt_in_clien
         async with isolated.begin() as conn:
             assert await conn.scalar(text("SELECT count(*) FROM client_report_policies")) == 0
             await conn.execute(text("INSERT INTO client_report_policies (client_id,created_at,updated_at) VALUES (1,now(),now())"))
-            row = (await conn.execute(text("SELECT enabled,cadence,responsible_user_id,revision FROM client_report_policies"))).one()
-            assert row == (False, "weekly", None, 1)
+            row = (await conn.execute(text("SELECT weekly_enabled,monthly_enabled,responsible_user_id,revision FROM client_report_policies"))).one()
+            assert row == (False, False, None, 1)
             await conn.execute(text("""INSERT INTO digest_external_delivery_events
                 (digest_id,action,actor_id,request_key,request_hash,created_at)
                 VALUES (1,'confirmed',1,'preserved-request-key','test-hash',now())"""))
@@ -101,8 +101,9 @@ async def test_preview_uses_each_cadence_and_preserves_exclusion_reasons(admin_c
         client = Client(name=name, status=status, is_internal=internal)
         db_session.add(client); await db_session.flush()
         if cadence:
-            db_session.add(ClientReportPolicy(client_id=client.id, cadence=ReportCadence(cadence), enabled=enabled, responsible_user_id=admin_user.id))
-        expected[client.id] = (cadence, reason)
+            db_session.add(ClientReportPolicy(client_id=client.id, **{f"{cadence}_enabled": enabled}, responsible_user_id=admin_user.id))
+        # Una política apagada no tiene cadencia ni periodo que enseñar.
+        expected[client.id] = (cadence if enabled else None, reason)
     await db_session.commit()
     response = await admin_client.get("/api/digests/generation-preview?scope=team")
     assert response.status_code == 200, response.text
@@ -153,12 +154,12 @@ async def test_report_timestamps_are_utc_with_non_utc_database_session(db_sessio
     before = datetime.now(timezone.utc).replace(tzinfo=None)
     client = Client(name="UTC report timestamps", status=ClientStatus.active)
     db_session.add(client); await db_session.flush()
-    policy = ClientReportPolicy(client_id=client.id, enabled=True, responsible_user_id=admin_user.id)
+    policy = ClientReportPolicy(client_id=client.id, weekly_enabled=True, responsible_user_id=admin_user.id)
     digest = WeeklyDigest(client_id=client.id, period_start=date(2026, 9, 7), period_end=date(2026, 9, 13), tone=DigestTone.cercano, created_by=admin_user.id)
     db_session.add_all([policy, digest]); await db_session.flush()
     evidence = DigestExternalDeliveryEvent(digest_id=digest.id, action="confirmed", actor_id=admin_user.id, request_key=uuid4().hex, request_hash="a" * 64)
     db_session.add(evidence); await db_session.flush()
-    policy.enabled = False
+    policy.weekly_enabled = False
     await db_session.flush(); await db_session.refresh(policy)
     after = datetime.now(timezone.utc).replace(tzinfo=None)
     for value in (policy.created_at, policy.updated_at, digest.created_at, digest.updated_at, evidence.created_at):

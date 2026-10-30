@@ -85,24 +85,6 @@ async def test_shared_update_leaves_commit_and_rollback_to_caller(engine):
 
 
 @pytest.mark.asyncio
-async def test_my_week_schedule_preserves_owner_admin_and_foreign_rules(
-    admin_client, member_client, make_member_client, db_session,
-):
-    task = Task(title="schedule-owner", assigned_to=member_client.test_user.id,
-                created_by=member_client.test_user.id, status=TaskStatus.pending)
-    db_session.add(task)
-    await db_session.flush()
-    mine = await member_client.patch(f"/api/my-week/tasks/{task.id}/schedule", params={"scheduled_date": "2026-09-18"})
-    assert mine.status_code == 200 and mine.json()["scheduled_date"] == "2026-09-18"
-    stranger = await make_member_client([])
-    denied = await stranger.patch(f"/api/my-week/tasks/{task.id}/schedule", params={"scheduled_date": "2026-09-19"})
-    assert denied.status_code == 403
-    changed = await admin_client.patch(f"/api/my-week/tasks/{task.id}/schedule", params={"scheduled_date": "2026-09-20"})
-    assert changed.status_code == 200 and changed.json()["scheduled_date"] == "2026-09-20"
-    await stranger.aclose()
-
-
-@pytest.mark.asyncio
 async def test_assignee_schedule_exception_does_not_grant_other_task_writes(db_session, member_user):
     task = Task(title="Own schedule only", assigned_to=member_user.id, status=TaskStatus.pending)
     db_session.add(task)

@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => ({
   deleteChecklist: vi.fn(),
   deleteAttachment: vi.fn(),
   deleteComment: vi.fn(),
+  draft: vi.fn(),
 }));
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({
@@ -53,7 +54,7 @@ vi.mock("@/lib/api", () => ({
     get: mocks.getProject,
   },
   usersApi: {
-    listAll: () => Promise.resolve([{ id: 2, full_name: "Violeta" }]),
+    listAll: () => Promise.resolve([{ id: 2, full_name: "Violeta", is_active: true }, { id: 5, full_name: "Nacho Pérez", short_name: "Nacho", is_active: true }]),
   },
   categoriesApi: { list: () => Promise.resolve([]) },
   tasksApi: {
@@ -63,6 +64,7 @@ vi.mock("@/lib/api", () => ({
     update: mocks.update,
     restore: mocks.restore,
     recurrencePreview: mocks.recurrencePreview,
+    draft: mocks.draft,
     checklist: {
       list: mocks.checklist,
       create: mocks.createChecklist,
@@ -115,8 +117,6 @@ const task = {
   recurrence_paused_at: null,
   recurrence_summary: null,
   recurring_parent_id: null,
-  unit_cost: null,
-  invoiced_at: null,
   link_url: null,
   created_at: "",
   updated_at: "",
@@ -311,7 +311,7 @@ describe("TaskPanel", () => {
     mocks.update.mockResolvedValue({ ...task, phase_id: 4 });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     expect(screen.getByLabelText("Depende de")).toHaveValue("11");
     expect(screen.getByLabelText("Patrón")).toHaveValue("biweekly");
     expect(screen.getByLabelText("Día")).toHaveValue("2");
@@ -427,7 +427,7 @@ describe("TaskPanel", () => {
     });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     expect(screen.getByText(/mantiene el calendario actual/)).toBeInTheDocument();
     expect(screen.getByLabelText("Día")).toHaveDisplayValue("Miércoles");
     await userEvent.click(screen.getByRole("button", { name: "Ver próximas fechas" }));
@@ -451,7 +451,7 @@ describe("TaskPanel", () => {
       .mockResolvedValueOnce({ ...task, recurrence_paused_at: null });
     const { onOpenChange } = setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.click(screen.getByRole("button", { name: "Pausar recurrencia" }));
     await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, { recurrence_paused: true }));
     await userEvent.click(await screen.findByRole("button", { name: "Reanudar recurrencia" }));
@@ -464,7 +464,7 @@ describe("TaskPanel", () => {
     mocks.recurrencePreview.mockReturnValue(new Promise((done) => { resolve = done; }));
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.click(screen.getByRole("button", { name: "Ver próximas fechas" }));
     await userEvent.selectOptions(screen.getByLabelText("Día"), "4");
     resolve({ state: "active", reason: null, label: "Resultado antiguo", next_dates: ["2026-10-07"] });
@@ -480,11 +480,26 @@ describe("TaskPanel", () => {
     expect(screen.getByLabelText("Día")).toHaveValue(1);
   });
 
+  it("creates a template for several weekdays with only the chosen days", async () => {
+    mocks.create.mockResolvedValue({ ...task, title: "Nueva plantilla" });
+    setup();
+    await userEvent.type(screen.getByLabelText("Título"), "Nueva plantilla");
+    await userEvent.click(screen.getByLabelText("Repetir tarea"));
+    await userEvent.selectOptions(screen.getByLabelText("Patrón"), "weekdays");
+    expect(screen.getByLabelText("Lunes")).toBeChecked();
+    await userEvent.click(screen.getByLabelText("Jueves"));
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalled());
+    expect(mocks.create.mock.calls[0][0]).toMatchObject({
+      recurrence_pattern: "weekdays", recurrence_day: null, recurrence_weekdays: [0, 3],
+    });
+  });
+
   it("requires a legacy calendar comparison before saving an explicit biweekly anchor", async () => {
     mocks.recurrencePreview.mockResolvedValue({ state: "active", reason: null, label: "Calendario", next_dates: ["2026-10-07"] });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.type(screen.getByLabelText("Repetir cada dos semanas desde"), "2026-10-01");
     expect(screen.getByRole("button", { name: "Guardar" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Comparar calendario actual" }));
@@ -496,7 +511,7 @@ describe("TaskPanel", () => {
     mocks.recurrencePreview.mockResolvedValue({ state: "active", reason: null, label: "Calendario", next_dates: ["2026-10-07"] });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.selectOptions(screen.getByLabelText("Día"), "0");
     await userEvent.clear(screen.getByLabelText("Finaliza"));
     await userEvent.type(screen.getByLabelText("Finaliza"), "2027-01-15");
@@ -514,7 +529,7 @@ describe("TaskPanel", () => {
     mocks.recurrencePreview.mockResolvedValue({ state: "active", reason: null, label: "Cada dos semanas", next_dates: ["2026-10-07"] });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.selectOptions(screen.getByLabelText("Patrón"), "biweekly");
     expect(screen.getByLabelText("Repetir cada dos semanas desde")).not.toHaveValue("");
     await userEvent.click(screen.getByRole("button", { name: "Ver próximas fechas" }));
@@ -526,7 +541,7 @@ describe("TaskPanel", () => {
     mocks.recurrencePreview.mockResolvedValue({ state: "active", reason: null, label: "Al reanudar", next_dates: ["2026-10-07"] });
     setup({ taskId: 9 });
     await screen.findByDisplayValue("Auditar");
-    await userEvent.click(screen.getByText("Dependencias y recurrencia"));
+    await userEvent.click(screen.getByText("Más opciones"));
     await userEvent.click(screen.getByRole("button", { name: "Comparar calendario actual" }));
     expect(await screen.findByText("Fechas al reanudar")).toBeInTheDocument();
     await waitFor(() => expect(mocks.recurrencePreview).toHaveBeenCalledTimes(2));
@@ -673,5 +688,155 @@ describe("TaskPanel", () => {
       description: null,
       link_url: null,
     }));
+  });
+
+  it("edits the procedure on a recurring template", async () => {
+    const template = { ...task, recurrence_pattern: "weekly", recurrence_day: 0, procedure_text: null, procedure_url: null };
+    mocks.get.mockResolvedValue(template);
+    mocks.update.mockResolvedValue({ ...template, procedure_text: "1. Exportar" });
+    setup({ taskId: 9 });
+    const steps = await screen.findByLabelText("Pasos");
+    expect(screen.getByText(/no afecta a las repeticiones ya creadas/)).toBeInTheDocument();
+    await userEvent.type(steps, "1. Exportar");
+    await userEvent.type(screen.getByLabelText("Documento de referencia"), "https://docs.example.test/proc");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({
+      procedure_text: "1. Exportar",
+      procedure_url: "https://docs.example.test/proc",
+    })));
+  });
+
+  it("shows the copied procedure read-only on an occurrence", async () => {
+    mocks.get.mockResolvedValue({
+      ...task,
+      is_recurring: false,
+      recurrence_pattern: null,
+      recurrence_day: null,
+      recurrence_end_date: null,
+      recurring_parent_id: 5,
+      recurring_parent_title: "Informe mensual",
+      recurrence_occurrence_date: "2026-09-21",
+      procedure_text: "1. Exportar\n2. Revisar",
+      procedure_url: "https://docs.example.test/proc",
+    });
+    setup({ taskId: 9 });
+    expect(await screen.findByText(/1\. Exportar/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Abrir documento de referencia/ })).toHaveAttribute("href", "https://docs.example.test/proc");
+    expect(screen.getByText(/Copiado de Informe mensual/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Pasos")).not.toBeInTheDocument();
+  });
+
+  describe("AI draft from the procedure", () => {
+    const occurrence = {
+      ...task,
+      is_recurring: false,
+      recurrence_pattern: null,
+      recurrence_day: null,
+      recurrence_end_date: null,
+      recurring_parent_id: 5,
+      recurring_parent_title: "Informe mensual",
+      procedure_text: "1. Exportar\n2. Revisar",
+      procedure_url: null,
+    };
+    const aiDraft = {
+      id: 51, task_id: 9, user_id: 2, text: "## Informe\n- [PENDIENTE: clics]",
+      user_name: "Violeta", is_ai_draft: true,
+      created_at: "2026-10-20T08:00:00", updated_at: "2026-10-20T08:00:00",
+    };
+
+    it("generates a draft with a loading state and shows it labeled with a copy button", async () => {
+      mocks.get.mockResolvedValue(occurrence);
+      let resolveDraft: (value: unknown) => void = () => {};
+      mocks.draft.mockReturnValue(new Promise((resolve) => { resolveDraft = resolve; }));
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+      setup({ taskId: 9 });
+      await userEvent.click(await screen.findByRole("button", { name: "Generar borrador" }));
+      expect(mocks.draft).toHaveBeenCalledWith(9);
+      const pending = screen.getByRole("button", { name: /Generando borrador/ });
+      expect(pending).toBeDisabled();
+      mocks.comments.mockResolvedValue([aiDraft, { id: 41, text: "Hecho", user_name: "Violeta", is_ai_draft: false }]);
+      resolveDraft(aiDraft);
+      await screen.findByRole("button", { name: "Generar borrador" });
+      await userEvent.click(screen.getByText("Checklist, comentarios y archivos"));
+      const card = await screen.findByRole("article", { name: "Borrador de IA pedido por Violeta" });
+      expect(card).toHaveTextContent("Borrador de IA — revisar antes de usar");
+      expect(card).toHaveTextContent("Pedido por Violeta");
+      expect(card).toHaveTextContent("[PENDIENTE: clics]");
+      await userEvent.click(screen.getByRole("button", { name: "Copiar borrador" }));
+      expect(writeText).toHaveBeenCalledWith(aiDraft.text);
+      expect(mocks.update).not.toHaveBeenCalled();
+    });
+
+    it("shows the error and keeps the button available after a failure", async () => {
+      mocks.get.mockResolvedValue(occurrence);
+      mocks.draft.mockRejectedValue(new Error("boom"));
+      setup({ taskId: 9 });
+      await userEvent.click(await screen.findByRole("button", { name: "Generar borrador" }));
+      await waitFor(() => expect(mocks.toastError).toHaveBeenCalled());
+      expect(screen.getByRole("button", { name: "Generar borrador" })).toBeEnabled();
+    });
+
+    it("hides the button when the procedure has no written steps", async () => {
+      mocks.get.mockResolvedValue({ ...occurrence, procedure_text: null, procedure_url: "https://docs.example.test/proc" });
+      setup({ taskId: 9 });
+      await screen.findByDisplayValue("Auditar");
+      expect(screen.queryByRole("button", { name: "Generar borrador" })).not.toBeInTheDocument();
+    });
+
+    it("hides the button for readers", async () => {
+      mocks.canWrite = false;
+      mocks.get.mockResolvedValue(occurrence);
+      setup({ taskId: 9 });
+      expect(await screen.findByText(/1\. Exportar/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Generar borrador" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("comenta mencionando a alguien y le pasa su id al servidor", async () => {
+    mocks.createComment.mockResolvedValue({ id: 1 });
+    setup({ taskId: 9 });
+    await userEvent.click(await screen.findByText(/Checklist, comentarios/));
+    const input = await screen.findByRole("combobox", { name: "Nuevo comentario" });
+    await userEvent.type(input, "Revisa @Na");
+    await userEvent.keyboard("{Enter}");
+    await userEvent.type(input, "por favor{Enter}");
+    await waitFor(() => expect(mocks.createComment).toHaveBeenCalledWith(9, "Revisa @Nacho por favor", [5]));
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it("pasa a la tarea anterior o siguiente con los botones y con ↑/↓ fuera de los campos", async () => {
+    const onNavigate = vi.fn();
+    setup({ taskId: 9, navigation: { position: 1, total: 3, onNavigate } });
+    expect(await screen.findByDisplayValue("Auditar")).toBeInTheDocument();
+    expect(screen.getByText("1 de 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tarea anterior" })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Tarea siguiente" }));
+    expect(onNavigate).toHaveBeenLastCalledWith(1);
+
+    // Escribiendo en un campo, las flechas son del campo.
+    screen.getByLabelText("Título").focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+
+    screen.getByRole("button", { name: "Tarea siguiente" }).focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+    // En la primera no hay anterior.
+    await userEvent.keyboard("{ArrowUp}");
+    expect(onNavigate).toHaveBeenCalledTimes(2);
+  });
+
+  it("pregunta antes de pasar a otra tarea con cambios sin guardar", async () => {
+    const onNavigate = vi.fn();
+    setup({ taskId: 9, navigation: { position: 2, total: 3, onNavigate } });
+    await userEvent.type(await screen.findByDisplayValue("Auditar"), " web");
+    await userEvent.click(screen.getByRole("button", { name: "Tarea anterior" }));
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(screen.getByText("¿Descartar los cambios?")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Descartar cambios" }));
+    expect(onNavigate).toHaveBeenCalledWith(-1);
   });
 });

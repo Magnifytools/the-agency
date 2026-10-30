@@ -136,5 +136,106 @@ class LoginRateLimiter:
         self._limiter.check(key, max_requests, window_seconds)
 
 
+class PublicLinkRateLimiter:
+    """Sliding-window limiter for the public client link, keyed by IP."""
+
+    def __init__(self) -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix="rate:public-link",
+            detail_fn=lambda _max_requests, _window_seconds: "Demasiadas visitas seguidas. Espera un minuto y vuelve a intentarlo.",
+        )
+
+    def check(self, key: str, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(key, max_requests, window_seconds)
+
+
+class CredentialRevealLimiter:
+    """Sliding-window limiter for revealing/copying shared credentials, per user."""
+
+    def __init__(self) -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix="rate:credential-reveal",
+            detail_fn=lambda _max_requests, _window_seconds: "Demasiadas contraseñas vistas seguidas. Espera un minuto.",
+        )
+
+    def check(self, user_id: int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(user_id, max_requests, window_seconds)
+
+
+class WebProbeLimiter:
+    """Sliding-window limiter for one-off website probes ("Probar ahora"), per user."""
+
+    def __init__(self, prefix: str = "rate:web-probe") -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix=prefix,
+            detail_fn=lambda _max_requests, _window_seconds: "Demasiadas comprobaciones seguidas. Espera un minuto.",
+        )
+
+    def check(self, user_id: int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(user_id, max_requests, window_seconds)
+
+
 ai_limiter = RateLimiter()
+web_probe_limiter = WebProbeLimiter()
+# "Probar esta configuración" y leer un sitemap: piden la web del cliente desde
+# la propia petición (como mucho 20 s / 60 s).
+web_preview_limiter = WebProbeLimiter("rate:web-preview")
 login_limiter = LoginRateLimiter()
+public_link_limiter = PublicLinkRateLimiter()
+credential_reveal_limiter = CredentialRevealLimiter()
+
+
+class PdfExportLimiter:
+    """Sliding-window limiter for PDF exports (CPU en el servidor), per user or IP."""
+
+    def __init__(self, prefix: str = "rate:pdf-export") -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix=prefix,
+            detail_fn=lambda _max_requests, _window_seconds: "Demasiados PDF seguidos. Espera un minuto.",
+        )
+
+    def check(self, key: str | int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(key, max_requests, window_seconds)
+
+
+# Descargar el resumen en PDF: con sesión, por usuario; desde el enlace público, por IP.
+pdf_export_limiter = PdfExportLimiter()
+public_pdf_limiter = PdfExportLimiter("rate:public-pdf")
+
+
+class GscLiveLimiter:
+    """Sliding-window limiter for live Search Console queries (MCP), per user."""
+
+    def __init__(self) -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix="rate:gsc-live",
+            detail_fn=lambda _max_requests, _window_seconds: (
+                "Demasiadas consultas a Search Console seguidas. Espera un minuto."
+            ),
+        )
+
+    def check(self, key: str | int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(key, max_requests, window_seconds)
+
+
+# Cada consulta en vivo son tres llamadas a Google (filas, totales y último día).
+gsc_live_limiter = GscLiveLimiter()
+
+
+class Ga4LiveLimiter:
+    """Sliding-window limiter for live GA4 queries (MCP), per user."""
+
+    def __init__(self) -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix="rate:ga4-live",
+            detail_fn=lambda _max_requests, _window_seconds: (
+                "Demasiadas consultas a GA4 seguidas. Espera un minuto."
+            ),
+        )
+
+    def check(self, key: str | int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(key, max_requests, window_seconds)
+
+
+# Cada consulta en vivo son dos llamadas a Google (informe con totales y último día).
+ga4_live_limiter = Ga4LiveLimiter()

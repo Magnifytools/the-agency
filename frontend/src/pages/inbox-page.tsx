@@ -53,7 +53,7 @@ export default function InboxPage() {
             <Inbox className="w-5 h-5 text-brand" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-foreground">Inbox</h1>
+            <h1 className="text-xl font-bold text-foreground">Por aclarar</h1>
             <p className="text-sm text-muted-foreground">
               {activeCount > 0 ? `${activeCount} por procesar` : "Todo al día"}
             </p>
@@ -61,7 +61,7 @@ export default function InboxPage() {
         </div>
         <Button onClick={() => setCaptureOpen(true)} className="gap-2">
           <Plus className="w-4 h-4" />
-          Capturar
+          Anotar
         </Button>
       </div>
 

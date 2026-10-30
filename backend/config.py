@@ -51,6 +51,37 @@ class Settings(BaseSettings):
     ENGINE_SYNC_INTERVAL_HOURS: int = 6
     ENGINE_SYNC_ENABLED: bool = True
     ENGINE_FRONTEND_URL: Optional[str] = None
+    # Semáforo SEO: incidencia cuando los clics de 30 días caen este % o más
+    # frente a los 30 anteriores, si el periodo anterior llegaba a este mínimo.
+    SEO_DROP_ALERT_PCT: float = 20.0
+    # Formulario web → Pipeline (POST /api/leads/inbound con cabecera X-Lead-Token).
+    # Sin token, la entrada no existe (404).
+    LEADS_WEBHOOK_TOKEN: Optional[str] = None
+    SEO_DROP_MIN_CLICKS: int = 100
+    # Webs: disponibilidad (job ``uptime``, lock 15). Apagado por defecto: en
+    # Railway se enciende con UPTIME_ENABLED=true. Umbrales en
+    # backend/services/web/uptime.py (CLAUDE.md, "Webs: disponibilidad").
+    UPTIME_ENABLED: bool = False
+    UPTIME_INTERVAL_SECONDS: int = 300
+    UPTIME_RECHECK_SECONDS: int = 60
+    UPTIME_FAILURES_TO_ALERT: int = 2
+    UPTIME_RECOVERIES_TO_CLOSE: int = 2
+    UPTIME_BLOCKED_ALERT_MINUTES: int = 60
+    # Canario de conectividad: si NINGUNA responde, el problema es nuestro y no
+    # se mira nada en ese ciclo. Separadas por comas.
+    UPTIME_CANARY_URLS: str = "https://www.google.com/generate_204,https://www.cloudflare.com/cdn-cgi/trace"
+    # Webs: vigilancia de cambios (job ``web_sweep``, lock 16). Apagado por
+    # defecto: sin él, ni el barrido diario ni "Comprobar ahora" se ejecutan.
+    # El diario de cada cliente arranca a partir de esta hora (Europe/Madrid),
+    # un cliente por ciclo, en los días de su calendario.
+    WEB_SWEEP_ENABLED: bool = False
+    WEB_SWEEP_LOCAL_TIME: str = "06:30"
+    # Webs: salud diaria (job ``web_health``, lock 18). No tiene interruptor
+    # propio: la caducidad de certificado y dominio corre con UPTIME_ENABLED y
+    # robots.txt + sitemap con WEB_SWEEP_ENABLED (backend/services/web/health.py).
+    # Revisión tras publicar (job ``publish_checks``, lock 19): mira el enlace de
+    # cada tarea completada. Apagada por defecto; en Railway, PUBLISH_CHECK_ENABLED=true.
+    PUBLISH_CHECK_ENABLED: bool = False
     VOYAGE_API_KEY: Optional[str] = None
     AGENCY_TIMEZONE: str = "Europe/Madrid"
 

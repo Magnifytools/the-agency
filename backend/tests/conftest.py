@@ -140,3 +140,102 @@ async def member_client(member_user):
         yield client
 
     app.dependency_overrides.clear()
+
+
+class _NoRealDatabaseSession:
+    """Sustituto de `database.async_session` en los tests.
+
+    La sesión global apunta a la base de `.env` (la de desarrollo). Un test que
+    pase por código que la use sin sustituirla escribiría ahí: el middleware de
+    uso guardaba `audit_logs` en cada petición. Aquí se entrega una sesión SIN
+    conexión: crearla no falla (`get_db` la abre aunque la ruta conteste 401
+    antes de consultar), pero cualquier consulta o commit con cambios lanza
+    `UnboundExecutionError`. Los tests de integración la apuntan a la base de
+    pruebas.
+    """
+
+    def __call__(self, *_args, **_kwargs):
+        from sqlalchemy.ext.asyncio import AsyncSession
+
+        return AsyncSession(expire_on_commit=False)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_database_session(monkeypatch):
+    from backend.db import database
+
+    monkeypatch.setattr(database, "async_session", _NoRealDatabaseSession())
+
+
+@pytest.fixture(autouse=True)
+def _no_real_google_revoke(monkeypatch):
+    """Desconectar Google revoca el token en Google: en los tests nunca sale a la red.
+
+    Se sustituye donde lo usan las rutas; los tests de ``google_oauth.revoke_token``
+    llaman a la función real con httpx simulado. Un test que quiera ver la
+    llamada usa este fixture (``_no_real_google_revoke``) y mira sus llamadas.
+    """
+    from backend.api.routes import google_calendar, gsc
+
+    fake = AsyncMock(return_value=True)
+    monkeypatch.setattr(gsc, "revoke_token", fake)
+    monkeypatch.setattr(google_calendar, "revoke_token", fake)
+    return fake
+
+
+@pytest.fixture(autouse=True)
+def _no_real_gsc_monthly(monkeypatch):
+    """El historial mensual de Search Console pide meses a Google tras importar
+    el detalle: en los tests nunca sale a la red. Por defecto Google "no
+    devuelve nada"; un test que quiera otra respuesta pasa `fetch_month=`."""
+    from backend.services import gsc_detail_service
+
+    fake = AsyncMock(return_value=[])
+    monkeypatch.setattr(gsc_detail_service, "query_month", fake)
+    return fake
+
+
+@pytest.fixture(autouse=True)
+def _no_real_ga4_leads(monkeypatch):
+    """Los leads por landing se piden a GA4 detrás de los totales: en los tests
+    nunca salen a la red. Por defecto GA4 "no devuelve nada"; un test que
+    quiera otra respuesta pasa `fetch_leads=`."""
+    from backend.services import ga4_leads
+
+    fake = AsyncMock(return_value=[])
+    monkeypatch.setattr(ga4_leads, "query_leads", fake)
+    return fake
+
+
+@pytest.fixture(autouse=True)
+def _no_real_google_status(monkeypatch):
+    """Las anotaciones de Control SEO leen el panel de estado de Google Search:
+    en los tests nunca sale a la red. Por defecto no hay eventos; un test que
+    quiera otros sustituye `_fetch`."""
+    from backend.services import google_search_status
+
+    google_search_status.clear_cache()
+    fake = AsyncMock(return_value=[])
+    monkeypatch.setattr(google_search_status, "_fetch", fake)
+    yield fake
+    google_search_status.clear_cache()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_web_health_network(monkeypatch):
+    """Dominio, certificado, robots.txt, sitemap y la revisión tras publicar
+    nunca salen a la red en los tests: por defecto "no responde" (``timeout``) y
+    no hay certificado. Un test que quiera otra respuesta pasa ``fetcher=`` /
+    ``cert_reader=`` o vuelve a parchear estos nombres."""
+    from backend.services.web import health, publish_check
+    from backend.services.web.safe_http import FetchResult, TlsCertificate
+
+    async def no_network(url, **_kwargs):
+        return FetchResult(None, 0, url, error="timeout")
+
+    async def no_cert(_host, **_kwargs):
+        return TlsCertificate(error="timeout")
+
+    monkeypatch.setattr(health, "fetch", no_network)
+    monkeypatch.setattr(health, "fetch_tls_certificate", no_cert)
+    monkeypatch.setattr(publish_check, "fetch", no_network)

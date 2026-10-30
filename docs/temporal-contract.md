@@ -29,8 +29,8 @@ dashboard de cliente, salud de cliente, notificaciones, digests y recap usan el
 mismo helper. Los gráficos de tareas completadas convierten `completed_at` de
 UTC a la fecha civil de negocio antes de agrupar.
 
-Quedan fuera de este contrato los módulos ocultos de facturación y asesoría
-(`backend/api/routes/billing.py` y `backend/services/client_advisor.py`). Sus
-consultas históricas directas sobre `TimeEntry.date` deberán migrarse con el
-mismo helper antes de volver a habilitar esos módulos. No se modifican datos
+Queda fuera de este contrato el módulo oculto de asesoría
+(`backend/services/client_advisor.py`; el de facturación se eliminó en oct 2026).
+Sus consultas históricas directas sobre `TimeEntry.date` deberán migrarse con el
+mismo helper antes de volver a habilitarlo. No se modifican datos
 existentes para suplir procedencia desconocida.

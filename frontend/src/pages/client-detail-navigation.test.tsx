@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -7,8 +7,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import ClientDetailPage from "./client-detail-page"
 
 const mocks = vi.hoisted(() => ({
-  enabled: new Set(["tasks", "timesheet", "digests", "communications", "reports", "resources", "billing"]),
-  permissions: new Set(["tasks", "timesheet", "projects", "digests", "communications", "reports", "billing"]),
+  enabled: new Set(["tasks", "timesheet", "digests", "communications"]),
+  permissions: new Set(["tasks", "timesheet", "projects", "digests", "communications"]),
   writePermissions: new Set<string>(),
   admin: false,
   summary: vi.fn(),
@@ -25,21 +25,34 @@ vi.mock("@/lib/api", () => ({
   clientsApi: { summary: mocks.summary, recentTimeEntries: mocks.time, whatIf: vi.fn() },
   projectsApi: { listAll: mocks.projects },
   holdedApi: { config: vi.fn(), clientInvoices: vi.fn() },
-  clientHealthApi: { get: mocks.health },
+  clientStatusApi: { get: mocks.health },
   engineApi: { getConfig: vi.fn().mockResolvedValue({}) },
 }))
 
 vi.mock("@/components/clients/ficha-tab", () => ({ FichaTab: () => <div>FichaTab</div> }))
+vi.mock("@/components/clients/client-overview", () => ({
+  // Pasa lo que la página le entrega: así los tests de caché/permisos siguen viendo el estado.
+  ClientOverview: (props: { status?: { reasons: string[] }; statusFailed: boolean; onRetryStatus: () => void }) => (
+    <div>
+      <div>VistaGeneral</div>
+      {props.status?.reasons.map((reason) => <p key={reason}>{reason}</p>)}
+      {props.statusFailed && <><p>No se pudo calcular el estado del cliente.</p><button onClick={props.onRetryStatus}>Reintentar</button></>}
+    </div>
+  ),
+}))
 vi.mock("@/components/clients/activity-timeline", () => ({ ActivityTimeline: () => <div>ActivityTimeline</div> }))
 vi.mock("@/components/clients/client-ai-advisor", () => ({ ClientAiAdvisor: () => <div>ClientAiAdvisor</div> }))
 vi.mock("@/components/clients/contact-list", () => ({ ContactList: () => <div>ContactList</div> }))
-vi.mock("@/components/clients/resource-list", () => ({ ResourceList: () => <div>ResourceList</div> }))
-vi.mock("@/components/clients/billing-tab", () => ({ BillingTab: () => <div>BillingTab</div> }))
 vi.mock("@/components/clients/client-dashboard-tab", () => ({ ClientDashboardTab: () => <div>Dashboard</div> }))
-vi.mock("@/components/clients/client-reports-tab", () => ({ ClientReportsTab: () => <div>Reports</div> }))
 vi.mock("@/components/clients/client-settings-tab", () => ({ ClientSettingsTab: () => <div>Settings</div> }))
 vi.mock("@/components/clients/engine-metrics-widget", () => ({ EngineMetricsWidget: () => null }))
 vi.mock("@/components/clients/engine-seo-tab", () => ({ EngineSeoTab: () => <div>SEO</div> }))
+vi.mock("@/components/clients/seo-control/seo-control-tab", () => ({
+  SeoControlTab: ({ onOpenSettings }: { onOpenSettings: () => void }) => (
+    <div>ControlSeoTab<button onClick={onOpenSettings}>Ir a configuración</button></div>
+  ),
+}))
+vi.mock("@/components/web/web-tab", () => ({ WebTab: () => <div>WebTab</div> }))
 vi.mock("@/components/communications/communication-list", () => ({ CommunicationList: () => <div>Communications</div> }))
 vi.mock("@/components/timer/timer-button", () => ({ TimerButton: () => null }))
 vi.mock("@/components/timer/time-log-dialog", () => ({ TimeLogDialog: () => null }))
@@ -69,9 +82,9 @@ function show(tab: string) {
 describe("client detail areas", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.enabled = new Set(["tasks", "timesheet", "digests", "communications", "reports", "resources", "billing"])
-    mocks.permissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications", "reports", "billing"])
-    mocks.writePermissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications", "reports", "billing"])
+    mocks.enabled = new Set(["tasks", "timesheet", "digests", "communications"])
+    mocks.permissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications"])
+    mocks.writePermissions = new Set(["clients", "tasks", "timesheet", "projects", "digests", "communications"])
     mocks.admin = false
     mocks.summary.mockResolvedValue(summary)
     mocks.projects.mockResolvedValue([])
@@ -83,10 +96,13 @@ describe("client detail areas", () => {
     show("actividad")
     expect(await screen.findByText("ActivityTimeline")).toBeInTheDocument()
     const nav = screen.getByRole("navigation", { name: "Áreas del cliente" })
-    expect(nav).toHaveTextContent("Resumen")
+    expect(nav).toHaveTextContent("Vista general")
     expect(nav).toHaveTextContent("Trabajo")
-    expect(nav).toHaveTextContent("Resúmenes y archivos")
-    expect(nav).toHaveTextContent("Ajustes")
+    expect(nav).toHaveTextContent("Resultados")
+    expect(nav).toHaveTextContent("Relación")
+    // Ajustes sale de la fila de áreas: se abre con el engranaje de la cabecera.
+    expect(nav).not.toHaveTextContent("Ajustes")
+    expect(screen.getByRole("button", { name: "Ajustes del cliente" })).toBeInTheDocument()
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("resumen")
   })
 
@@ -98,7 +114,7 @@ describe("client detail areas", () => {
 
   it("hides the financial what-if action while finance is disabled", async () => {
     show("ficha")
-    await screen.findByText("FichaTab")
+    await screen.findByText("VistaGeneral")
     expect(screen.queryByRole("button", { name: "¿Y si pierdo este cliente?" })).not.toBeInTheDocument()
   })
 
@@ -121,43 +137,10 @@ describe("client detail areas", () => {
     expect(screen.getByText("21/9/2026")).toBeInTheDocument()
   })
 
-  it("names business intelligence actions and associates its edit fields", async () => {
-    show("panel")
-    await userEvent.click(await screen.findByRole("button", { name: "Editar inteligencia de negocio" }))
-    expect(screen.getByRole("combobox", { name: "Modelo de negocio" })).toBeInTheDocument()
-    expect(screen.getByRole("spinbutton", { name: "AOV (€)" })).toBeInTheDocument()
-    expect(screen.getByRole("spinbutton", { name: "Conversión (%)" })).toBeInTheDocument()
-    expect(screen.getByRole("spinbutton", { name: "LTV (€)" })).toBeInTheDocument()
-    expect(screen.getByRole("combobox", { name: "Madurez SEO" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Guardar inteligencia de negocio" })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Cancelar edición de inteligencia de negocio" }))
-    expect(screen.getByRole("button", { name: "Editar inteligencia de negocio" })).toBeInTheDocument()
-  })
-
-  it("keeps business intelligence read-only for a client reader", async () => {
-    mocks.writePermissions.delete("clients")
-    show("panel")
-
-    expect(await screen.findByText("Inteligencia de Negocio")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Editar inteligencia de negocio" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Guardar inteligencia de negocio" })).not.toBeInTheDocument()
-  })
-
-  it("does not submit business intelligence after client write access is revoked", async () => {
-    const view = show("panel")
-    await userEvent.click(await screen.findByRole("button", { name: "Editar inteligencia de negocio" }))
-    mocks.writePermissions.delete("clients")
-    view.refresh()
-
-    expect(screen.getByRole("combobox", { name: "Modelo de negocio" })).toBeDisabled()
-    expect(screen.getByRole("spinbutton", { name: "AOV (€)" })).toBeDisabled()
-    expect(screen.queryByRole("button", { name: "Guardar inteligencia de negocio" })).not.toBeInTheDocument()
-  })
-
   it("falls back safely when a legacy URL points to a hidden module", async () => {
     mocks.enabled.delete("communications")
     show("comunicaciones")
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     expect(screen.queryByText("Communications")).not.toBeInTheDocument()
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("resumen")
   })
@@ -165,7 +148,7 @@ describe("client detail areas", () => {
   it("does not expose or query project work without project permission", async () => {
     mocks.permissions.delete("projects")
     show("proyectos")
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     await waitFor(() => expect(mocks.projects).not.toHaveBeenCalled())
     expect(screen.queryByRole("option", { name: "Proyectos" })).not.toBeInTheDocument()
   })
@@ -179,10 +162,10 @@ describe("client detail areas", () => {
     })
     show("tiempo")
 
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "Acme" })).toBeInTheDocument()
     expect(screen.queryByText("Total tareas")).not.toBeInTheDocument()
-    expect(screen.queryByText("Tiempo tracked")).not.toBeInTheDocument()
+    expect(screen.queryByText("Tiempo fichado")).not.toBeInTheDocument()
     expect(screen.queryByRole("option", { name: "Tiempo" })).not.toBeInTheDocument()
     expect(mocks.time).not.toHaveBeenCalled()
   })
@@ -200,10 +183,10 @@ describe("client detail areas", () => {
     mocks.permissions.delete("timesheet")
     view.refresh()
 
-    expect(screen.getByText("FichaTab")).toBeInTheDocument()
+    expect(screen.getByText("VistaGeneral")).toBeInTheDocument()
     expect(screen.queryByText("Trabajo privado")).not.toBeInTheDocument()
     expect(screen.queryByText("Total tareas")).not.toBeInTheDocument()
-    expect(screen.queryByText("Tiempo tracked")).not.toBeInTheDocument()
+    expect(screen.queryByText("Tiempo fichado")).not.toBeInTheDocument()
   })
 
   it("shows the financial client panel only for an admin while finance is enabled", async () => {
@@ -224,76 +207,66 @@ describe("client detail areas", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudo cargar la ficha")
     await userEvent.click(screen.getByRole("button", { name: "Reintentar" }))
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     expect(mocks.summary).toHaveBeenCalledTimes(2)
   })
 
-  it("hides cached health after an error until a fresh response succeeds", async () => {
-    const health = {
-      score: 81, risk_level: "healthy", enough_information: true,
-      available_source_count: 3, available_weight: 65,
-      factors: { communication: 20, tasks: 20, digests: 12, profitability: 16, followups: 13 },
-      observations: { communication: "Comunicación", tasks: "Tareas", digests: "Resúmenes", profitability: "Rentabilidad", followups: "Seguimiento" },
-      risk_signals: [],
+  it("hides cached status after an error until a fresh response succeeds", async () => {
+    const status = {
+      client_id: 5, client_name: "Acme", status: "watch", reasons: ["Toca enviar el informe mensual"],
+      seo: null, digests: [{ cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "due" }], digest: { cadence: "monthly", last_sent_period_end: null, expected_period_end: "2026-09-30", state: "due" },
+      tasks: null, month: null,
     }
-    mocks.health.mockResolvedValueOnce(health)
+    mocks.health.mockResolvedValueOnce(status)
     const { client } = show("ficha")
-    expect(await screen.findByText("81 puntos; no sustituye las condiciones anteriores.")).toBeInTheDocument()
+    expect(await screen.findByText("Toca enviar el informe mensual")).toBeInTheDocument()
 
     mocks.health.mockRejectedValueOnce({ response: { status: 403 } })
-    await act(async () => { await client.invalidateQueries({ queryKey: ["client-health", 5] }) })
-    expect(await screen.findByText("No se pudo cargar la salud del cliente.")).toBeInTheDocument()
-    expect(screen.queryByText("81 puntos; no sustituye las condiciones anteriores.")).not.toBeInTheDocument()
+    await act(async () => { await client.invalidateQueries({ queryKey: ["client-status", 5] }) })
+    expect(await screen.findByText("No se pudo calcular el estado del cliente.")).toBeInTheDocument()
+    expect(screen.queryByText("Toca enviar el informe mensual")).not.toBeInTheDocument()
 
-    mocks.health.mockResolvedValueOnce(health)
-    await userEvent.click(screen.getByRole("button", { name: "Reintentar salud" }))
-    expect(await screen.findByText("81 puntos; no sustituye las condiciones anteriores.")).toBeInTheDocument()
+    mocks.health.mockResolvedValueOnce(status)
+    await userEvent.click(screen.getAllByRole("button", { name: "Reintentar" }).at(-1)!)
+    expect(await screen.findByText("Toca enviar el informe mensual")).toBeInTheDocument()
   })
 
   it("does not request or render health without current client permission", async () => {
     mocks.permissions.delete("clients")
-    mocks.health.mockResolvedValue({ score: 99 })
+    mocks.health.mockResolvedValue({ client_id: 5, client_name: "Acme", status: "act", reasons: ["3 tareas vencidas"], seo: null, digests: [], digest: null, tasks: null, month: null })
     show("ficha")
 
     expect(screen.getByRole("alert")).toHaveTextContent("No tienes acceso a este cliente.")
     expect(mocks.summary).not.toHaveBeenCalled()
     expect(mocks.health).not.toHaveBeenCalled()
-    expect(screen.queryByText("99 puntos; no sustituye las condiciones anteriores.")).not.toBeInTheDocument()
+    expect(screen.queryByText("Actuar")).not.toBeInTheDocument()
   })
 
   it("removes cached client details immediately when client read access is revoked", async () => {
     const view = show("ficha")
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     mocks.permissions.delete("clients")
     view.refresh()
 
     expect(screen.getByRole("alert")).toHaveTextContent("No tienes acceso a este cliente.")
-    expect(screen.queryByText("FichaTab")).not.toBeInTheDocument()
+    expect(screen.queryByText("VistaGeneral")).not.toBeInTheDocument()
     expect(screen.queryByRole("heading", { name: "Acme" })).not.toBeInTheDocument()
     expect(mocks.summary).toHaveBeenCalledTimes(1)
   })
 
-  it("removes cached task health observations after task access is revoked", async () => {
-    const fullHealth = {
-      score: 70, risk_level: "warning", enough_information: true,
-      available_source_count: 1, available_weight: 20,
-      factors: { communication: null, tasks: 10, digests: null, profitability: null, followups: null },
-      observations: { communication: "Fuente no disponible", tasks: "Tres tareas vencidas", digests: "Fuente no disponible", profitability: "Fuente no disponible", followups: "Fuente no disponible" },
-      risk_signals: ["Tres tareas vencidas"],
+  it("removes cached task signals after task access is revoked", async () => {
+    const full = {
+      client_id: 5, client_name: "Acme", status: "act", reasons: ["3 tareas vencidas"],
+      seo: null, digests: [], digest: null, tasks: { overdue: 3, waiting: 0, followups_late: 0 }, month: null,
     }
-    const redactedHealth = {
-      ...fullHealth, score: null, available_source_count: 0, available_weight: 0,
-      factors: { ...fullHealth.factors, tasks: null },
-      observations: { ...fullHealth.observations, tasks: "Fuente no disponible" },
-      risk_signals: [],
-    }
-    mocks.health.mockResolvedValueOnce(fullHealth).mockResolvedValueOnce(redactedHealth)
+    const redacted = { ...full, status: "no_data", reasons: [], tasks: null }
+    mocks.health.mockResolvedValueOnce(full).mockResolvedValueOnce(redacted)
     const view = show("ficha")
-    expect(await screen.findAllByText("Tres tareas vencidas")).not.toHaveLength(0)
+    expect(await screen.findAllByText("3 tareas vencidas")).not.toHaveLength(0)
 
     mocks.permissions.delete("tasks")
     view.refresh()
-    expect(screen.queryByText("Tres tareas vencidas")).not.toBeInTheDocument()
+    expect(screen.queryByText("3 tareas vencidas")).not.toBeInTheDocument()
     await waitFor(() => expect(mocks.health).toHaveBeenCalledTimes(2))
   })
 
@@ -310,7 +283,7 @@ describe("client detail areas", () => {
     mocks.enabled.delete("digests")
     show("resumenes")
 
-    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(await screen.findByText("VistaGeneral")).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: /Abrir resúmenes/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("option", { name: "Resúmenes" })).not.toBeInTheDocument()
     expect(screen.getByLabelText("Área del cliente")).toHaveValue("resumen")
@@ -375,4 +348,46 @@ describe("client detail areas", () => {
     expect(mocks.projects).not.toHaveBeenCalled()
   })
 
+  it("keeps the old ficha (context and contact) one tab away, in Relación", async () => {
+    show("contexto")
+    expect(await screen.findByText("FichaTab")).toBeInTheDocument()
+    expect(screen.getByLabelText("Área del cliente")).toHaveValue("relacion")
+  })
+
+  it("shows Control SEO in Resultados when the client has a Search Console property", async () => {
+    mocks.summary.mockResolvedValue({ ...summary, client: { ...summary.client, gsc_url: "sc-domain:acme.com", engine_project_id: 9 } })
+    show("control_seo")
+    expect(await screen.findByText("ControlSeoTab")).toBeInTheDocument()
+    expect(screen.getByLabelText("Área del cliente")).toHaveValue("outputs")
+    const sections = screen.getByLabelText("Sección del área")
+    expect(within(sections).getByRole("option", { name: "Control SEO" })).toBeInTheDocument()
+    // Engine está congelado: ya no sale en Resultados.
+    expect(within(sections).queryByRole("option", { name: /Engine/ })).not.toBeInTheDocument()
+    expect(within(sections).queryByRole("option", { name: "SEO" })).not.toBeInTheDocument()
+    // Sin propiedad todavía, el enlace del estado vacío lleva a Configuración.
+    await userEvent.click(screen.getByRole("button", { name: "Ir a configuración" }))
+    expect(await screen.findByText("Settings")).toBeInTheDocument()
+  })
+
+  it("keeps old ?tab=seo links on the Engine tab, now next to the settings", async () => {
+    mocks.summary.mockResolvedValue({ ...summary, client: { ...summary.client, gsc_url: "sc-domain:acme.com", engine_project_id: 9 } })
+    show("seo")
+    expect(await screen.findByText("SEO")).toBeInTheDocument()
+    expect(screen.getByLabelText("Sección del área")).toHaveValue("seo")
+    expect(screen.getByRole("button", { name: "Engine (congelado)" })).toBeInTheDocument()
+  })
+
+  it("hides Control SEO without a Search Console property, even from a saved URL", async () => {
+    show("control_seo")
+    expect(await screen.findByLabelText("Área del cliente")).toHaveValue("resumen")
+    expect(screen.queryByText("ControlSeoTab")).not.toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: "Control SEO" })).not.toBeInTheDocument()
+  })
+
+  it("opens client settings from the header gear", async () => {
+    show("ficha")
+    await screen.findByText("VistaGeneral")
+    await userEvent.click(screen.getByRole("button", { name: "Ajustes del cliente" }))
+    expect(await screen.findByText("Settings")).toBeInTheDocument()
+  })
 })

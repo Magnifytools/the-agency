@@ -61,7 +61,7 @@ def test_numeric_usa_la_escala_persistida_y_acepta_snapshot_legacy_number():
 
 def test_float_no_se_convierte_en_decimal():
     """Float hereda de Numeric en SQLAlchemy; el orden de los isinstance importa."""
-    column = Client.__mapper__.column_attrs["aov"].expression
+    column = Client.__mapper__.column_attrs["engine_avg_position"].expression
     assert cj.deserialize(column, 41.5) == 41.5
     assert isinstance(cj.deserialize(column, 41.5), float)
 
@@ -173,6 +173,7 @@ def test_solo_se_vigilan_las_entidades_operativas():
     assert set(cj.MODELS_BY_TYPE) == {
         "task", "project", "client", "client_contact", "lead", "growth_idea",
         "project_phase", "task_checklist", "lead_activity", "time_entry",
+        "client_scope_request", "task_time_block",
     }
     from backend.db.models import Expense, Income
     assert Income not in cj._SPECS and Expense not in cj._SPECS
@@ -191,3 +192,11 @@ def test_paused_desactiva_la_captura():
     with cj.paused():
         assert cj._paused.get() is True
     assert cj._paused.get() is False
+
+
+def test_accesos_quedan_fuera_del_journal():
+    """El journal guarda valores de columnas en JSON: un secreto no puede ir ahí."""
+    from backend.db.models import Credential, CredentialAccessLog, CredentialShare
+
+    for model in (Credential, CredentialShare, CredentialAccessLog):
+        assert model not in cj._SPECS

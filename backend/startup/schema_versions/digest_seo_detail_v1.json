@@ -1,0 +1,22 @@
+{
+  "version": "20261027_digest_seo_detail_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS digest_seo_details (\n digest_id INTEGER PRIMARY KEY REFERENCES weekly_digests(id) ON DELETE CASCADE,\n site_url VARCHAR(255) NOT NULL,\n payload JSONB NOT NULL,\n computed_at TIMESTAMPTZ NOT NULL DEFAULT now()\n)",
+    "CREATE INDEX IF NOT EXISTS ix_digest_seo_details_site_url ON digest_seo_details (site_url)"
+  ],
+  "columns": {
+    "digest_seo_details": {
+      "digest_id": ["int4", false, null],
+      "site_url": ["varchar", false, 255],
+      "payload": ["jsonb", false, null],
+      "computed_at": ["timestamptz", false, null]
+    }
+  },
+  "primary_keys": {
+    "digest_seo_details": ["digest_id"]
+  },
+  "foreign_keys": [
+    {"table": "digest_seo_details", "column": "digest_id", "references": "weekly_digests", "on_delete": "c"}
+  ],
+  "unique_indexes": []
+}

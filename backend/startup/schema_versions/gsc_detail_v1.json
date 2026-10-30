@@ -1,0 +1,40 @@
+{
+  "version": "20261022_gsc_detail_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS gsc_query_daily (\n site_url VARCHAR(255) NOT NULL,\n date DATE NOT NULL,\n query TEXT NOT NULL,\n clicks INTEGER NOT NULL,\n impressions INTEGER NOT NULL,\n position REAL NOT NULL,\n PRIMARY KEY (site_url, date, query)\n)",
+    "CREATE TABLE IF NOT EXISTS gsc_page_daily (\n site_url VARCHAR(255) NOT NULL,\n date DATE NOT NULL,\n page TEXT NOT NULL,\n clicks INTEGER NOT NULL,\n impressions INTEGER NOT NULL,\n position REAL NOT NULL,\n PRIMARY KEY (site_url, date, page)\n)",
+    "CREATE TABLE IF NOT EXISTS gsc_detail_sync (\n site_url VARCHAR(255) PRIMARY KEY,\n backfilled_at TIMESTAMPTZ,\n last_synced_at TIMESTAMPTZ,\n last_data_date DATE,\n error_code VARCHAR(64),\n query_rows INTEGER,\n page_rows INTEGER\n)"
+  ],
+  "tables": {
+    "gsc_query_daily": {
+      "site_url": ["varchar", false, 255],
+      "date": ["date", false, null],
+      "query": ["text", false, null],
+      "clicks": ["int4", false, null],
+      "impressions": ["int4", false, null],
+      "position": ["float4", false, null]
+    },
+    "gsc_page_daily": {
+      "site_url": ["varchar", false, 255],
+      "date": ["date", false, null],
+      "page": ["text", false, null],
+      "clicks": ["int4", false, null],
+      "impressions": ["int4", false, null],
+      "position": ["float4", false, null]
+    },
+    "gsc_detail_sync": {
+      "site_url": ["varchar", false, 255],
+      "backfilled_at": ["timestamptz", true, null],
+      "last_synced_at": ["timestamptz", true, null],
+      "last_data_date": ["date", true, null],
+      "error_code": ["varchar", true, 64],
+      "query_rows": ["int4", true, null],
+      "page_rows": ["int4", true, null]
+    }
+  },
+  "primary_keys": {
+    "gsc_query_daily": ["site_url", "date", "query"],
+    "gsc_page_daily": ["site_url", "date", "page"],
+    "gsc_detail_sync": ["site_url"]
+  }
+}

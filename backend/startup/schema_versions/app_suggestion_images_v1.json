@@ -1,0 +1,25 @@
+{
+  "version": "20261024_app_suggestion_images_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS app_suggestion_images (\n id SERIAL PRIMARY KEY,\n suggestion_id INTEGER NOT NULL REFERENCES app_suggestions(id) ON DELETE CASCADE,\n name VARCHAR(255) NOT NULL,\n mime_type VARCHAR(50) NOT NULL,\n size_bytes INTEGER NOT NULL,\n content BYTEA NOT NULL,\n created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT ck_app_suggestion_images_type CHECK (mime_type IN ('image/png','image/jpeg','image/gif','image/webp'))\n)",
+    "CREATE INDEX IF NOT EXISTS ix_app_suggestion_images_suggestion_id ON app_suggestion_images (suggestion_id)"
+  ],
+  "columns": {
+    "app_suggestion_images": {
+      "id": ["int4", false, null],
+      "suggestion_id": ["int4", false, null],
+      "name": ["varchar", false, 255],
+      "mime_type": ["varchar", false, 50],
+      "size_bytes": ["int4", false, null],
+      "content": ["bytea", false, null],
+      "created_at": ["timestamptz", false, null]
+    }
+  },
+  "primary_keys": {
+    "app_suggestion_images": ["id"]
+  },
+  "foreign_keys": [
+    {"table": "app_suggestion_images", "column": "suggestion_id", "references": "app_suggestions", "on_delete": "c"}
+  ],
+  "unique_indexes": []
+}

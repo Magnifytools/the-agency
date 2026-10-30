@@ -16,22 +16,25 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from backend.config import settings
 from backend.api.routes import (
     auth, clients, tasks, task_categories, time_entries, users,
-    dashboard, discord, billing, projects, communications, pm,
-    reports, proposals, growth, invitations, report_policies, digests, leads, holded,
+    dashboard, discord, projects, communications, pm,
+    proposals, growth, report_policies, digests, leads, holded,
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
-    service_templates, dailys, contacts, activity, notifications, incidents, resources, deliveries, communication_schedules,
+    service_templates, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     changes, commands,
-    billing_events, client_dashboard, engine_integration, investments,
-    evidence, search, agency_vault, core_updates, balance,
+    client_dashboard, client_ga4, client_gsc, local_reports, client_seo, client_share_links, engine_integration, investments,
+    search, balance,
     inbox,
+    suggestions,
+    scope_requests,
     extension,
-    my_week,
-    automations,
     google_calendar,
     gsc,
+    holidays,
     bank_import,
-    cfo,
-    usage_stats, job_runtime,
+    usage_stats, job_runtime, ga4,
+    credentials,
+    web_uptime, web_watches, web_changes, web_settings, web_health,
+    time_blocks,
 )
 
 # ── Re-export migration/seed functions so scripts/init_db.py keeps working ──
@@ -48,7 +51,6 @@ from backend.startup.migrations import (  # noqa: F401
     _ensure_columns_v6,
     _ensure_columns_v7,
     _ensure_columns_v8,
-    _ensure_columns_v9,
     _ensure_columns_v10,
     _reset_admin_password,
     _seed_national_holidays,
@@ -119,7 +121,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # setdefault: el enlace público del cliente pide "no-referrer".
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         content_type = response.headers.get("content-type", "")
         if "text/html" in content_type:
             response.headers["Content-Security-Policy"] = (
@@ -152,6 +155,9 @@ app.add_middleware(SecurityHeadersMiddleware)
 from backend.api.middleware.usage_tracker import UsageTrackerMiddleware
 app.add_middleware(UsageTrackerMiddleware)
 
+from backend.api.middleware.session_renewal import SessionRenewalMiddleware
+app.add_middleware(SessionRenewalMiddleware)
+
 
 class CsrfProtectionMiddleware(BaseHTTPMiddleware):
     """Protect cookie-authenticated mutating requests with double-submit CSRF."""
@@ -160,7 +166,6 @@ class CsrfProtectionMiddleware(BaseHTTPMiddleware):
     EXEMPT_PATHS = {
         "/api/auth/login",
         "/api/auth/logout",
-        "/api/invitations/accept",
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -219,7 +224,37 @@ _CORE_ROUTERS = [
     auth, clients, tasks, task_categories, time_entries, users, dashboard,
     projects, pm, report_policies, digests, sync, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     client_dashboard, engine_integration, inbox, extension, google_calendar,
-    gsc, usage_stats, job_runtime,
+    gsc, ga4, usage_stats, job_runtime,
+    # client_seo: Control SEO de la ficha (consultas y páginas de Search Console).
+    client_seo,
+    # client_gsc: Search Console en vivo de un cliente (herramientas gsc_* del MCP).
+    client_gsc,
+    # client_ga4: GA4 en vivo de un cliente (herramientas ga4_* del MCP).
+    client_ga4,
+    # local_reports: informe mensual SEO local (pestaña de la ficha del cliente).
+    local_reports,
+    # client_share_links: el enlace de sólo lectura del cliente (/c/:token).
+    client_share_links,
+    # credentials: Accesos (contraseñas compartidas, cifradas con VAULT_KEY).
+    credentials,
+    # web_uptime: Webs, disponibilidad (monitor de caídas, módulo ``web``).
+    web_uptime,
+    # web_watches / web_changes / web_settings: Webs, vigilancia de cambios
+    # (portada de Vigil; el barrido lo hace el job ``web_sweep``).
+    web_watches,
+    web_changes,
+    web_settings,
+    # web_health: dominio, certificado, robots.txt y sitemap (job ``web_health``)
+    # y la revisión tras publicar de las tareas (job ``publish_checks``).
+    web_health,
+    # holidays: los festivos de empresa (Ajustes → Festivos, plan de la mañana).
+    holidays,
+    # suggestions: el botón "Sugerencias o fallos" del shell, para todos.
+    suggestions,
+    # scope_requests: peticiones fuera de alcance (ficha del cliente, módulo clients).
+    scope_requests,
+    # time_blocks: bloques de trabajo con hora de Mi agenda (módulo tasks).
+    time_blocks,
     # changes: el Undo del shell. No es una pantalla, es la red de seguridad
     # de todas las demás — se registra siempre.
     changes, commands,
@@ -232,12 +267,6 @@ _CORE_ROUTERS = [
     # app creyendo que Discord no está configurado — el mismo error que en
     # Vigil: deducir el estado de una integración en vez de leerlo.
     discord,
-    # my_week: su PANTALLA está oculta (12 visitas), pero el router también
-    # sirve /api/my-week/holidays, que es la gestión de festivos de la página
-    # de Ajustes — y Ajustes se conserva. Quitar el router dejaría un trozo de
-    # una pantalla viva llamando al vacío. Si algún día se borra el módulo de
-    # verdad, los festivos hay que sacarlos de aquí primero.
-    my_week,
 ]
 
 # Opcionales: se registran solo si su módulo no está oculto. Un módulo puede
@@ -246,21 +275,10 @@ _OPTIONAL_ROUTERS = {
     "finance": [income, expenses, expense_categories, taxes, forecasts,
                 advisor, bank_import, balance],
     "holded": [holded],
-    "cfo": [cfo],
-    "reports": [reports],
     "proposals": [proposals, service_templates, investments],
     "leads": [leads],
     "growth": [growth],
-    "automations": [automations],
-    "vault": [agency_vault],
-    # ("my_week" no está aquí: ver _CORE_ROUTERS — el router sirve los festivos
-    #  de Ajustes, que es una pantalla que se conserva.)
-    "billing": [billing, billing_events],
     "communications": [communications],
-    "resources": [resources],
-    "evidence": [evidence],
-    "core_updates": [core_updates],
-    "invitations": [invitations],
     "export": [export],
 }
 
@@ -306,6 +324,22 @@ async def readiness_check():
     return {"status": "ready", "revision": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "local"), "schema_revision": EXPECTED_SCHEMA_VERSION}
 
 
+# Páginas públicas sin login. Ninguna se indexa: /acerca y /privacidad existen
+# para la verificación de Google OAuth (robots.txt las deja leer para que el
+# noindex se vea), y el enlace del cliente además no manda Referer.
+PUBLIC_LEGAL_PATHS = ("acerca", "privacidad")
+_NOINDEX = "noindex, nofollow, noarchive"
+
+
+def spa_headers(full_path: str) -> dict[str, str]:
+    path = full_path.strip("/")
+    if path.startswith("c/"):
+        return {"X-Robots-Tag": _NOINDEX, "Referrer-Policy": "no-referrer"}
+    if path in PUBLIC_LEGAL_PATHS:
+        return {"X-Robots-Tag": _NOINDEX}
+    return {}
+
+
 # Serve frontend static files in production
 _frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if _frontend_dist.is_dir():
@@ -323,4 +357,4 @@ if _frontend_dist.is_dir():
         # Prevent path traversal: resolved path must stay inside frontend/dist
         if file_path.is_file() and file_path.is_relative_to(_frontend_dist.resolve()):
             return FileResponse(str(file_path))
-        return FileResponse(str(_frontend_dist / "index.html"))
+        return FileResponse(str(_frontend_dist / "index.html"), headers=spa_headers(full_path))

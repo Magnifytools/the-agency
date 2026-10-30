@@ -15,6 +15,19 @@ from backend.db.models import TaskPriority, TaskStatus
 from backend.services.temporal import civil_date_isoformat, utc_isoformat
 
 
+def _clean_procedure_text(value: str | None) -> str | None:
+    if value is None or not value.strip():
+        return None
+    return value.strip()
+
+
+def _clean_procedure_url(value: str | None) -> str | None:
+    value = _clean_procedure_text(value)
+    if value is not None and not value.lower().startswith(("http://", "https://")):
+        raise ValueError("El documento de referencia debe ser un enlace http(s)")
+    return value
+
+
 class TaskCreate(BaseModel):
     model_config = {"extra": "forbid"}
     title: str = Field(..., min_length=1, max_length=255)
@@ -40,10 +53,15 @@ class TaskCreate(BaseModel):
     is_recurring: bool = False
     recurrence_pattern: Optional[str] = None
     recurrence_day: Optional[int] = None
+    recurrence_weekdays: Optional[list[int]] = Field(None, max_length=5)
     recurrence_end_date: Optional[date] = None
     recurrence_anchor_date: Optional[date] = None
-    unit_cost: Optional[float] = None
     link_url: Optional[str] = None
+    procedure_text: Optional[str] = Field(None, max_length=20000)
+    procedure_url: Optional[str] = Field(None, max_length=2000)
+
+    _procedure_text = field_validator("procedure_text")(_clean_procedure_text)
+    _procedure_url = field_validator("procedure_url")(_clean_procedure_url)
 
 
 class TaskUpdate(BaseModel):
@@ -69,11 +87,16 @@ class TaskUpdate(BaseModel):
     is_recurring: Optional[bool] = None
     recurrence_pattern: Optional[str] = None
     recurrence_day: Optional[int] = None
+    recurrence_weekdays: Optional[list[int]] = Field(None, max_length=5)
     recurrence_end_date: Optional[date] = None
     recurrence_anchor_date: Optional[date] = None
     recurrence_paused: Optional[bool] = None
-    unit_cost: Optional[float] = None
     link_url: Optional[str] = None
+    procedure_text: Optional[str] = Field(None, max_length=20000)
+    procedure_url: Optional[str] = Field(None, max_length=2000)
+
+    _procedure_text = field_validator("procedure_text")(_clean_procedure_text)
+    _procedure_url = field_validator("procedure_url")(_clean_procedure_url)
 
     @field_validator("status", mode="before")
     @classmethod
@@ -94,9 +117,12 @@ class RecurrencePreviewRequest(BaseModel):
     is_recurring: bool = True
     recurrence_pattern: Optional[str] = None
     recurrence_day: Optional[int] = None
+    recurrence_weekdays: Optional[list[int]] = Field(None, max_length=5)
     recurrence_end_date: Optional[date] = None
     recurrence_anchor_date: Optional[date] = None
     recurrence_paused: bool = False
+    # Quien llevará la plantilla: sus festivos mueven las próximas fechas.
+    assigned_to: Optional[int] = None
     client_id: Optional[int] = None
     project_id: Optional[int] = None
     phase_id: Optional[int] = None
@@ -159,20 +185,22 @@ class TaskResponse(BaseModel):
     depends_on: Optional[int] = None
     created_by: Optional[int] = None
     scheduled_date: Optional[date] = None
+    sort_rank: Optional[str] = None
     waiting_for: Optional[str] = None
     follow_up_date: Optional[date] = None
     is_recurring: bool = False
     recurrence_pattern: Optional[str] = None
     recurrence_day: Optional[int] = None
+    recurrence_weekdays: Optional[list[int]] = Field(None, max_length=5)
     recurrence_end_date: Optional[date] = None
     recurrence_anchor_date: Optional[date] = None
     recurrence_paused_at: Optional[datetime] = None
     recurrence_summary: RecurrenceSummaryResponse
     recurring_parent_id: Optional[int] = None
     recurrence_occurrence_date: Optional[date] = None
-    unit_cost: Optional[float] = None
-    invoiced_at: Optional[datetime] = None
     link_url: Optional[str] = None
+    procedure_text: Optional[str] = None
+    procedure_url: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None

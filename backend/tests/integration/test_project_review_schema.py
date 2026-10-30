@@ -4,7 +4,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.db.models import Base, Client, User, UserRole
+from backend.db.models import Base, User, UserRole
 from backend.startup import deployment_schema, schema_baseline
 from backend.startup.project_review_schema import MIGRATION, apply
 from backend.startup.schema_runner import run_schema_migrations
@@ -23,9 +23,13 @@ async def published_p21(engine):
     await run_schema_migrations(engine, prior, schema_baseline.preflight)
     async with AsyncSession(engine) as db:
         db.add(User(id=1, email="review-schema@example.test", full_name="Schema", hashed_password="x", role=UserRole.admin))
-        db.add(Client(id=1, name="Existing client"))
         await db.commit()
     async with engine.begin() as conn:
+        # SQL y no ORM: el ORM conoce columnas de pasos posteriores (vigil_slug).
+        await conn.execute(text("""
+            INSERT INTO clients (id,name,contract_type,status,currency,is_internal,is_intermediary_deal,created_at,updated_at)
+            VALUES (1,'Existing client','monthly','active','EUR',false,false,'2026-01-01','2026-01-02')
+        """))
         await conn.execute(text("""
             INSERT INTO projects(id,name,client_id,status,progress_percent,is_recurring,
                 created_at,updated_at,owner_id)
@@ -53,9 +57,16 @@ async def test_upgrade_is_opt_in_preserves_business_values_and_ledger(engine):
     await deployment_schema.migrate_schema(engine)
     await deployment_schema.check_deployment_ready(engine)
     async with engine.connect() as conn:
-        assert await conn.scalar(text("SELECT to_jsonb(p)-'requires_task_review' FROM projects p WHERE id=1")) == project
+        # Later additive step (hours_carryover) adds an opt-in column off by default.
+        assert await conn.scalar(text(
+            "SELECT to_jsonb(p)-'requires_task_review'-'hours_carryover' FROM projects p WHERE id=1"
+        )) == project
+        assert await conn.scalar(text("SELECT hours_carryover FROM projects WHERE id=1")) is False
         assert await conn.scalar(text("SELECT requires_task_review FROM projects WHERE id=1")) is False
-        assert await conn.scalar(text("SELECT to_jsonb(t) FROM tasks t WHERE id=1")) == task
+        # Later additive steps (task procedure, sort_rank, recurrence rules) add empty columns only.
+        assert await conn.scalar(text(
+            "SELECT to_jsonb(t)-'procedure_text'-'procedure_url'-'sort_rank'-'recurrence_weekdays'-'recurrence_since' FROM tasks t WHERE id=1"
+        )) == task
         after = (await conn.execute(text("SELECT * FROM agency_schema_versions ORDER BY version"))).all()
         assert set(ledger) <= set(after)
         added = set(after) - set(ledger)

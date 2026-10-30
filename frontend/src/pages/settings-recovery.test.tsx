@@ -13,9 +13,11 @@ vi.mock("@/components/job-runtime-status", () => ({ JobRuntimeStatusPanel: () =>
 vi.mock("@/lib/api", () => ({
   usersApi: { update: vi.fn() },
   categoriesApi: { list: api.categories, create: vi.fn(), update: vi.fn(), delete: api.deleteCategory },
-  myWeekApi: { listHolidays: api.holidays, createHoliday: vi.fn(), deleteHoliday: api.deleteHoliday },
+  holidaysApi: { list: api.holidays, create: vi.fn(), delete: api.deleteHoliday },
   calendarApi: { getStatus: vi.fn().mockResolvedValue({ connected: false }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn() },
-  gscApi: { getStatus: vi.fn().mockResolvedValue({ configured: true, connection: null, sites: [] }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn(), listSites: vi.fn() },
+  gscApi: { getStatus: vi.fn().mockResolvedValue({ configured: true, connections: [], sites: [] }), getAuthUrl: vi.fn(), disconnect: vi.fn(), sync: vi.fn(), listSites: vi.fn() },
+  ga4Api: { getStatus: vi.fn().mockResolvedValue({ configured: true, properties: [] }), sync: vi.fn() },
+  extensionApi: { info: vi.fn().mockResolvedValue({ version: "2.2.7", filename: "the-agency-extension-v2.2.7.zip", download_url: "/api/extension/download", released_on: null, releases: [] }) },
 }))
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 

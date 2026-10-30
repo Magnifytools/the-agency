@@ -143,21 +143,8 @@ async def _ensure_columns():
             END IF;
         END $$""",
         "CREATE INDEX IF NOT EXISTS ix_projects_owner_id ON projects (owner_id)",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS business_model VARCHAR(50)",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS aov DOUBLE PRECISION",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS conversion_rate DOUBLE PRECISION",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS ltv DOUBLE PRECISION",
-        "ALTER TABLE clients ADD COLUMN IF NOT EXISTS seo_maturity_level VARCHAR(20)",
-        "ALTER TABLE generated_reports ADD COLUMN IF NOT EXISTS audience VARCHAR(20)",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_summary_data JSONB",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS engine_alerts_data JSONB",
-        "CREATE TABLE IF NOT EXISTS project_evidence (id SERIAL PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id), phase_id INTEGER REFERENCES project_phases(id), title VARCHAR(200) NOT NULL, url TEXT, file_name VARCHAR(255), file_mime_type VARCHAR(100), file_size_bytes INTEGER, file_content BYTEA, evidence_type VARCHAR(20) DEFAULT 'other', description TEXT, created_by INTEGER REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
-        "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_name VARCHAR(255)",
-        "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_mime_type VARCHAR(100)",
-        "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_size_bytes INTEGER",
-        "ALTER TABLE project_evidence ADD COLUMN IF NOT EXISTS file_content BYTEA",
-        "CREATE TABLE IF NOT EXISTS agency_assets (id SERIAL PRIMARY KEY, category VARCHAR(10) NOT NULL, name VARCHAR(200) NOT NULL, value VARCHAR(500), provider VARCHAR(200), url VARCHAR(500), notes TEXT, associated_domain VARCHAR(200), registrar VARCHAR(200), expiry_date DATE, auto_renew BOOLEAN DEFAULT FALSE, dns_provider VARCHAR(200), hosting_type VARCHAR(50), tool_category VARCHAR(100), monthly_cost NUMERIC(10,2), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())",
-        "CREATE INDEX IF NOT EXISTS ix_agency_assets_category ON agency_assets (category)",
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN NOT NULL DEFAULT FALSE",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_one_active_timer ON time_entries (user_id) WHERE minutes IS NULL",
         "ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_internal BOOLEAN NOT NULL DEFAULT FALSE",
@@ -187,11 +174,6 @@ async def _ensure_columns():
     updated_at TIMESTAMPTZ DEFAULT NOW()
 )""",
         "CREATE INDEX IF NOT EXISTS ix_client_documents_client_id ON client_documents(client_id)",
-        "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS username VARCHAR(200)",
-        "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS password VARCHAR(500)",
-        "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS is_active BOOLEAN",
-        "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS subscription_type VARCHAR(50)",
-        "ALTER TABLE agency_assets ADD COLUMN IF NOT EXISTS purpose VARCHAR(200)",
         "ALTER TABLE income ADD COLUMN IF NOT EXISTS due_date DATE",
         """CREATE TABLE IF NOT EXISTS balance_snapshots (
     id SERIAL PRIMARY KEY,
@@ -481,19 +463,6 @@ async def _ensure_columns_v6():
     from backend.db.database import engine
 
     stmts = [
-        """CREATE TABLE IF NOT EXISTS user_day_statuses (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL REFERENCES users(id),
-            date DATE NOT NULL,
-            status VARCHAR(20) NOT NULL DEFAULT 'available',
-            label VARCHAR(100),
-            note TEXT,
-            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-            UNIQUE(user_id, date)
-        )""",
-        "CREATE INDEX IF NOT EXISTS ix_user_day_statuses_user_id ON user_day_statuses(user_id)",
-        "CREATE INDEX IF NOT EXISTS ix_user_day_statuses_date ON user_day_statuses(date)",
         """CREATE TABLE IF NOT EXISTS company_holidays (
             id SERIAL PRIMARY KEY,
             date DATE NOT NULL UNIQUE,
@@ -586,52 +555,6 @@ async def _ensure_columns_v8():
     logging.info("_ensure_columns_v8 DDL complete.")
 
 
-async def _ensure_columns_v9():
-    """Phase 9: automation_rules + automation_logs tables."""
-    from sqlalchemy import text
-    from backend.db.database import engine
-
-    rules_sql = """CREATE TABLE IF NOT EXISTS automation_rules (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(200) NOT NULL,
-        description TEXT,
-        trigger VARCHAR(50) NOT NULL,
-        conditions JSON NOT NULL DEFAULT '{}',
-        action_type VARCHAR(50) NOT NULL,
-        action_config JSON NOT NULL DEFAULT '{}',
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        run_count INTEGER NOT NULL DEFAULT 0,
-        last_run_at TIMESTAMP,
-        created_by INTEGER REFERENCES users(id),
-        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-    )"""
-
-    logs_sql = """CREATE TABLE IF NOT EXISTS automation_logs (
-        id SERIAL PRIMARY KEY,
-        rule_id INTEGER NOT NULL REFERENCES automation_rules(id) ON DELETE CASCADE,
-        trigger_event VARCHAR(50) NOT NULL,
-        trigger_data JSON,
-        action_result JSON,
-        success BOOLEAN NOT NULL DEFAULT TRUE,
-        error_message TEXT,
-        executed_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-    )"""
-
-    idx_sql = "CREATE INDEX IF NOT EXISTS idx_automation_rules_trigger ON automation_rules(trigger)"
-
-    async with engine.begin() as conn:
-        for sql in [rules_sql, logs_sql, idx_sql]:
-            try:
-                await conn.execute(text(sql))
-            except Exception as exc:
-                logging.warning("DDL v9 statement failed (may be expected): %s", exc)
-
-    logging.info("_ensure_columns_v9 DDL complete.")
-
-
 async def _ensure_columns_v10():
     """Phase 10: region/locality on users + company_holidays, seed national holidays."""
     from sqlalchemy import text
@@ -698,58 +621,9 @@ async def _reset_admin_password():
 
 
 async def _seed_national_holidays():
-    """Seed Spanish national holidays for current and next year if not present."""
-    from sqlalchemy import text, select
-    from backend.db.database import async_session
-    from backend.db.models import CompanyHoliday
-    from datetime import date as date_type
-
-    current_year = date_type.today().year
-
-    # Festivos nacionales fijos de España (region=NULL = aplica a todos)
-    NATIONAL_HOLIDAYS = [
-        (1, 1, "Año Nuevo"),
-        (1, 6, "Reyes Magos"),
-        (5, 1, "Día del Trabajador"),
-        (8, 15, "Asunción de la Virgen"),
-        (10, 12, "Fiesta Nacional de España"),
-        (11, 1, "Día de Todos los Santos"),
-        (12, 6, "Día de la Constitución"),
-        (12, 8, "Inmaculada Concepción"),
-        (12, 25, "Navidad"),
-    ]
-
-    # Festivos móviles 2026 (Semana Santa)
-    MOVABLE_HOLIDAYS = {
-        2026: [(4, 2, "Jueves Santo"), (4, 3, "Viernes Santo")],
-        2027: [(3, 25, "Jueves Santo"), (3, 26, "Viernes Santo")],
-    }
-
-    async with async_session() as session:
-        for year in [current_year, current_year + 1]:
-            all_holidays = [(year, m, d, name) for m, d, name in NATIONAL_HOLIDAYS]
-            for m, d, name in MOVABLE_HOLIDAYS.get(year, []):
-                all_holidays.append((year, m, d, name))
-
-            for y, m, d, name in all_holidays:
-                try:
-                    holiday_date = date_type(y, m, d)
-                except ValueError:
-                    continue
-                existing = await session.execute(
-                    select(CompanyHoliday).where(
-                        CompanyHoliday.date == holiday_date,
-                        CompanyHoliday.region.is_(None),
-                    )
-                )
-                if existing.scalar_one_or_none() is None:
-                    session.add(CompanyHoliday(
-                        date=holiday_date, name=name, country="ES",
-                        region=None, locality=None,
-                    ))
-
-        await session.commit()
-    logging.info("National holidays seeded.")
+    """Los festivos viven en el núcleo: ver services/holidays.py."""
+    from backend.services.holidays import seed_national_holidays
+    await seed_national_holidays()
 
 
 async def _cleanup_qa_test_data():
@@ -757,10 +631,10 @@ async def _cleanup_qa_test_data():
     from sqlalchemy import select, delete, update, or_, exists
     from backend.db.database import async_session
     from backend.db.models import (
-        Client, Task, Project, ProjectPhase, ProjectEvidence,
-        TimeEntry, Invoice, InvoiceItem, ClientContact, ClientResource,
+        Client, Task, Project, ProjectPhase,
+        TimeEntry, Invoice, InvoiceItem, ClientContact,
         BillingEvent, CommunicationLog, WeeklyDigest, PMInsight, GrowthIdea,
-        Proposal, Event, Lead, GeneratedReport, Income, HoldedInvoiceCache,
+        Proposal, Event, Lead, Income, HoldedInvoiceCache,
         InboxNote, TaskChecklist,
     )
 
@@ -792,9 +666,6 @@ async def _cleanup_qa_test_data():
                 if project_ids:
                     await session.execute(update(Event).where(Event.project_id.in_(project_ids)).values(project_id=None))
                 await session.execute(update(Lead).where(Lead.converted_client_id == client_id).values(converted_client_id=None))
-                await session.execute(update(GeneratedReport).where(GeneratedReport.client_id == client_id).values(client_id=None))
-                if project_ids:
-                    await session.execute(update(GeneratedReport).where(GeneratedReport.project_id.in_(project_ids)).values(project_id=None))
                 await session.execute(update(Income).where(Income.client_id == client_id).values(client_id=None))
                 await session.execute(update(HoldedInvoiceCache).where(HoldedInvoiceCache.client_id == client_id).values(client_id=None))
 
@@ -823,12 +694,9 @@ async def _cleanup_qa_test_data():
                     await session.execute(delete(TimeEntry).where(TimeEntry.task_id.in_(task_ids)))
                 if invoice_ids:
                     await session.execute(delete(InvoiceItem).where(InvoiceItem.invoice_id.in_(invoice_ids)))
-                if project_ids:
-                    await session.execute(delete(ProjectEvidence).where(ProjectEvidence.project_id.in_(project_ids)))
 
                 await session.execute(delete(CommunicationLog).where(CommunicationLog.client_id == client_id))
                 await session.execute(delete(ClientContact).where(ClientContact.client_id == client_id))
-                await session.execute(delete(ClientResource).where(ClientResource.client_id == client_id))
                 await session.execute(delete(BillingEvent).where(BillingEvent.client_id == client_id))
                 await session.execute(delete(WeeklyDigest).where(WeeklyDigest.client_id == client_id))
                 await session.execute(delete(Task).where(Task.client_id == client_id))
@@ -1116,7 +984,6 @@ async def run_migrations():
     await _ensure_columns_v6()
     await _ensure_columns_v7()
     await _ensure_columns_v8()
-    await _ensure_columns_v9()
     await _ensure_columns_v10()
     await _ensure_indexes_v11()
     await _seed_national_holidays()

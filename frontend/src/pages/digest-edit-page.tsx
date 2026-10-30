@@ -4,7 +4,7 @@ import { Link, useParams, useNavigate, useLocation } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft, Save, Eye, Copy, Loader2, Plus, Trash2 } from "lucide-react"
 import { digestsApi } from "@/lib/api"
-import type { Digest, DigestContent, DigestSeo, DigestTone, DigestSections } from "@/lib/types"
+import type { Digest, DigestContent, DigestGa4, DigestSeo, DigestTone, DigestSections } from "@/lib/types"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,20 +14,24 @@ import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { DigestFacts } from "@/components/digests/digest-facts"
+import { DigestGa4Panel } from "@/components/digests/digest-ga4-panel"
 import { DigestSeoPanel } from "@/components/digests/digest-seo-panel"
+import { DownloadPdfButton } from "@/components/digests/download-pdf-button"
 import { DigestExternalDelivery } from "@/components/digests/digest-external-delivery"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
+import { useUnsavedChangesWarning } from "@/hooks/use-unsaved-changes"
+import { usePageTitle } from "@/hooks/use-page-title"
 import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, readDigestGenerations, type ToneDigestIntent } from "@/lib/digest-generation-recovery"
 
 const sectionLabels: Record<keyof DigestSections, { title: string; color: string }> = {
   done: { title: "Hecho", color: "bg-green-100 text-green-800" },
   need: { title: "Necesitamos", color: "bg-amber-100 text-amber-800" },
   next: { title: "Próximamente", color: "bg-blue-100 text-blue-800" },
-  metrics: { title: "Métricas", color: "bg-slate-100 text-slate-800" },
+  metrics: { title: "Métricas internas · no las ve el cliente", color: "bg-slate-100 text-slate-800" },
 }
 const toneLabels: Record<DigestTone, string> = { cercano: "Cercano", formal: "Formal", equipo: "Equipo" }
 
@@ -69,6 +73,7 @@ export default function DigestEditPage() {
   const [dateStr, setDateStr] = useState("")
   const [closing, setClosing] = useState("")
   const [includeSeo, setIncludeSeo] = useState(true)
+  const [includeGa4, setIncludeGa4] = useState(true)
   const [sections, setSections] = useState<Required<DigestSections>>({ done: [], need: [], next: [], metrics: [] })
   const [tone, setTone] = useState<DigestTone>("cercano")
   const [pendingTone, setPendingTone] = useState<DigestTone | null>(null)
@@ -95,6 +100,7 @@ export default function DigestEditPage() {
     queryFn: () => digestsApi.get(Number(id)),
     enabled: !!id,
   })
+  usePageTitle(digest?.client_name ? `Resumen de ${digest.client_name}` : null)
   const toneRecovery = useQuery({
     queryKey: ["digest-tone-recovery", userId, pendingToneIntent?.generation_key],
     queryFn: () => digestsApi.recoverGeneration(pendingToneIntent!.generation_key),
@@ -123,6 +129,7 @@ export default function DigestEditPage() {
       setDateStr(digest.content?.date || "")
       setClosing(digest.content?.closing || "")
       setIncludeSeo(digest.content?.include_seo ?? true)
+      setIncludeGa4(digest.content?.include_ga4 ?? true)
       setSections({
         done: digest.content?.sections?.done || [],
         need: digest.content?.sections?.need || [],
@@ -144,7 +151,7 @@ export default function DigestEditPage() {
     }
   }, [id, previewId])
 
-  const draftContent = (): DigestContent => ({ greeting, date: dateStr, sections, closing, include_seo: includeSeo })
+  const draftContent = (): DigestContent => ({ greeting, date: dateStr, sections, closing, include_seo: includeSeo, include_ga4: includeGa4 })
   const acceptVersion = (saved: Digest, sourceId: number, sourceEpoch: number) => {
     if (!active.current || Number(liveId.current) !== sourceId || viewEpoch.current !== sourceEpoch) return
     queryClient.setQueryData(["digest", String(saved.id)], saved)
@@ -161,7 +168,11 @@ export default function DigestEditPage() {
     mutationFn: (request: { sourceId: number; epoch: number; content: DigestContent; tone: DigestTone }) => digestsApi.update(request.sourceId, { content: request.content, tone: request.tone }),
     onSuccess: (saved, request) => {
       acceptVersion(saved, request.sourceId, request.epoch)
-      if (active.current) toast.success("Versión guardada; las anteriores se conservan")
+      // Mismo id = se sobrescribió (aún no había salido); otro = ya se había
+      // entregado y el servidor guardó una versión nueva para conservar la enviada.
+      if (active.current) toast.success(saved.id === request.sourceId
+        ? "Guardado"
+        : `Esta versión ya se había entregado: tus cambios quedan en la versión #${saved.id}`)
     },
     onError: (err) => toast.error(getErrorMessage(err, "No se pudo guardar. Tu borrador se conserva.")),
   })
@@ -235,6 +246,20 @@ export default function DigestEditPage() {
       if (active.current) setPreviewSaving(false)
     }
   }
+  // El PDF sale de la versión guardada: con cambios sin guardar, se guarda antes (como la vista previa).
+  const downloadPdf = async () => {
+    if (!canWrite || !unsaved) return digestsApi.pdf(Number(id))
+    const sourceEpoch = viewEpoch.current
+    setPreviewSaving(true)
+    try {
+      const saved = await digestsApi.update(Number(id), { content: draftContent(), tone })
+      if (!active.current || Number(liveId.current) !== Number(id) || viewEpoch.current !== sourceEpoch) return null
+      acceptVersion(saved, Number(id), sourceEpoch)
+      return await digestsApi.pdf(saved.id)
+    } finally {
+      if (active.current) setPreviewSaving(false)
+    }
+  }
   const handleReadPreview = (fmt: "slack" | "email") => {
     if (!digest?.content) {
       setPreviewUnavailable(true)
@@ -248,10 +273,12 @@ export default function DigestEditPage() {
     renderMutation.mutate({ digestId: digest.id, format: fmt })
   }
   const busy = updateMutation.isPending || toneChangeMutation.isPending || previewSaving
-  const unsaved = !!digest && (tone !== digest.tone || greeting !== (digest.content?.greeting || "") || closing !== (digest.content?.closing || "") || includeSeo !== (digest.content?.include_seo ?? true) ||
+  const unsaved = !!digest && (tone !== digest.tone || greeting !== (digest.content?.greeting || "") || closing !== (digest.content?.closing || "") || includeSeo !== (digest.content?.include_seo ?? true) || includeGa4 !== (digest.content?.include_ga4 ?? true) ||
     (["done", "need", "next", "metrics"] as const).some(section => JSON.stringify(sections[section]) !== JSON.stringify(digest.content?.sections?.[section] || [])))
+  useUnsavedChangesWarning(unsaved && canWrite)
   const catalog = sourceCatalog(digest?.raw_context ?? null)
   const seo = (digest?.raw_context?.seo ?? null) as DigestSeo | null
+  const ga4 = (digest?.raw_context?.ga4 ?? null) as DigestGa4 | null
 
   const handleCopy = async () => {
     try {
@@ -336,6 +363,7 @@ export default function DigestEditPage() {
             <Eye className="w-4 h-4 mr-2" />
             Vista previa
           </Button>
+          <DownloadPdfButton download={downloadPdf} disabled={!digest.content && !canWrite} />
           {canWrite && <Button onClick={() => updateMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, content: draftContent(), tone })} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -346,7 +374,7 @@ export default function DigestEditPage() {
           </Button>}
         </div>
       </div>
-      {canWrite && <p className="text-sm text-muted-foreground">Guardar conserva una nueva versión si hay cambios. No envía el resumen: revisa la vista previa antes de compartirlo.</p>}
+      {canWrite && <p className="text-sm text-muted-foreground">Guardar sobrescribe esta versión mientras no se haya entregado; si ya se entregó, guarda los cambios en una versión nueva y conserva la enviada. No envía el resumen: revisa la vista previa antes de compartirlo.</p>}
 
       {/* Tone selector */}
       <div className="flex gap-4 items-center">
@@ -465,11 +493,12 @@ export default function DigestEditPage() {
         </CardContent>
       </Card>
 
-      {seo && <DigestSeoPanel seo={seo} clientId={digest.client_id} include={includeSeo} canWrite={canWrite} onIncludeChange={setIncludeSeo} />}
+      {seo && <DigestSeoPanel seo={seo} include={includeSeo} canWrite={canWrite} onIncludeChange={setIncludeSeo} />}
+      {ga4 && ga4.status !== "no_property" && <DigestGa4Panel ga4={ga4} include={includeGa4} canWrite={canWrite} onIncludeChange={setIncludeGa4} />}
 
       </fieldset>
       {previewUnavailable && <p role="alert" className="text-sm text-muted-foreground">Esta versión no tiene contenido para previsualizar.</p>}
-      <p className="text-sm text-muted-foreground">Versión #{digest.id} · Las anteriores siguen disponibles en Resúmenes.</p>
+      <p className="text-sm text-muted-foreground">Versión #{digest.id} · Las entregadas y las de otro tono siguen disponibles en Resúmenes.</p>
       <ConfirmDialog open={pendingTone !== null && canWrite} onOpenChange={(open) => { if (!open) setPendingTone(null) }} title="Crear una versión con otro tono" description="Se guardará tu borrador actual y se generará otra versión. Podrás volver a la anterior desde Resúmenes." confirmLabel="Guardar y generar" onConfirm={() => { if (pendingTone && canWrite) toneChangeMutation.mutate({ sourceId: Number(id), epoch: viewEpoch.current, newTone: pendingTone, content: draftContent(), tone }) }} />
 
       {digest.raw_context && <DigestFacts context={digest.raw_context} />}

@@ -1,0 +1,11 @@
+{
+  "version": "20261020_task_comment_ai_draft_v1",
+  "sql": "ALTER TABLE task_comments ADD COLUMN IF NOT EXISTS is_ai_draft BOOLEAN NOT NULL DEFAULT false",
+  "columns": {
+    "is_ai_draft": [
+      "bool",
+      false,
+      "false"
+    ]
+  }
+}

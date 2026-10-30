@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 from backend.db.models import (
-    Task, TaskStatus, TaskPriority, TimeEntry, ProjectEvidence, EvidenceType,
+    Task, TaskStatus, TaskPriority, TimeEntry,
 )
 
 
@@ -38,6 +38,7 @@ async def test_create_task_returns_201_when_notification_fails(admin_client, adm
     fake_task.depends_on = None
     fake_task.created_by = admin_user.id
     fake_task.scheduled_date = None
+    fake_task.sort_rank = None
     fake_task.waiting_for = None
     fake_task.follow_up_date = None
     fake_task.retired_at = None
@@ -52,9 +53,9 @@ async def test_create_task_returns_201_when_notification_fails(admin_client, adm
     fake_task.recurrence_paused_at = None
     fake_task.recurrence_occurrence_date = None
     fake_task.recurring_parent_id = None
-    fake_task.unit_cost = None
-    fake_task.invoiced_at = None
     fake_task.link_url = None
+    fake_task.procedure_text = None
+    fake_task.procedure_url = None
     fake_task.client = None
     fake_task.category = None
     fake_task.assigned_user = None
@@ -160,68 +161,3 @@ async def test_stop_timer_does_not_commit_when_sync_fails(admin_client, admin_us
             await admin_client.post("/api/timer/stop", json={})
 
     mock_db.commit.assert_not_awaited()
-
-
-# ---------------------------------------------------------------------------
-# Test 3: Creating evidence with reload failure still returns 201
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_create_evidence_returns_201_when_reload_fails(admin_client, admin_user):
-    """POST /api/projects/{id}/evidence should return 201 even if reload fails."""
-    from datetime import datetime
-
-    fake_evidence = MagicMock(spec=ProjectEvidence)
-    fake_evidence.id = 7
-    fake_evidence.project_id = 1
-    fake_evidence.phase_id = None
-    fake_evidence.title = "Test evidence"
-    fake_evidence.url = "https://example.com"
-    fake_evidence.evidence_type = "other"
-    fake_evidence.description = None
-    fake_evidence.created_by = admin_user.id
-    fake_evidence.created_at = datetime(2026, 1, 1)
-    fake_evidence.updated_at = datetime(2026, 1, 1)
-    fake_evidence.file_name = None
-    fake_evidence.file_mime_type = None
-    fake_evidence.file_size_bytes = None
-    fake_evidence.file_content = None
-    fake_evidence.creator = admin_user
-    fake_evidence.phase = None
-
-    mock_db = AsyncMock()
-    # _ensure_project_exists (returns a project)
-    project_result = MagicMock()
-    project_result.scalar_one_or_none.return_value = MagicMock()  # project exists
-    mock_db.execute.return_value = project_result
-    # db.add must be a plain sync method (not AsyncMock)
-    mock_db.add = MagicMock()
-
-    from backend.db.database import get_db
-    from backend.main import app
-
-    app.dependency_overrides[get_db] = lambda: mock_db
-
-    with patch(
-        "backend.api.routes.evidence._reload_evidence",
-        new_callable=AsyncMock,
-        side_effect=Exception("reload failed"),
-    ), patch(
-        "backend.api.routes.evidence._to_response",
-        return_value={
-            "id": 7, "project_id": 1, "phase_id": None,
-            "title": "Test evidence", "url": "https://example.com",
-            "evidence_type": "other", "description": None,
-            "created_by": admin_user.id, "created_at": "2026-01-01T00:00:00",
-            "updated_at": "2026-01-01T00:00:00", "file_name": None,
-            "file_mime_type": None, "file_size_bytes": None,
-            "creator_name": "Admin Test", "phase_name": None,
-            "has_file": False, "download_url": None, "preview_url": None,
-        },
-    ):
-        response = await admin_client.post(
-            "/api/projects/1/evidence",
-            json={"title": "Test evidence", "url": "https://example.com"},
-        )
-
-    assert response.status_code == 201, f"Expected 201 but got {response.status_code}: {response.text}"

@@ -59,3 +59,20 @@ it("distinguishes failed activity reads from an empty inbox and supports keyboar
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
   expect(trigger).toHaveFocus()
 })
+
+it("sin alertas, las novedades sin leer se ven en la campana y abren Actividad", async () => {
+  api.count.mockResolvedValue({ count: 0 })
+  api.unread.mockResolvedValue({ count: 3 })
+  api.list.mockResolvedValue([{ id: 5, title: "Te han asignado una tarea", message: null, is_read: false, link_url: null, created_at: new Date().toISOString() }])
+  show()
+  expect(await screen.findByLabelText("3 novedades sin leer")).toBeInTheDocument()
+  await userEvent.click(screen.getByRole("button", { name: "Alertas y actividad" }))
+  expect(await screen.findByText("Te han asignado una tarea")).toBeInTheDocument()
+  expect(screen.getByRole("button", { name: "Actividad (3)" })).toHaveAttribute("aria-pressed", "true")
+})
+
+it("con alertas, manda el contador de alertas y no el punto de novedades", async () => {
+  show()
+  expect(await screen.findByLabelText("1 alertas pendientes")).toBeInTheDocument()
+  expect(screen.queryByLabelText(/novedades sin leer/)).not.toBeInTheDocument()
+})

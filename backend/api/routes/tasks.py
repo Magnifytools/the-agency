@@ -1,10 +1,10 @@
 from __future__ import annotations
 import logging
-from datetime import date as date_type, datetime, timezone
+from datetime import date as date_type, datetime, timedelta, timezone
 from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import and_, select, func, or_
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from sqlalchemy.orm import noload, selectinload
 
 from backend.db.database import get_db
 from backend.db.models import (
+    Client,
     Project,
     ProjectStatus,
     Task,
@@ -27,7 +28,9 @@ from backend.schemas.task import (
     CarryoverDecisionRequest, TaskCreate, TaskRestoreRequest, TaskUpdate, TaskResponse,
 )
 from backend.schemas.task import RecurrencePreviewRequest, RecurrenceSummaryResponse
-from backend.schemas.task_checklist import ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemResponse
+from backend.schemas.task_checklist import (
+    AgendaSubtaskResponse, ChecklistItemCreate, ChecklistItemUpdate, ChecklistItemResponse,
+)
 from backend.schemas.task_comment import TaskCommentCreate, TaskCommentResponse
 from backend.schemas.task_attachment import TaskAttachmentResponse
 from backend.schemas.pagination import PaginatedResponse
@@ -40,7 +43,14 @@ from backend.services.domain_writes import (
     create_task as create_task_write, lock_task, lock_task_patch,
     update_task as update_task_write,
 )
-from backend.services.recurrence import summarize_recurrence
+from backend.services.holidays import load_calendar
+from backend.services.recurrence import MAX_SHIFT_DAYS, summarize_recurrence
+from backend.services.task_notifications import notify_task_comment, task_link
+from backend.services.task_rank import ranks_for_move
+from backend.services.task_draft import (
+    TaskDraftError, build_draft_prompt, collect_draft_context, generate_task_draft,
+)
+from backend.core.rate_limiter import ai_limiter
 from backend.services.task_scope import validate_task_scope
 from backend.services.temporal import business_today
 from backend.services.task_retirement import (
@@ -73,7 +83,7 @@ def _safe_attr(obj, rel: str, attr: str) -> str | None:
         return None
 
 
-def _task_to_response(task: Task) -> TaskResponse:
+def _task_to_response(task: Task, holidays: frozenset[date_type] = frozenset()) -> TaskResponse:
     client_status = _safe_attr(task, "client", "status")
     project_status = _safe_attr(task, "project", "status")
     client_active = task.client_id is None or getattr(client_status, "value", client_status) == "active"
@@ -87,6 +97,8 @@ def _task_to_response(task: Task) -> TaskResponse:
         paused=task.recurrence_paused_at is not None,
         client_active=client_active,
         project_active=project_active,
+        weekdays=task.recurrence_weekdays,
+        holidays=holidays,
     )
     return TaskResponse(
         id=task.id,
@@ -109,6 +121,7 @@ def _task_to_response(task: Task) -> TaskResponse:
         depends_on=task.depends_on,
         created_by=task.created_by,
         scheduled_date=task.scheduled_date,
+        sort_rank=task.sort_rank,
         waiting_for=task.waiting_for,
         follow_up_date=task.follow_up_date,
         created_at=task.created_at,
@@ -119,15 +132,16 @@ def _task_to_response(task: Task) -> TaskResponse:
         is_recurring=task.is_recurring,
         recurrence_pattern=task.recurrence_pattern,
         recurrence_day=task.recurrence_day,
+        recurrence_weekdays=task.recurrence_weekdays,
         recurrence_end_date=task.recurrence_end_date,
         recurrence_anchor_date=task.recurrence_anchor_date,
         recurrence_paused_at=task.recurrence_paused_at,
         recurrence_summary=RecurrenceSummaryResponse(**recurrence_summary.__dict__),
         recurring_parent_id=task.recurring_parent_id,
         recurrence_occurrence_date=task.recurrence_occurrence_date,
-        unit_cost=float(task.unit_cost) if task.unit_cost is not None else None,
-        invoiced_at=task.invoiced_at,
         link_url=task.link_url,
+        procedure_text=task.procedure_text,
+        procedure_url=task.procedure_url,
         client_name=_safe_attr(task, "client", "name"),
         category_name=_safe_attr(task, "category", "name"),
         assigned_user_name=_safe_attr(task, "assigned_user", "full_name"),
@@ -148,6 +162,24 @@ async def _load_task_for_response(db: AsyncSession, task_id: int) -> Task | None
         .execution_options(populate_existing=True)
     )
     return result.scalar_one_or_none()
+
+
+async def _task_responses(db: AsyncSession, tasks) -> list[TaskResponse]:
+    """Respuestas con las próximas fechas de las plantillas ya movidas por los
+    festivos de quien las lleva (una sola lectura de festivos por petición)."""
+    tasks = list(tasks)
+    calendar = None
+    if any(task.is_recurring for task in tasks):
+        today = business_today()
+        calendar = await load_calendar(db, today - timedelta(days=MAX_SHIFT_DAYS), today + timedelta(days=800))
+    return [
+        _task_to_response(task, calendar.for_user(task.assigned_user) if calendar and task.is_recurring else frozenset())
+        for task in tasks
+    ]
+
+
+async def _task_response(db: AsyncSession, task: Task) -> TaskResponse:
+    return (await _task_responses(db, [task]))[0]
 
 
 async def _recurrence_delete_blocked(db: AsyncSession, task: Task) -> bool:
@@ -181,6 +213,8 @@ async def list_tasks(
     due_date_to: Optional[str] = Query(None),
     scheduled_date_from: Optional[str] = Query(None),
     scheduled_date_to: Optional[str] = Query(None),
+    unscheduled: Optional[bool] = Query(None),
+    completed_from: Optional[str] = Query(None, description="Completadas desde este día civil (YYYY-MM-DD)"),
     is_recurring: Optional[bool] = Query(None),
     timer_eligible: bool = Query(False),
     timer_scope: Literal["assigned", "assigned_or_created"] = Query("assigned"),
@@ -289,6 +323,15 @@ async def list_tasks(
             base = base.where(Task.scheduled_date <= d)
         except ValueError:
             raise HTTPException(status_code=422, detail="scheduled_date_to must be YYYY-MM-DD")
+    if unscheduled:
+        base = base.where(Task.scheduled_date.is_(None))
+    if completed_from is not None:
+        from datetime import date as date_type
+        try:
+            d = date_type.fromisoformat(completed_from)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="completed_from must be YYYY-MM-DD")
+        base = base.where(Task.completed_at >= civil_day_utc_bounds(d)[0])
 
     # Recurring filter: by default exclude templates from normal views
     if is_recurring is True:
@@ -319,17 +362,64 @@ async def list_tasks(
     result = await db.execute(query)
 
     return PaginatedResponse(
-        items=[_task_to_response(t) for t in result.scalars().all()],
+        items=await _task_responses(db, result.scalars().all()),
         total=total,
         page=page,
         page_size=page_size,
     )
 
 
+@router.get("/agenda/subtasks", response_model=list[AgendaSubtaskResponse])
+async def list_agenda_subtasks(
+    date: date_type = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_module("tasks")),
+):
+    """Subtareas que me tocan en tareas que lleva otra persona (o nadie): sin
+    hacer, con fecha hasta ``date`` o sin fecha. Las de mis propias tareas ya
+    salen con su tarea en Mi agenda."""
+    rows = (await db.execute(
+        select(TaskChecklist, Task.title, Task.assigned_to, Task.client_id)
+        .join(Task, Task.id == TaskChecklist.task_id)
+        .options(selectinload(TaskChecklist.assigned_user))
+        .where(
+            TaskChecklist.assigned_to == current_user.id,
+            TaskChecklist.is_done.is_(False),
+            or_(TaskChecklist.due_date.is_(None), TaskChecklist.due_date <= date),
+            Task.status != TaskStatus.completed,
+            Task.retired_at.is_(None),
+            Task.is_recurring.is_(False),
+            or_(Task.assigned_to.is_(None), Task.assigned_to != current_user.id),
+        )
+        .order_by(TaskChecklist.due_date.asc().nulls_last(), Task.title, TaskChecklist.order_index)
+        .limit(100)
+    )).all()
+    names = {
+        user_id: name for user_id, name in (await db.execute(
+            select(User.id, User.full_name).where(User.id.in_({row.assigned_to for row in rows if row.assigned_to}))
+        )).all()
+    } if rows else {}
+    clients = {
+        client_id: name for client_id, name in (await db.execute(
+            select(Client.id, Client.name).where(Client.id.in_({row.client_id for row in rows if row.client_id}))
+        )).all()
+    } if rows else {}
+    return [
+        AgendaSubtaskResponse(
+            **_checklist_response(item).model_dump(),
+            task_title=title,
+            task_assignee_name=names.get(assignee),
+            client_name=clients.get(client_id),
+        )
+        for item, title, assignee, client_id in rows
+    ]
+
+
 @router.get("/agenda", response_model=PaginatedResponse[TaskResponse])
 async def list_task_agenda(
     date: date_type = Query(...),
-    section: Literal["planned", "carryover", "unplanned", "completed"] = Query(...),
+    section: Literal["planned", "carryover", "unplanned", "followups", "completed"] = Query(...),
     assigned_to: str = Query("me"),
     timezone_offset_minutes: int = Query(
         0, ge=-840, le=840, deprecated=True,
@@ -387,6 +477,15 @@ async def list_task_agenda(
             Task.scheduled_date.is_(None),
             or_(Task.due_date.is_(None), due_day > date),
         )
+    elif section == "followups":
+        # Esperas cuyo seguimiento ya toca. Las que vencen hoy o antes ya salen
+        # en planned/carryover; aquí sólo las que no saldrían en ningún sitio.
+        base = base.where(
+            Task.status == TaskStatus.waiting,
+            Task.follow_up_date.is_not(None),
+            Task.follow_up_date <= date,
+            or_(Task.due_date.is_(None), due_day > date),
+        )
     else:
         utc_start, utc_end = civil_day_utc_bounds(date)
         base = base.where(
@@ -398,13 +497,13 @@ async def list_task_agenda(
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar() or 0
     query = (
         base.options(*_TASK_RESPONSE_OPTIONS)
-        .order_by(Task.priority.asc(), Task.due_date.asc().nullslast(), Task.created_at.asc(), Task.id.asc())
+        .order_by(Task.sort_rank.collate("C").asc().nullslast(), Task.priority.asc(), Task.due_date.asc().nullslast(), Task.created_at.asc(), Task.id.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
     result = await db.execute(query)
     return PaginatedResponse(
-        items=[_task_to_response(task) for task in result.scalars().all()],
+        items=await _task_responses(db, result.scalars().all()),
         total=total,
         page=page,
         page_size=page_size,
@@ -452,7 +551,7 @@ async def create_task(
                 type=TASK_ASSIGNED,
                 title=f"Nueva tarea asignada: {task.title}",
                 message=f"Se te ha asignado la tarea '{task.title}'",
-                link_url="/tasks",
+                link_url=task_link(task.id),
                 entity_type="task",
                 entity_id=task.id,
             )
@@ -465,7 +564,7 @@ async def create_task(
                 pass
 
     log_audit(current_user.id, "create", "task", task.id, details=f"title={task.title}")
-    return _task_to_response(task)
+    return await _task_response(db, task)
 
 
 @router.post("/recurrence-preview", response_model=RecurrenceSummaryResponse)
@@ -495,6 +594,13 @@ async def preview_recurrence(
     if (body.is_recurring and body.recurrence_pattern == "biweekly"
             and "recurrence_anchor_date" not in body.model_fields_set):
         anchor = business_today()
+    holidays: frozenset[date_type] = frozenset()
+    if body.is_recurring:
+        assignee = await db.get(User, body.assigned_to) if body.assigned_to is not None else None
+        today = business_today()
+        holidays = (await load_calendar(
+            db, today - timedelta(days=MAX_SHIFT_DAYS), today + timedelta(days=800),
+        )).for_user(assignee)
     summary = summarize_recurrence(
         is_recurring=body.is_recurring,
         pattern=body.recurrence_pattern,
@@ -504,6 +610,8 @@ async def preview_recurrence(
         paused=body.recurrence_paused,
         client_active=client_active,
         project_active=project_active,
+        weekdays=body.recurrence_weekdays,
+        holidays=holidays,
     )
     if summary.state == "invalid":
         raise HTTPException(422, summary.reason)
@@ -524,7 +632,7 @@ async def get_task(
     task = result.scalar_one_or_none()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    return _task_to_response(task)
+    return await _task_response(db, task)
 
 
 @router.put("/{task_id}", response_model=TaskResponse)
@@ -541,7 +649,6 @@ async def update_task(
     # Dependency changes lock both ids in order, avoiding A→B / B→A deadlocks.
     task = await lock_task_patch(db, task_id, update_data)
     old_assigned_to = task.assigned_to
-    old_status = task.status.value if hasattr(task.status, "value") else str(task.status)
     try:
         task = await update_task_write(
             db, task, update_data, actor=current_user,
@@ -561,23 +668,6 @@ async def update_task(
         await db.rollback()
         logger.error("Error actualizando tarea %d: %s", task_id, e)
         raise HTTPException(status_code=500, detail="Error interno del servidor")
-    # Automation hook: task_completed
-    new_status = update_data.get("status")
-    if new_status and str(new_status) == "completed" and old_status != "completed":
-        try:
-            from backend.api.routes.automations import execute_automations
-            await execute_automations("task_completed", {
-                "task_id": task_id,
-                "task_title": task.title,
-                "project_id": task.project_id,
-                "client_id": task.client_id,
-                "phase_id": task.phase_id,
-                "assigned_to": task.assigned_to,
-                "old_status": old_status,
-            }, db)
-        except Exception as e:
-            logger.warning("Automation hook failed for task %d: %s", task_id, e)
-
     task = await _load_task_for_response(db, task.id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found after update")
@@ -594,7 +684,7 @@ async def update_task(
                 type=TASK_ASSIGNED,
                 title=f"Tarea asignada: {task.title}",
                 message=f"Se te ha reasignado la tarea '{task.title}'",
-                link_url="/tasks",
+                link_url=task_link(task.id),
                 entity_type="task",
                 entity_id=task.id,
             )
@@ -606,7 +696,65 @@ async def update_task(
             except Exception:
                 pass
 
-    return _task_to_response(task)
+    return await _task_response(db, task)
+
+
+class TaskMoveBody(BaseModel):
+    """Arrastrar una tarea: la lista donde queda, en el orden que se ve, y lo
+    que cambia con ella (columna del tablero o día de Mi agenda)."""
+    model_config = {"extra": "forbid"}
+    ordered_ids: list[int] = Field(..., min_length=1, max_length=500)
+    status: Optional[TaskStatus] = None
+    scheduled_date: Optional[date_type] = None
+
+
+class TaskMoveResponse(BaseModel):
+    task: TaskResponse
+    # Rangos que han cambiado (el de la tarea y, si hubo que repartir, los demás).
+    ranks: dict[int, str]
+
+
+@router.post("/{task_id}/move", response_model=TaskMoveResponse)
+async def move_task(
+    task_id: int,
+    body: TaskMoveBody,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("tasks", write=True)),
+):
+    """Orden manual (``sort_rank``) y, si se pide, estado o día, en una sola
+    transacción y una sola entrada del Deshacer. El estado y el día pasan por
+    las mismas validaciones que el ``PUT`` (revisión, espera, retiradas)."""
+    ids = body.ordered_ids
+    if task_id not in ids or len(set(ids)) != len(ids):
+        raise HTTPException(422, "La lista debe incluir la tarea una sola vez")
+    changes = body.model_dump(exclude_unset=True, include={"status", "scheduled_date"})
+    if changes.get("status") == TaskStatus.waiting:
+        raise HTTPException(422, "Pon la tarea en espera desde su ficha indicando respuesta, responsable y fecha de revisión")
+    # Mismo orden de bloqueo que el cambio en bloque (por id).
+    rows = (await db.execute(
+        select(Task.id, Task.sort_rank).where(Task.id.in_(ids)).order_by(Task.id).with_for_update()
+    )).all()
+    if len(rows) != len(ids):
+        raise HTTPException(409, "La lista ha cambiado; recarga y vuelve a intentarlo")
+    ranks = ranks_for_move(ids, task_id, {row.id: row.sort_rank for row in rows})
+    if task_id in ranks:
+        changes["sort_rank"] = ranks[task_id]
+    task = await lock_task_patch(db, task_id, changes)
+    if changes:
+        task = await update_task_write(db, task, changes, actor=current_user)
+    others = [other for other in ranks if other != task_id]
+    if others:
+        # ORM (no UPDATE masivo) para que el reparto entre en el mismo Deshacer.
+        for other in (await db.execute(
+            select(Task).where(Task.id.in_(others)).options(noload("*"))
+            .execution_options(populate_existing=True)
+        )).scalars():
+            other.sort_rank = ranks[other.id]
+    await db.commit()
+    loaded = await _load_task_for_response(db, task_id)
+    if loaded is None:
+        raise HTTPException(404, "Task not found after move")
+    return TaskMoveResponse(task=await _task_response(db, loaded), ranks=ranks)
 
 
 @router.post("/{task_id}/carryover-decision", response_model=TaskResponse)
@@ -624,7 +772,7 @@ async def decide_carryover(
     loaded = await _load_task_for_response(db, task_id)
     if loaded is None:
         raise HTTPException(404, "Task not found after carryover decision")
-    return _task_to_response(loaded)
+    return await _task_response(db, loaded)
 
 
 @router.post("/{task_id}/restore", response_model=TaskResponse)
@@ -642,7 +790,7 @@ async def restore_task(
     loaded = await _load_task_for_response(db, task_id)
     if loaded is None:
         raise HTTPException(404, "Task not found after restore")
-    return _task_to_response(loaded)
+    return await _task_response(db, loaded)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -695,10 +843,19 @@ async def bulk_update_tasks(
 ):
     if not body.ids or len(body.ids) > 100:
         raise HTTPException(400, "Provide 1-100 task IDs")
-    allowed = {"status", "priority", "assigned_to", "category_id", "due_date", "client_id", "project_id", "phase_id"}
-    updates = {k: v for k, v in body.updates.items() if k in allowed}
-    if not updates:
+    allowed = {
+        "status", "priority", "assigned_to", "category_id", "due_date", "scheduled_date",
+        "client_id", "project_id", "phase_id",
+    }
+    raw_updates = {k: v for k, v in body.updates.items() if k in allowed}
+    if not raw_updates:
         raise HTTPException(400, "No valid fields to update")
+    # Mismos tipos que el PUT de una tarea: las fechas llegan como texto y la
+    # columna las quiere como fecha.
+    try:
+        updates = TaskUpdate.model_validate(raw_updates).model_dump(exclude_unset=True)
+    except ValidationError:
+        raise HTTPException(422, "Valores no válidos para actualizar las tareas")
     if updates.get("status") == TaskStatus.waiting.value:
         raise HTTPException(422, "Pon cada tarea en espera desde su ficha indicando respuesta, responsable y fecha de revisión")
 
@@ -915,7 +1072,7 @@ async def list_comments(
     return [
         TaskCommentResponse(
             id=c.id, task_id=c.task_id, user_id=c.user_id, text=c.text,
-            user_name=c.user.full_name if c.user else None,
+            user_name=c.user.full_name if c.user else None, is_ai_draft=c.is_ai_draft,
             created_at=c.created_at, updated_at=c.updated_at,
         )
         for c in r.scalars().all()
@@ -929,17 +1086,59 @@ async def create_comment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module("tasks", write=True)),
 ):
-    # Verify task exists
-    t = await db.execute(select(Task.id).where(Task.id == task_id))
-    if not t.scalar_one_or_none():
+    task = (await db.execute(
+        select(Task).options(noload("*")).where(Task.id == task_id)
+    )).scalar_one_or_none()
+    if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     comment = TaskComment(task_id=task_id, user_id=current_user.id, text=body.text)
     db.add(comment)
+    await db.flush()
+    await notify_task_comment(db, task, comment, current_user, body.mention_ids)
     await db.commit()
     await safe_refresh(db, comment, log_context="tasks")
     return TaskCommentResponse(
         id=comment.id, task_id=comment.task_id, user_id=comment.user_id,
         text=comment.text, user_name=current_user.full_name,
+        created_at=comment.created_at, updated_at=comment.updated_at,
+    )
+
+
+@router.post("/{task_id}/draft", response_model=TaskCommentResponse, status_code=201)
+async def create_ai_draft(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("tasks", write=True)),
+):
+    """Primer borrador del entregable con IA, guardado como comentario marcado.
+
+    No cambia la tarea: ni estado, ni checklist, ni nada se envía fuera.
+    """
+    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not (task.procedure_text or "").strip():
+        raise HTTPException(status_code=422, detail="Esta tarea no tiene procedimiento escrito")
+    if task.retired_at is not None:
+        raise HTTPException(status_code=409, detail="La tarea está retirada; restáurala para pedir un borrador")
+    ai_limiter.check(current_user.id, max_requests=5, window_seconds=300)
+    prompt = build_draft_prompt(await collect_draft_context(db, task, current_user))
+    actor_id, actor_name = current_user.id, current_user.full_name
+    # Sin transacción abierta durante la llamada a Claude (hasta 100 s).
+    await db.commit()
+    try:
+        draft = await generate_task_draft(prompt)
+    except TaskDraftError as exc:
+        raise HTTPException(status_code=502, detail=exc.detail) from None
+    if not (await db.execute(select(Task.id).where(Task.id == task_id))).scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Task not found")
+    comment = TaskComment(task_id=task_id, user_id=actor_id, text=draft, is_ai_draft=True)
+    db.add(comment)
+    await db.commit()
+    await safe_refresh(db, comment, log_context="tasks")
+    return TaskCommentResponse(
+        id=comment.id, task_id=comment.task_id, user_id=comment.user_id,
+        text=comment.text, user_name=actor_name, is_ai_draft=True,
         created_at=comment.created_at, updated_at=comment.updated_at,
     )
 
@@ -992,10 +1191,9 @@ async def list_attachments(
 
 from fastapi import UploadFile, File as FileParam
 
+from backend.services.file_uploads import attachment_type, read_limited, stored_file_response_args
 
-ALLOWED_ATTACHMENT_MIME = {"application/pdf", "image/png", "image/jpeg", "image/gif", "text/plain", "text/csv",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
@@ -1011,14 +1209,8 @@ async def upload_task_attachment(
     t = await db.execute(select(Task.id).where(Task.id == task_id))
     if not t.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Task not found")
-    # Validate MIME type
-    mime = file.content_type or "application/octet-stream"
-    if mime not in ALLOWED_ATTACHMENT_MIME:
-        raise HTTPException(status_code=400, detail="Tipo de archivo no permitido")
-    # Validate size
-    content = await file.read(MAX_ATTACHMENT_BYTES + 1)
-    if len(content) > MAX_ATTACHMENT_BYTES:
-        raise HTTPException(status_code=413, detail="Adjunto demasiado grande (máx 10 MB)")
+    mime = attachment_type(file.filename or "")
+    content = await read_limited(file, MAX_ATTACHMENT_BYTES)
     # Deduplicate filename
     original_name = file.filename or "file"
     existing = await db.execute(
@@ -1037,7 +1229,7 @@ async def upload_task_attachment(
         task_id=task_id,
         name=final_name,
         description=description or None,
-        mime_type=file.content_type or "application/octet-stream",
+        mime_type=mime,
         size_bytes=len(content),
         content=content,
         uploaded_by=current_user.id,
@@ -1069,11 +1261,7 @@ async def download_attachment(
     att = r.scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    return Response(
-        content=att.content,
-        media_type=att.mime_type,
-        headers={"Content-Disposition": f'attachment; filename="{att.name.replace(chr(34), "_").replace(chr(10), "_").replace(chr(13), "_")}"'},
-    )
+    return Response(content=att.content, **stored_file_response_args(att.name, att.mime_type))
 
 
 @router.get("/{task_id}/attachments/{attachment_id}/preview")
@@ -1083,7 +1271,7 @@ async def preview_attachment(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("tasks")),
 ):
-    """Serve attachment inline for browser preview (images, PDFs)."""
+    """Serve attachment inline for browser preview (only images and PDFs; the rest downloads)."""
     from fastapi.responses import Response
     r = await db.execute(
         select(TaskAttachment)
@@ -1092,12 +1280,7 @@ async def preview_attachment(
     att = r.scalar_one_or_none()
     if not att:
         raise HTTPException(status_code=404, detail="Attachment not found")
-    safe_name = att.name.replace('"', '_').replace('\n', '_').replace('\r', '_')
-    return Response(
-        content=att.content,
-        media_type=att.mime_type,
-        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
-    )
+    return Response(content=att.content, **stored_file_response_args(att.name, att.mime_type, inline=True))
 
 
 @router.delete("/{task_id}/attachments/{attachment_id}", status_code=204)

@@ -11,7 +11,7 @@ from backend.api.utils.db_helpers import safe_refresh
 from backend.core.security import hash_password
 from backend.db.database import get_db
 from backend.db.models import Project, ProjectStatus, Task, TaskStatus, User, UserPermission, UserRole
-from backend.schemas.invitation import PermissionItem, UserPermissionsUpdate
+from backend.schemas.permission import PermissionItem, UserPermissionsUpdate
 from backend.schemas.pagination import PaginatedResponse
 from backend.schemas.user import UserCreate, UserListResponse, UserUpdate
 
@@ -25,10 +25,10 @@ _ADMIN_UPDATABLE = _MEMBER_UPDATABLE | {"role", "hourly_rate", "cost_per_hour", 
 # module is introduced — silent failure here means stored permissions never
 # take effect because no route checks them.
 _VALID_MODULES = frozenset({
-    "billing", "clients", "communications", "dashboard", "digests",
+    "clients", "communications", "credentials", "dashboard", "digests",
     "finance_advisor", "finance_expenses", "finance_forecasts", "finance_import",
     "finance_income", "finance_taxes",
-    "growth", "leads", "pm", "projects", "proposals", "reports", "tasks", "timesheet",
+    "growth", "leads", "pm", "projects", "proposals", "tasks", "timesheet", "web",
 })
 
 

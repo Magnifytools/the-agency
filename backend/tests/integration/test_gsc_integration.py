@@ -18,10 +18,23 @@ pytestmark = pytest.mark.integration
 SITE = "sc-domain:ejemplo.com"
 
 
-async def _connect(db, status="connected"):
-    db.add(GscConnection(id=1, google_email="seo@magnify.ing", refresh_token="v1:x",
-                         status=status, connected_at=datetime.now(UTC)))
+async def _connect(db, status="connected", email="seo@magnify.ing", token="v1:x"):
+    connection = GscConnection(google_email=email, refresh_token=token, status=status,
+                               connected_at=datetime.now(UTC))
+    db.add(connection)
     await db.flush()
+    return connection
+
+
+def _sees(*sites, permission="siteOwner"):
+    """Cuenta de mentira que ve estas propiedades (o todas si no se dice ninguna)."""
+    async def list_fn(_token):
+        return [{"site_url": s, "permission": permission} for s in sites]
+    return list_fn
+
+
+async def _sees_everything(db):
+    return _sees(*(await gsc_service.tracked_sites(db)))
 
 
 async def _client(db, gsc_url=SITE, name="Ejemplo"):
@@ -90,7 +103,7 @@ async def test_site_error_is_recorded_and_other_sites_continue(db_session):
             raise GscSiteError("no_access")
         return _days(end, end)
 
-    result = await gsc_service.sync_all(_session_factory(db_session), fetch=fetch, today=date(2026, 10, 18))
+    result = await gsc_service.sync_all(_session_factory(db_session), fetch=fetch, list_fn=await _sees_everything(db_session), today=date(2026, 10, 18))
 
     assert result == {"status": "ok", "synced": 1, "failed": 1}
     failed = await db_session.get(GscSiteSync, "sc-domain:sin-acceso.com")
@@ -104,10 +117,10 @@ async def test_revoked_token_marks_connection_for_reconnect(db_session):
     async def fetch(*_):
         raise GscAuthError("invalid_grant")
 
-    result = await gsc_service.sync_all(_session_factory(db_session), fetch=fetch)
+    result = await gsc_service.sync_all(_session_factory(db_session), fetch=fetch, list_fn=await _sees_everything(db_session))
 
     assert result["status"] == "reconnect_required"
-    assert (await db_session.get(GscConnection, 1)).status == "reconnect_required"
+    assert (await db_session.scalar(select(GscConnection))).status == "reconnect_required"
 
 
 async def _imported(db, *, last_data_date):
@@ -180,13 +193,91 @@ async def test_status_endpoint_groups_clients_by_property(admin_client, db_sessi
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["connection"]["google_email"] == "seo@magnify.ing"
+    assert [c["google_email"] for c in body["connections"]] == ["seo@magnify.ing"]
     assert [s["site_url"] for s in body["sites"]] == ["https://ejemplo.com/"]
     assert sorted(c["name"] for c in body["sites"][0]["clients"]) == ["Ejemplo", "Ejemplo bis"]
 
 
 async def test_only_admins_connect_or_import(member_client):
     for method, path in (("get", "/api/gsc/auth-url"), ("post", "/api/gsc/sync"),
-                         ("post", "/api/gsc/disconnect"), ("get", "/api/gsc/sites")):
+                         ("post", "/api/gsc/connections/1/disconnect"), ("get", "/api/gsc/sites")):
         resp = await getattr(member_client, method)(path)
         assert resp.status_code == 403, path
+
+
+# ── Varias cuentas de Google ─────────────────────────────────────────
+
+
+async def test_each_property_is_imported_with_the_account_that_sees_it(db_session):
+    agencia = await _connect(db_session, email="digital@magnify.ing", token="v1:agencia")
+    david = await _connect(db_session, email="david@magnify.ing", token="v1:david")
+    await _client(db_session, "sc-domain:a.com", name="A")
+    await _client(db_session, "sc-domain:b.com", name="B")
+    await _client(db_session, "sc-domain:nadie.com", name="Nadie")
+    used = {}
+
+    async def list_fn(token):
+        if token == "v1:agencia":
+            return [{"site_url": "sc-domain:a.com", "permission": "siteRestrictedUser"},
+                    {"site_url": "sc-domain:b.com", "permission": "siteRestrictedUser"}]
+        return [{"site_url": "sc-domain:b.com", "permission": "siteOwner"}]
+
+    async def fetch(token, site, start, end):
+        used[site] = token
+        return _days(end, end)
+
+    result = await gsc_service.sync_all(_session_factory(db_session), fetch=fetch, list_fn=list_fn,
+                                        today=date(2026, 10, 18))
+
+    assert result == {"status": "ok", "synced": 2, "failed": 1}
+    # b.com la ven las dos: gana la de más permiso.
+    assert used == {"sc-domain:a.com": "v1:agencia", "sc-domain:b.com": "v1:david"}
+    assert (await db_session.get(GscSiteSync, "sc-domain:a.com")).connection_id == agencia.id
+    assert (await db_session.get(GscSiteSync, "sc-domain:b.com")).connection_id == david.id
+    nadie = await db_session.get(GscSiteSync, "sc-domain:nadie.com")
+    assert nadie.error_code == "no_access" and nadie.connection_id is None
+
+
+async def test_a_revoked_account_does_not_stop_the_others(db_session):
+    caida = await _connect(db_session, email="vieja@magnify.ing", token="v1:vieja")
+    await _connect(db_session, email="digital@magnify.ing", token="v1:buena")
+    await _client(db_session, SITE)
+
+    async def list_fn(token):
+        if token == "v1:vieja":
+            raise GscAuthError("invalid_grant")
+        return [{"site_url": SITE, "permission": "siteFullUser"}]
+
+    async def fetch(token, site, start, end):
+        return _days(end, end)
+
+    result = await gsc_service.sync_all(_session_factory(db_session), fetch=fetch, list_fn=list_fn,
+                                        today=date(2026, 10, 18))
+
+    assert result == {"status": "reconnect_required", "synced": 1, "failed": 0}
+    assert (await db_session.get(GscConnection, caida.id)).status == "reconnect_required"
+    assert (await db_session.get(GscSiteSync, SITE)).backfilled_at is not None
+
+
+async def test_connecting_the_same_google_account_again_renews_it(db_session):
+    first = await gsc_service.save_connection(db_session, refresh_token="uno", email="Digital@Magnify.ing", user_id=None)
+    again = await gsc_service.save_connection(db_session, refresh_token="dos", email="digital@magnify.ing", user_id=None)
+    other = await gsc_service.save_connection(db_session, refresh_token="tres", email="david@magnify.ing", user_id=None)
+
+    assert first.id == again.id != other.id
+    assert (await db_session.scalar(select(func.count()).select_from(GscConnection))) == 2
+    assert again.google_email == "digital@magnify.ing"
+
+
+async def test_disconnecting_one_account_keeps_the_rest(admin_client, db_session):
+    a = (await _connect(db_session, email="a@magnify.ing")).id
+    b = (await _connect(db_session, email="b@magnify.ing")).id
+    await db_session.commit()
+
+    resp = await admin_client.post(f"/api/gsc/connections/{a}/disconnect")
+
+    assert resp.status_code == 200
+    db_session.expire_all()
+    assert await db_session.get(GscConnection, a) is None
+    assert await db_session.get(GscConnection, b) is not None
+    assert (await admin_client.post("/api/gsc/connections/999/disconnect")).status_code == 404

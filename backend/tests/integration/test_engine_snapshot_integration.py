@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from backend.config import settings
 from backend.db.models import Client, ClientStatus
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.integration
 
@@ -202,15 +203,15 @@ async def test_engine_link_validation_happens_before_client_row_lock(
             request = asyncio.create_task(http.put(
                 f"/api/clients/{client_id}", json={"engine_project_id": 82}
             ))
-            await asyncio.wait_for(validation_started.wait(), timeout=2)
+            await asyncio.wait_for(validation_started.wait(), timeout=HANG_TIMEOUT)
             async with session_factory() as concurrent:
                 locked = (await concurrent.execute(
                     select(Client).where(Client.id == client_id).with_for_update()
                 )).scalar_one()
                 locked.name = "Changed while Engine validates"
-                await asyncio.wait_for(concurrent.commit(), timeout=1)
+                await asyncio.wait_for(concurrent.commit(), timeout=HANG_TIMEOUT)
             release_validation.set()
-            response = await asyncio.wait_for(request, timeout=2)
+            response = await asyncio.wait_for(request, timeout=HANG_TIMEOUT)
         assert response.status_code == 200, response.text
         async with session_factory() as verify:
             current = await verify.get(Client, client_id)
@@ -545,14 +546,14 @@ async def test_sync_cas_does_not_write_snapshot_after_relink_or_deactivation(
 
     try:
         sync_task = asyncio.create_task(engine_sync_service.sync_engine_metrics())
-        await asyncio.wait_for(_HeldSnapshotHTTP.started.wait(), timeout=2)
+        await asyncio.wait_for(_HeldSnapshotHTTP.started.wait(), timeout=HANG_TIMEOUT)
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
         ) as mutator:
             response = await mutator.put(f"/api/clients/{client_id}", json=mutation)
         assert response.status_code == 200, response.text
         _HeldSnapshotHTTP.release.set()
-        assert await asyncio.wait_for(sync_task, timeout=2) == {"synced": 0, "failed": 1}
+        assert await asyncio.wait_for(sync_task, timeout=HANG_TIMEOUT) == {"synced": 0, "failed": 1}
 
         async with session_factory() as verify:
             current = await verify.get(Client, client_id)

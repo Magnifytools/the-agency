@@ -6,6 +6,9 @@ export const taskKeys = {
   list: (filters: readonly unknown[]) => ["tasks", "list", ...filters] as const,
   agenda: (section: string, date: string, userId: number | undefined, timezoneOffset: number, scope: "mine" | "team" = "mine") =>
     ["tasks", "agenda", section, date, userId, timezoneOffset, scope] as const,
+  /** Subtareas que me tocan en tareas de otros (Mi agenda). Sin fecha = todas. */
+  subtasks: (date?: string, userId?: number) =>
+    (date === undefined ? ["tasks", "agenda-subtasks"] : ["tasks", "agenda-subtasks", date, userId]) as QueryKey,
   recurring: () => ["tasks", "recurring"] as const,
   project: (projectId: number) => ["tasks", "project", projectId] as const,
   assigned: (scope: string, ...filters: readonly unknown[]) => ["tasks", "assigned", scope, ...filters] as const,
@@ -23,6 +26,7 @@ export const projectKeys = {
 export const dashboardKeys = {
   all: () => ["dashboard"] as const,
   overview: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "overview", userId ?? "anonymous", permissionSignature, year, month] as const,
+  operations: (userId?: number, permissionSignature = "") => ["dashboard", "operations", userId ?? "anonymous", permissionSignature] as const,
   financialOverview: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "financial-overview", userId ?? "anonymous", permissionSignature, year, month] as const,
   profitability: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "profitability", userId ?? "anonymous", permissionSignature, year, month] as const,
   team: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "team", userId ?? "anonymous", permissionSignature, year, month] as const,
@@ -31,11 +35,6 @@ export const dashboardKeys = {
   monthlyClose: (year: number, month: number, userId?: number, permissionSignature = "") => ["dashboard", "monthly-close", userId ?? "anonymous", permissionSignature, year, month] as const,
   financialSettings: (userId?: number, permissionSignature = "") => ["dashboard", "financial-settings", userId ?? "anonymous", permissionSignature] as const,
   today: () => ["dashboard", "today"] as const,
-}
-
-export const myWeekKeys = {
-  all: () => ["my-week"] as const,
-  week: (weekStart: string) => ["my-week", weekStart] as const,
 }
 
 export const briefingKeys = {
@@ -49,6 +48,44 @@ export const timeKeys = {
   client: (clientId: number) => ["time-entries", "client", clientId] as const,
   week: (weekStart?: string) => ["time-entries", "week", weekStart ?? "current"] as const,
   reports: () => ["time-entries", "reports"] as const,
+}
+
+// Webs: vigilancia de cambios. Todo cuelga de ["web-changes"] para poder
+// invalidar por familias: revisar toca listas y fichas, no los diffs (caros e
+// inmutables: el antes y el después de un cambio no cambian).
+export const webKeys = {
+  all: () => ["web-changes"] as const,
+  changeLists: () => ["web-changes", "list"] as const,
+  changes: (filters: object) => ["web-changes", "list", filters] as const,
+  change: (changeId: string) => ["web-changes", "change", changeId] as const,
+  diff: (changeId: string) => ["web-changes", "diff", changeId] as const,
+  htmlDiff: (changeId: string) => ["web-changes", "html-diff", changeId] as const,
+  watchLists: () => ["web-changes", "watches"] as const,
+  watches: (clientId: number, includeArchived = false) => ["web-changes", "watches", clientId, includeArchived] as const,
+  watchDetails: () => ["web-changes", "watch"] as const,
+  watch: (watchId: string) => ["web-changes", "watch", watchId] as const,
+  watchHistory: (watchId: string) => ["web-changes", "watch-history", watchId] as const,
+  progress: (clientId: number) => ["web-changes", "progress", clientId] as const,
+  runs: (clientId: number) => ["web-changes", "runs", clientId] as const,
+  runErrors: (runId: string) => ["web-changes", "run-errors", runId] as const,
+  settings: (clientId: number) => ["web-changes", "settings", clientId] as const,
+}
+
+/** Tras revisar: listas, fichas de cambio y fichas de URL. Los diffs no. */
+export function invalidateWebReview(queryClient: QueryClient) {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: webKeys.changeLists() }),
+    queryClient.invalidateQueries({ queryKey: ["web-changes", "change"] }),
+    queryClient.invalidateQueries({ queryKey: webKeys.watchDetails() }),
+  ])
+}
+
+/** Tras un barrido o un cambio en las URLs: todo lo de webs menos los diffs. */
+export function invalidateWebWatches(queryClient: QueryClient) {
+  return queryClient.invalidateQueries({
+    predicate: (query) => query.queryKey[0] === "web-changes"
+      && query.queryKey[1] !== "diff" && query.queryKey[1] !== "html-diff",
+  })
 }
 
 export type OperationalImpact = {
@@ -76,18 +113,17 @@ export async function invalidateTaskChange(
     queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
     queryClient.invalidateQueries({ queryKey: ["active-timer"] }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
-    queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
-    queryClient.invalidateQueries({ queryKey: ["client-health-scores"] }),
+    queryClient.invalidateQueries({ queryKey: ["client-portfolio"] }),
   ]
-  if (clientIds.length === 0) invalidations.push(queryClient.invalidateQueries({ queryKey: ["client-health"] }))
+  if (clientIds.length === 0) invalidations.push(queryClient.invalidateQueries({ queryKey: ["client-status"] }))
   for (const clientId of clientIds) {
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: clientKeys.summary(clientId) }),
       queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
       queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
-      queryClient.invalidateQueries({ queryKey: ["client-health", clientId] }),
+      queryClient.invalidateQueries({ queryKey: ["client-status", clientId] }),
     )
   }
   await Promise.all(invalidations)
@@ -100,19 +136,18 @@ export async function invalidateProjectChange(queryClient: QueryClient, affected
     queryClient.invalidateQueries({ queryKey: projectKeys.all() }),
     queryClient.invalidateQueries({ queryKey: taskKeys.all() }),
     queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
-    queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
     queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
-    queryClient.invalidateQueries({ queryKey: ["client-health-scores"] }),
+    queryClient.invalidateQueries({ queryKey: ["client-portfolio"] }),
   ]
-  if (clientIds.length === 0) invalidations.push(queryClient.invalidateQueries({ queryKey: ["client-health"] }))
+  if (clientIds.length === 0) invalidations.push(queryClient.invalidateQueries({ queryKey: ["client-status"] }))
   for (const clientId of clientIds) {
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: clientKeys.summary(clientId) }),
       queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
       queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
-      queryClient.invalidateQueries({ queryKey: ["client-health", clientId] }),
+      queryClient.invalidateQueries({ queryKey: ["client-status", clientId] }),
     )
   }
   await Promise.all(invalidations)
@@ -146,12 +181,23 @@ export function restoreQuerySnapshot(queryClient: QueryClient, snapshot?: QueryS
 export const clientKeys = {
   all: () => ["clients"] as const,
   dashboard: (clientId: number) => ["client-dashboard", clientId] as const,
-  billing: (clientId: number) => ["billing-events", clientId] as const,
-  billingStatus: (clientId: number) => ["billing-status", clientId] as const,
   summary: (clientId: number) => ["client-summary", clientId] as const,
   summaries: () => ["client-summary"] as const,
-  resources: (clientId: number) => ["client-resources", clientId] as const,
-  reports: (clientId: number) => ["client-reports", clientId] as const,
+}
+
+// Control SEO: todo lo de un cliente cuelga de ["client-seo", id] (los términos
+// de marca cambian el reparto, así que guardar la ficha lo invalida entero).
+export const clientSeoKeys = {
+  all: (clientId: number) => ["client-seo", clientId] as const,
+  summary: (clientId: number, days: number) => ["client-seo", clientId, "summary", days] as const,
+  list: (clientId: number, kind: "queries" | "pages", params: object) =>
+    ["client-seo", clientId, kind, params] as const,
+  history: (clientId: number, query: string) => ["client-seo", clientId, "history", query] as const,
+  groups: (clientId: number, days: number) => ["client-seo", clientId, "groups", days] as const,
+  leads: (clientId: number) => ["client-seo", clientId, "leads"] as const,
+  annotations: (clientId: number, from: string, to: string) => ["client-seo", clientId, "annotations", from, to] as const,
+  impact: (clientId: number, params: object) => ["client-seo", clientId, "impact", params] as const,
+  decay: (clientId: number) => ["client-seo", clientId, "decay"] as const,
 }
 
 export async function invalidateClientChange(queryClient: QueryClient, clientIds: number[] = []) {
@@ -163,7 +209,7 @@ export async function invalidateClientChange(queryClient: QueryClient, clientIds
     queryClient.invalidateQueries({ queryKey: ["clients-active"] }),
     queryClient.invalidateQueries({ queryKey: ["clients-active-list"] }),
     queryClient.invalidateQueries({ queryKey: ["clients-list"] }),
-    queryClient.invalidateQueries({ queryKey: ["client-health-scores"] }),
+    queryClient.invalidateQueries({ queryKey: ["client-portfolio"] }),
     queryClient.invalidateQueries({ queryKey: ["active-timer"] }),
     queryClient.invalidateQueries({ queryKey: ["admin-active-timers"] }),
     queryClient.invalidateQueries({ queryKey: projectKeys.all() }),
@@ -171,7 +217,6 @@ export async function invalidateClientChange(queryClient: QueryClient, clientIds
     queryClient.invalidateQueries({ queryKey: timeKeys.all() }),
     queryClient.invalidateQueries({ queryKey: incidentKeys.all() }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all() }),
-    queryClient.invalidateQueries({ queryKey: myWeekKeys.all() }),
     queryClient.invalidateQueries({ queryKey: briefingKeys.all() }),
     queryClient.invalidateQueries({ queryKey: searchKeys.all() }),
   ]
@@ -179,7 +224,8 @@ export async function invalidateClientChange(queryClient: QueryClient, clientIds
     invalidations.push(
       queryClient.invalidateQueries({ queryKey: clientKeys.dashboard(clientId) }),
       queryClient.invalidateQueries({ queryKey: ["client-activity", clientId] }),
-      queryClient.invalidateQueries({ queryKey: ["client-health", clientId] }),
+      queryClient.invalidateQueries({ queryKey: ["client-status", clientId] }),
+      queryClient.invalidateQueries({ queryKey: clientSeoKeys.all(clientId) }),
     )
   }
   await Promise.all(invalidations)
@@ -196,15 +242,16 @@ export const holdedKeys = {
   clientInvoices: (clientId: number) => ["holded-client-invoices", clientId] as const,
 }
 
-export const vaultKeys = {
-  assets: (category?: string) => ["vault-assets", category ?? "all"] as const,
-}
-
 export const inboxKeys = {
   all: (userId: number) => ["inbox", userId] as const,
   list: (userId: number, status?: string, pageSize = 50) => ["inbox", userId, "list", status ?? "all", pageSize] as const,
   preview: (userId: number, status?: string, limit = 5) => ["inbox", userId, "preview", status ?? "all", limit] as const,
   count: (userId: number) => ["inbox", userId, "count"] as const,
+}
+
+export const suggestionKeys = {
+  all: ["suggestions"] as const,
+  list: (status: string) => ["suggestions", "list", status] as const,
 }
 
 export const searchKeys = {

@@ -155,3 +155,46 @@ class ClientDashboardResponse(BaseModel):
     team_breakdown: list[TeamBreakdownItem]
     actual_income: float = 0
     monthly_profitability: dict[str, dict] = {}
+
+
+class OperationsRecurringFee(BaseModel):
+    total: float
+    clients: int
+
+
+class OperationsProjectItem(BaseModel):
+    id: int
+    name: str
+    reasons: list[str]
+
+
+class OperationsProjects(BaseModel):
+    count: int
+    items: list[OperationsProjectItem]
+
+
+class OperationsClientItem(BaseModel):
+    id: int
+    name: str
+    reason: Optional[str] = None
+
+
+class OperationsClients(BaseModel):
+    count: int
+    items: list[OperationsClientItem]
+
+
+class OperationsDigests(BaseModel):
+    count: int
+    month: str
+    period_start: str
+    period_end: str
+    items: list[OperationsClientItem]
+
+
+class DashboardOperations(BaseModel):
+    """Fila "Operación". ``None`` = quien mira no puede leer esa fuente."""
+    recurring_fee: Optional[OperationsRecurringFee]
+    projects_at_risk: Optional[OperationsProjects]
+    clients_to_act: Optional[OperationsClients]
+    digests_unsent: Optional[OperationsDigests]

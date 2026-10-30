@@ -1,0 +1,43 @@
+{
+  "version": "20261022_leads_engine_v1",
+  "statements": [
+    "ALTER TABLE clients ADD COLUMN IF NOT EXISTS ga4_lead_events JSONB NOT NULL DEFAULT '[\"generate_lead\"]'::jsonb",
+    "CREATE TABLE IF NOT EXISTS ga4_lead_daily (\n property_id VARCHAR(32) NOT NULL,\n date DATE NOT NULL,\n landing_page TEXT NOT NULL,\n channel VARCHAR(64) NOT NULL,\n leads INTEGER NOT NULL,\n PRIMARY KEY (property_id, date, landing_page, channel),\n CONSTRAINT ck_ga4_lead_daily_landing_length CHECK (char_length(landing_page) <= 2000)\n)",
+    "ALTER TABLE ga4_property_sync ADD COLUMN IF NOT EXISTS leads_backfilled_at TIMESTAMPTZ",
+    "ALTER TABLE ga4_property_sync ADD COLUMN IF NOT EXISTS leads_events VARCHAR(1000)",
+    "ALTER TABLE ga4_property_sync ADD COLUMN IF NOT EXISTS leads_synced_through DATE",
+    "ALTER TABLE ga4_property_sync ADD COLUMN IF NOT EXISTS leads_covered_from DATE",
+    "ALTER TABLE ga4_property_sync ADD COLUMN IF NOT EXISTS leads_error_code VARCHAR(64)",
+    "ALTER TABLE gsc_query_monthly ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'google'",
+    "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_gsc_query_monthly_source' AND conrelid = 'public.gsc_query_monthly'::regclass) THEN ALTER TABLE gsc_query_monthly ADD CONSTRAINT ck_gsc_query_monthly_source CHECK (source IN ('google', 'engine')); END IF; END $$"
+  ],
+  "client_columns": {
+    "ga4_lead_events": ["jsonb", false, "'[\"generate_lead\"]'::jsonb"]
+  },
+  "tables": {
+    "ga4_lead_daily": {
+      "property_id": ["varchar", false, 32],
+      "date": ["date", false, null],
+      "landing_page": ["text", false, null],
+      "channel": ["varchar", false, 64],
+      "leads": ["int4", false, null]
+    },
+    "ga4_property_sync": {
+      "leads_backfilled_at": ["timestamptz", true, null],
+      "leads_events": ["varchar", true, 1000],
+      "leads_synced_through": ["date", true, null],
+      "leads_covered_from": ["date", true, null],
+      "leads_error_code": ["varchar", true, 64]
+    },
+    "gsc_query_monthly": {
+      "source": ["varchar", false, 16]
+    }
+  },
+  "primary_keys": {
+    "ga4_lead_daily": ["property_id", "date", "landing_page", "channel"]
+  },
+  "checks": {
+    "ga4_lead_daily": ["ck_ga4_lead_daily_landing_length"],
+    "gsc_query_monthly": ["ck_gsc_query_monthly_source"]
+  }
+}

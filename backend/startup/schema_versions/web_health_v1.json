@@ -1,0 +1,69 @@
+{
+  "version": "20261027_web_health_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS web_host_expiry (\n client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,\n host VARCHAR(253) NOT NULL,\n checked_at TIMESTAMPTZ NOT NULL,\n cert_status VARCHAR(16) NOT NULL,\n cert_expires_at TIMESTAMPTZ,\n cert_issuer VARCHAR(200),\n cert_error VARCHAR(200),\n domain_name VARCHAR(253),\n domain_status VARCHAR(16) NOT NULL,\n domain_expires_at TIMESTAMPTZ,\n domain_error VARCHAR(200),\n PRIMARY KEY (client_id, host),\n CONSTRAINT ck_web_host_expiry_cert_status CHECK (cert_status IN ('ok','invalid','error','no_https')),\n CONSTRAINT ck_web_host_expiry_domain_status CHECK (domain_status IN ('ok','no_date','unsupported','not_found','error'))\n)",
+    "CREATE TABLE IF NOT EXISTS web_robots_state (\n client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,\n origin VARCHAR(300) NOT NULL,\n checked_at TIMESTAMPTZ NOT NULL,\n robots_status VARCHAR(16) NOT NULL,\n robots_error VARCHAR(120),\n robots_hash VARCHAR(64),\n robots_body TEXT,\n robots_blocks_all BOOLEAN NOT NULL DEFAULT false,\n robots_previous_body TEXT,\n robots_changed_at TIMESTAMPTZ,\n robots_reviewed_at TIMESTAMPTZ,\n robots_reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n sitemap_url VARCHAR(500),\n sitemap_source VARCHAR(16),\n sitemap_status VARCHAR(16),\n sitemap_url_count INTEGER,\n sitemap_has_more BOOLEAN,\n sitemap_error VARCHAR(200),\n PRIMARY KEY (client_id, origin),\n CONSTRAINT ck_web_robots_state_status CHECK (robots_status IN ('ok','missing','error')),\n CONSTRAINT ck_web_robots_state_sitemap_status CHECK (sitemap_status IS NULL OR sitemap_status IN ('ok','empty','invalid','error')),\n CONSTRAINT ck_web_robots_state_sitemap_source CHECK (sitemap_source IS NULL OR sitemap_source IN ('declared','default'))\n)",
+    "CREATE TABLE IF NOT EXISTS task_publish_checks (\n task_id INTEGER PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,\n url TEXT NOT NULL,\n task_completed_at TIMESTAMP NOT NULL,\n status VARCHAR(16) NOT NULL,\n attempts SMALLINT NOT NULL DEFAULT 0,\n next_attempt_at TIMESTAMPTZ,\n checked_at TIMESTAMPTZ,\n http_status INTEGER,\n final_url TEXT,\n error VARCHAR(32),\n results JSONB,\n CONSTRAINT ck_task_publish_checks_status CHECK (status IN ('pending','ok','problems','unreachable','skipped'))\n)",
+    "CREATE INDEX IF NOT EXISTS ix_task_publish_checks_pending ON task_publish_checks (next_attempt_at) WHERE status = 'pending'"
+  ],
+  "columns": {
+    "web_host_expiry": {
+      "client_id": ["int4", false, null],
+      "host": ["varchar", false, 253],
+      "checked_at": ["timestamptz", false, null],
+      "cert_status": ["varchar", false, 16],
+      "cert_expires_at": ["timestamptz", true, null],
+      "cert_issuer": ["varchar", true, 200],
+      "cert_error": ["varchar", true, 200],
+      "domain_name": ["varchar", true, 253],
+      "domain_status": ["varchar", false, 16],
+      "domain_expires_at": ["timestamptz", true, null],
+      "domain_error": ["varchar", true, 200]
+    },
+    "web_robots_state": {
+      "client_id": ["int4", false, null],
+      "origin": ["varchar", false, 300],
+      "checked_at": ["timestamptz", false, null],
+      "robots_status": ["varchar", false, 16],
+      "robots_error": ["varchar", true, 120],
+      "robots_hash": ["varchar", true, 64],
+      "robots_body": ["text", true, null],
+      "robots_blocks_all": ["bool", false, null],
+      "robots_previous_body": ["text", true, null],
+      "robots_changed_at": ["timestamptz", true, null],
+      "robots_reviewed_at": ["timestamptz", true, null],
+      "robots_reviewed_by": ["int4", true, null],
+      "sitemap_url": ["varchar", true, 500],
+      "sitemap_source": ["varchar", true, 16],
+      "sitemap_status": ["varchar", true, 16],
+      "sitemap_url_count": ["int4", true, null],
+      "sitemap_has_more": ["bool", true, null],
+      "sitemap_error": ["varchar", true, 200]
+    },
+    "task_publish_checks": {
+      "task_id": ["int4", false, null],
+      "url": ["text", false, null],
+      "task_completed_at": ["timestamp", false, null],
+      "status": ["varchar", false, 16],
+      "attempts": ["int2", false, null],
+      "next_attempt_at": ["timestamptz", true, null],
+      "checked_at": ["timestamptz", true, null],
+      "http_status": ["int4", true, null],
+      "final_url": ["text", true, null],
+      "error": ["varchar", true, 32],
+      "results": ["jsonb", true, null]
+    }
+  },
+  "primary_keys": {
+    "web_host_expiry": ["client_id", "host"],
+    "web_robots_state": ["client_id", "origin"],
+    "task_publish_checks": ["task_id"]
+  },
+  "foreign_keys": [
+    {"table": "web_host_expiry", "column": "client_id", "references": "clients", "on_delete": "c"},
+    {"table": "web_robots_state", "column": "client_id", "references": "clients", "on_delete": "c"},
+    {"table": "web_robots_state", "column": "robots_reviewed_by", "references": "users", "on_delete": "n"},
+    {"table": "task_publish_checks", "column": "task_id", "references": "tasks", "on_delete": "c"}
+  ],
+  "unique_indexes": []
+}

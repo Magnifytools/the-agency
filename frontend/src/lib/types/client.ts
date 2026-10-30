@@ -2,10 +2,9 @@ import type { ContractType, ClientStatus, ProfitabilityStatus } from "./common"
 import type { EngineSummaryData, EngineAlert } from "./integration"
 import type { Task } from "./task"
 import type { ProjectCreate } from "./project"
+import type { SeoPageGroup } from "./seo-control"
 
-// --- Billing ---
-export type BillingCycle = "monthly" | "bimonthly" | "quarterly" | "annual" | "one_time"
-export type BillingEventType = "invoice_sent" | "payment_received" | "reminder_sent" | "note"
+export type SeoTrend = "up" | "stable" | "down" | "drop_alert"
 
 export interface Client {
   id: number
@@ -18,16 +17,17 @@ export interface Client {
   monthly_budget: number | null
   status: ClientStatus
   notes: string | null
-  cif: string | null
   vat_number: string | null
   currency: string
   monthly_fee: number | null
   ga4_property_id: string | null
   gsc_url: string | null
-  billing_cycle: BillingCycle | null
-  billing_day: number | null
-  next_invoice_date: string | null
-  last_invoiced_date: string | null
+  // Control SEO: búsquedas que cuentan como "de marca"
+  brand_terms?: string[]
+  // Control SEO: grupos de URL propios (el primero que acepta la página gana)
+  seo_page_groups?: SeoPageGroup[]
+  // Leads por landing (GA4): eventos que cuentan como lead ("generate_lead_*" = prefijo)
+  ga4_lead_events?: string[]
   engine_project_id: number | null
   engine_content_count: number | null
   engine_keyword_count: number | null
@@ -37,12 +37,11 @@ export interface Client {
   engine_metrics_synced_at: string | null
   engine_summary_data: EngineSummaryData | null
   engine_alerts_data: { alerts: EngineAlert[] } | null
+  // Semáforo SEO, derivado en backend del summary de Engine
+  seo_clicks_change_pct: number | null
+  seo_impressions_change_pct: number | null
+  seo_trend: SeoTrend | null
   // Revenue intelligence
-  business_model: string | null
-  aov: number | null
-  conversion_rate: number | null
-  ltv: number | null
-  seo_maturity_level: string | null
   is_internal: boolean
   intermediary_name: string | null
   is_intermediary_deal: boolean
@@ -71,23 +70,17 @@ export interface ClientCreate {
   monthly_budget?: number | null
   status?: ClientStatus
   notes?: string | null
-  cif?: string | null
   vat_number?: string | null
   currency?: string
   monthly_fee?: number | null
   ga4_property_id?: string | null
   gsc_url?: string | null
-  billing_cycle?: BillingCycle | null
-  billing_day?: number | null
-  next_invoice_date?: string | null
-  last_invoiced_date?: string | null
+  brand_terms?: string[]
+  // Control SEO: grupos de URL propios (el primero que acepta la página gana)
+  seo_page_groups?: SeoPageGroup[]
+  ga4_lead_events?: string[]
   engine_project_id?: number | null
   // Revenue intelligence
-  business_model?: string | null
-  aov?: number | null
-  conversion_rate?: number | null
-  ltv?: number | null
-  seo_maturity_level?: string | null
   is_internal?: boolean
   intermediary_name?: string | null
   is_intermediary_deal?: boolean
@@ -173,60 +166,6 @@ export interface ClientOnboardingResult {
   change_log_id: number | null
 }
 
-// Client Resources
-export type ResourceType = "spreadsheet" | "document" | "email" | "account" | "dashboard" | "other"
-
-export interface ClientResource {
-  id: number
-  client_id: number
-  label: string
-  url: string
-  resource_type: ResourceType
-  notes: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface ClientResourceCreate {
-  label: string
-  url: string
-  resource_type?: ResourceType
-  notes?: string | null
-}
-
-// Billing Events
-export interface BillingEvent {
-  id: number
-  client_id: number
-  event_type: BillingEventType
-  amount: number | null
-  invoice_number: string | null
-  notes: string | null
-  event_date: string
-  created_at: string
-  updated_at: string
-}
-
-export interface BillingEventCreate {
-  event_type: BillingEventType
-  amount?: number | null
-  invoice_number?: string | null
-  notes?: string | null
-  event_date: string
-}
-
-export interface BillingStatus {
-  billing_cycle: string | null
-  billing_day: number | null
-  next_invoice_date: string | null
-  last_invoiced_date: string | null
-  days_until_invoice: number | null
-  is_overdue: boolean
-  monthly_fee: number | null
-  last_payment_date: string | null
-  last_payment_amount: number | null
-}
-
 // Client Dashboard
 export interface ClientDashboard {
   hours_this_month: number
@@ -247,24 +186,46 @@ export interface ClientDashboard {
   monthly_profitability: Record<string, { income: number; cost: number }>
 }
 
-export interface ClientHealthScore {
+export type ClientStatusLevel = "ok" | "watch" | "act" | "no_data"
+
+/** Estado explicado de un cliente: una fila de la cartera. */
+export interface ClientStatusRow {
   client_id: number
   client_name: string
-  score: number | null
-  factors: {
-    communication: number | null
-    tasks: number | null
-    digests: number | null
-    profitability: number | null
-    followups: number | null
-  }
-  factor_max: Record<keyof ClientHealthScore["factors"], number>
-  observations: Record<keyof ClientHealthScore["factors"], string>
-  available_weight: number
-  available_source_count: number
-  enough_information: boolean
-  risk_signals: string[]
-  risk_level: "healthy" | "warning" | "at_risk" | "no_data"
+  status: ClientStatusLevel
+  /** Motivos de Vigilar/Actuar, lo que pide actuar primero. */
+  reasons: string[]
+  seo: {
+    source: "search_console"
+    clicks: number
+    clicks_previous: number
+    change_pct: number | null
+    trend: "up" | "stable" | "down" | "drop_alert" | null
+    as_of: string | null
+  } | null
+  /** Una señal por cadencia encendida (mensual primero); vacía sin política. */
+  digests: ClientDigestSignal[]
+  /** La peor de `digests` (compatibilidad). */
+  digest: ClientDigestSignal | null
+  /** null = quien mira no puede leer tareas. */
+  tasks: { overdue: number; waiting: number; followups_late: number } | null
+  /** null = quien mira no puede leer horas. fee y consumption_pct sólo para admins con cuota. */
+  month: { hours: number; fee?: number; consumption_pct?: number } | null
+  /**
+   * Sólo en el estado de un cliente (no en la cartera) y si quien mira lee tareas
+   * y resúmenes: tareas completadas desde `since` que ningún resumen con entrega
+   * confirmada cubre todavía. `count` va sin límite; `items`, las 5 últimas.
+   */
+  ready?: { since: string; count: number; items: { id: number; title: string; completed_on: string }[] } | null
+  /** GA4 de los últimos 28 días con datos frente a los 28 anteriores. Sólo se enseña. */
+  ga4?: {
+    current: import("./integration").Ga4Totals
+    previous: import("./integration").Ga4Totals | null
+    vs_previous: import("./integration").Ga4Changes | null
+    as_of: string
+  } | null
+  /** Disponibilidad de la web. null = quien mira no lee "web" o el cliente no tiene URLs. */
+  uptime?: import("./web").ClientUptimeBlock | null
 }
 
 export type ClientCohort = "all" | "external" | "internal"
@@ -293,4 +254,12 @@ export interface ClientTimeReport {
   entries_count: number
   cost_eur: number
   team_breakdown: ClientTeamBreakdown[]
+}
+
+export interface ClientDigestSignal {
+  cadence: "weekly" | "monthly"
+  /** Último periodo de esa cadencia con entrega externa confirmada. */
+  last_sent_period_end: string | null
+  expected_period_end: string
+  state: "ok" | "due" | "late"
 }

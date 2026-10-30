@@ -7,14 +7,12 @@ import { cn } from "@/lib/utils"
 
 const TABS = [
   { to: "/finance", label: "Dashboard", exact: true },
-  { to: "/finance/cfo", label: "CFO" },
   { to: "/executive", label: "Ejecutivo" },
   { to: "/finance/income", label: "Ingresos" },
   { to: "/finance/expenses", label: "Gastos" },
   { to: "/finance/taxes", label: "Impuestos" },
   { to: "/finance/forecasts", label: "Previsiones" },
   { to: "/finance-holded", label: "Holded", holdedOnly: true },
-  { to: "/billing", label: "Facturación" },
   { to: "/finance/advisor", label: "Asesor" },
 ]
 

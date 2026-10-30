@@ -360,7 +360,6 @@ async def close_project(
             "code": "project_close_blocked",
             "current_preview": preview.model_dump(mode="json"),
         })
-    project.__dict__["_lifecycle_previous_status"] = _status(project.status).value
     project.status = target_status
     await db.flush()
     return project
@@ -382,7 +381,6 @@ async def reopen_project(
     )
     if epoch != _epoch(expected_updated_at) or preview.preview_revision != preview_revision:
         raise _changed(preview)
-    project.__dict__["_lifecycle_previous_status"] = _status(project.status).value
     project.status = ProjectStatus.active
     await db.flush()
     return project
@@ -406,7 +404,6 @@ async def transition_project_status(
         raise HTTPException(409, detail={
             "code": "project_lifecycle_action_required", "action": action,
         })
-    project.__dict__["_lifecycle_previous_status"] = current.value
     project.status = target_status
     await db.flush()
     return project

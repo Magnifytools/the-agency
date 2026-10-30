@@ -17,18 +17,27 @@ from backend.db.models import (
     CommunicationSchedule,
     DailyUpdate,
     Delivery,
+    DigestExternalDeliveryEvent,
+    ExternalDeliveryAction,
     Notification,
     User,
     UserRole,
     WeeklyDigest,
 )
-from backend.services.digest_periods import policy_digest_period
+from backend.services.digest_periods import CADENCES, enabled_cadences, format_month, policy_digest_period
 from backend.services.incident_conditions import Condition, module_permission
 from backend.services.manual_communications import KINDS as MANUAL_KINDS
 from backend.services.scheduled_communications import KINDS as SCHEDULED_KINDS
 from backend.services.temporal import business_today
 
-REPORT_CONDITIONS = ("report_pending", "delivery_failed")
+REPORT_UNSENT = "report_unsent"
+REPORT_CONDITIONS = ("report_pending", "delivery_failed", REPORT_UNSENT)
+
+
+_CADENCE_FLAGS = {
+    "monthly": ClientReportPolicy.monthly_enabled,
+    "weekly": ClientReportPolicy.weekly_enabled,
+}
 
 
 def _fingerprint(*parts: object) -> str:
@@ -40,12 +49,66 @@ def _report_source_clause(user_id: int):
     if not is_enabled("digests"):
         return false()
     return and_(
-        ClientReportPolicy.enabled.is_(True),
+        or_(ClientReportPolicy.weekly_enabled.is_(True), ClientReportPolicy.monthly_enabled.is_(True)),
         ClientReportPolicy.responsible_user_id == user_id,
         Client.status == ClientStatus.active,
         Client.is_internal.is_(False),
         module_permission(user_id, "digests", write=True),
     )
+
+
+def _unsent_recipient_clause(user_id: int):
+    """Admins, and the policy's responsible while they can still prepare digests."""
+    if not is_enabled("digests"):
+        return false()
+    return or_(
+        exists().where(User.id == user_id, User.is_active.is_(True), User.role == UserRole.admin),
+        and_(
+            ClientReportPolicy.responsible_user_id == user_id,
+            module_permission(user_id, "digests", write=True),
+        ),
+    )
+
+
+def _monthly_cycle_clause():
+    """Active external clients whose policy has the monthly report on."""
+    return and_(
+        ClientReportPolicy.monthly_enabled.is_(True),
+        Client.status == ClientStatus.active,
+        Client.is_internal.is_(False),
+    )
+
+
+def delivery_is_confirmed():
+    """The digest version's latest external delivery event is a confirmation.
+
+    The external delivery event is the only proof that a digest reached the
+    client; ``DigestStatus.sent`` is a legacy label nobody records evidence for.
+    A later revocation cancels the confirmation.
+    """
+    latest_action = (
+        select(DigestExternalDeliveryEvent.action)
+        .where(DigestExternalDeliveryEvent.digest_id == WeeklyDigest.id)
+        .order_by(DigestExternalDeliveryEvent.created_at.desc(), DigestExternalDeliveryEvent.id.desc())
+        .limit(1)
+        .correlate(WeeklyDigest)
+        .scalar_subquery()
+    )
+    return latest_action == ExternalDeliveryAction.confirmed
+
+
+def delivery_confirmed_clause(client_id, period_start, period_end):
+    """Some version of the period has, as its latest event, a confirmed delivery."""
+    return exists().where(
+        WeeklyDigest.client_id == client_id,
+        WeeklyDigest.period_start == period_start,
+        WeeklyDigest.period_end == period_end,
+        delivery_is_confirmed(),
+    )
+
+
+def _unsent_key(client_id: int, period_start, period_end) -> str:
+    return f"{REPORT_UNSENT}:client:{client_id}:monthly:{period_start.isoformat()}:{period_end.isoformat()}"
 
 
 def _digest_source_clause(user_id: int):
@@ -149,30 +212,50 @@ def report_visibility_clause(user_id: int, *, current_only: bool = False, now: d
     delivery_live = exists().where(*delivery_filters)
     if current_only:
         today = business_today(now=now)
-        weekly_start, weekly_end = policy_digest_period("weekly", today=today)
-        monthly_start, monthly_end = policy_digest_period("monthly", today=today)
-        digest_exists = exists().where(
-            WeeklyDigest.client_id == ClientReportPolicy.client_id,
-            or_(
-                and_(ClientReportPolicy.cadence == "weekly", WeeklyDigest.period_start == weekly_start, WeeklyDigest.period_end == weekly_end),
-                and_(ClientReportPolicy.cadence == "monthly", WeeklyDigest.period_start == monthly_start, WeeklyDigest.period_end == monthly_end),
+
+        def pending_live(cadence: str):
+            # Una rama por cadencia: sigue viva mientras esa cadencia esté
+            # encendida y falte el resumen de su periodo actual.
+            start, end = policy_digest_period(cadence, today=today)
+            return exists().where(
+                ClientReportPolicy.client_id == Notification.entity_id,
+                Client.id == ClientReportPolicy.client_id,
+                _report_source_clause(user_id),
+                _CADENCE_FLAGS[cadence].is_(True),
+                ~exists().where(
+                    WeeklyDigest.client_id == ClientReportPolicy.client_id,
+                    WeeklyDigest.period_start == start,
+                    WeeklyDigest.period_end == end,
+                ),
+                Notification.dedupe_key == func.concat(
+                    "report_pending:client:", ClientReportPolicy.client_id,
+                    f":{cadence}:{start.isoformat()}:{end.isoformat()}",
+                ),
+            )
+
+        report_live = or_(*(pending_live(cadence) for cadence in CADENCES))
+    unsent_filters = [
+        ClientReportPolicy.client_id == Notification.entity_id,
+        Client.id == ClientReportPolicy.client_id,
+        _unsent_recipient_clause(user_id),
+    ]
+    if current_only:
+        month_start, month_end = policy_digest_period("monthly", today=business_today(now=now))
+        unsent_filters.extend((
+            _monthly_cycle_clause(),
+            ~delivery_confirmed_clause(ClientReportPolicy.client_id, month_start, month_end),
+            Notification.dedupe_key == func.concat(
+                f"{REPORT_UNSENT}:client:", ClientReportPolicy.client_id,
+                f":monthly:{month_start.isoformat()}:{month_end.isoformat()}",
             ),
-        )
-        report_live = exists().where(
-            ClientReportPolicy.client_id == Notification.entity_id,
-            Client.id == ClientReportPolicy.client_id,
-            _report_source_clause(user_id),
-            ~digest_exists,
-            Notification.dedupe_key == case(
-                (ClientReportPolicy.cadence == "weekly", func.concat("report_pending:client:", ClientReportPolicy.client_id, ":weekly:", func.to_char(weekly_start, "YYYY-MM-DD"), ":", func.to_char(weekly_end, "YYYY-MM-DD"))),
-                else_=func.concat("report_pending:client:", ClientReportPolicy.client_id, ":monthly:", func.to_char(monthly_start, "YYYY-MM-DD"), ":", func.to_char(monthly_end, "YYYY-MM-DD")),
-            ),
-        )
+        ))
+    unsent_live = exists().where(*unsent_filters)
     clause = and_(
         Notification.user_id == user_id,
         Notification.type.in_(REPORT_CONDITIONS),
         or_(
             and_(Notification.type == "report_pending", Notification.entity_type == "client", report_live),
+            and_(Notification.type == REPORT_UNSENT, Notification.entity_type == "client", unsent_live),
             and_(Notification.type == "delivery_failed", Notification.entity_type == "delivery", delivery_live),
         ),
     )
@@ -185,22 +268,23 @@ async def collect_report_conditions(db, user_id: int, now: datetime) -> dict[str
     """Collect report and delivery conditions in bounded reads, without writes."""
     today = business_today(now=now)
     policy_rows = (await db.execute(
-        select(ClientReportPolicy.client_id, ClientReportPolicy.cadence, Client.name)
+        select(ClientReportPolicy, Client.name)
         .join(Client, Client.id == ClientReportPolicy.client_id)
         .where(_report_source_clause(user_id))
     )).all()
 
-    periods = {
-        row.client_id: (row.cadence.value if hasattr(row.cadence, "value") else str(row.cadence), *policy_digest_period(
-            row.cadence.value if hasattr(row.cadence, "value") else str(row.cadence), today=today
-        ))
-        for row in policy_rows
-    }
+    periods = {cadence: policy_digest_period(cadence, today=today) for cadence in CADENCES}
+    # Un par (cliente, cadencia) por cada cadencia encendida.
+    pairs = [
+        (policy.client_id, name, cadence)
+        for policy, name in policy_rows
+        for cadence in enabled_cadences(policy)
+    ]
     matching_digests: set[tuple[int, object, object]] = set()
-    if periods:
+    if pairs:
         coverage = or_(*[
-            and_(WeeklyDigest.client_id == client_id, WeeklyDigest.period_start == start, WeeklyDigest.period_end == end)
-            for client_id, (_, start, end) in periods.items()
+            and_(WeeklyDigest.client_id == client_id, WeeklyDigest.period_start == periods[cadence][0], WeeklyDigest.period_end == periods[cadence][1])
+            for client_id, _, cadence in pairs
         ])
         matching_digests = {
             (row.client_id, row.period_start, row.period_end)
@@ -208,18 +292,25 @@ async def collect_report_conditions(db, user_id: int, now: datetime) -> dict[str
         }
 
     conditions: dict[str, Condition] = {}
-    for row in policy_rows:
-        cadence, start, end = periods[row.client_id]
-        if (row.client_id, start, end) in matching_digests:
+    monthly_pending: set[int] = set()
+    for client_id, name, cadence in pairs:
+        start, end = periods[cadence]
+        if (client_id, start, end) in matching_digests:
             continue
-        cadence_label = "semanal" if cadence == "weekly" else "mensual"
-        key = f"report_pending:client:{row.client_id}:{cadence}:{start.isoformat()}:{end.isoformat()}"
+        if cadence == "monthly":
+            monthly_pending.add(client_id)
+        what = "el informe mensual" if cadence == "monthly" else "el seguimiento semanal"
+        key = f"report_pending:client:{client_id}:{cadence}:{start.isoformat()}:{end.isoformat()}"
         conditions[key] = Condition(
-            key=key, kind="report_pending", entity_id=row.client_id, entity_type="client", entity_key=str(row.client_id),
-            title=f"Resumen pendiente: {row.name}"[:255],
-            message=f"Falta preparar el resumen {cadence_label} del {start:%d/%m/%Y} al {end:%d/%m/%Y}.",
-            href=f"/digests?client_id={row.client_id}&period_start={start.isoformat()}&period_end={end.isoformat()}", fingerprint=_fingerprint(key),
+            key=key, kind="report_pending", entity_id=client_id, entity_type="client", entity_key=str(client_id),
+            title=f"Resumen pendiente: {name}"[:255],
+            message=f"Falta preparar {what} del {start:%d/%m/%Y} al {end:%d/%m/%Y}.",
+            href=f"/digests?client_id={client_id}&period_start={start.isoformat()}&period_end={end.isoformat()}", fingerprint=_fingerprint(key),
         )
+
+    # Sólo un pendiente MENSUAL tapa el aviso de mensual sin entregar: el
+    # seguimiento semanal pendiente no dice nada del mes.
+    conditions.update(await _collect_unsent_monthly(db, user_id, today, skip_clients=monthly_pending))
 
     replacement = aliased(Delivery)
     delivery_rows = (await db.execute(
@@ -237,5 +328,67 @@ async def collect_report_conditions(db, user_id: int, now: datetime) -> dict[str
             key=key, kind="delivery_failed", entity_id=None, entity_type="delivery", entity_key=row.id,
             title="Envío sin confirmación" if row.status == "uncertain" else "Envío fallido", message=state,
             href=f"/deliveries/{row.id}", fingerprint=_fingerprint(key), severity="warning",
+        )
+    return conditions
+
+
+async def unsent_monthly_clients(db, user_id: int, today):
+    """Monthly clients of last month with no confirmed delivery, as this user sees them.
+
+    Admins see every one; a responsible sees theirs while they can still
+    prepare digests. Returns ``(period_start, period_end, rows)`` with
+    ``rows`` of ``(id, name)`` ordered by client id.
+    """
+    start, end = policy_digest_period("monthly", today=today)
+    rows = (await db.execute(
+        select(Client.id, Client.name)
+        .join(ClientReportPolicy, ClientReportPolicy.client_id == Client.id)
+        .where(
+            _monthly_cycle_clause(),
+            _unsent_recipient_clause(user_id),
+            ~delivery_confirmed_clause(Client.id, start, end),
+        )
+        .order_by(Client.id)
+    )).all()
+    return start, end, rows
+
+
+async def _collect_unsent_monthly(db, user_id: int, today, *, skip_clients: set[int]) -> dict[str, Condition]:
+    """From day 1, every monthly client whose last month nobody confirmed as delivered.
+
+    A responsible already told to prepare the digest (``report_pending``) does
+    not get a second notice for the same client until a version exists.
+    """
+    start, end, rows = await unsent_monthly_clients(db, user_id, today)
+    rows = [row for row in rows if row.id not in skip_clients]
+    if not rows:
+        return {}
+    latest: dict[int, int] = {}
+    for version in (await db.execute(
+        select(WeeklyDigest.client_id, WeeklyDigest.id)
+        .where(
+            WeeklyDigest.client_id.in_([row.id for row in rows]),
+            WeeklyDigest.period_start == start,
+            WeeklyDigest.period_end == end,
+        )
+        .order_by(WeeklyDigest.created_at, WeeklyDigest.id)
+    )).all():
+        latest[version.client_id] = version.id
+
+    month = format_month(start)
+    conditions: dict[str, Condition] = {}
+    for row in rows:
+        key = _unsent_key(row.id, start, end)
+        digest_id = latest.get(row.id)
+        if digest_id is None:
+            message = f"Falta preparar y entregar el resumen de {month}."
+            href = f"/digests?client_id={row.id}&period_start={start.isoformat()}&period_end={end.isoformat()}"
+        else:
+            message = f"El resumen de {month} está preparado (versión #{digest_id}), pero nadie ha confirmado que se entregó al cliente."
+            href = f"/digests/{digest_id}/edit"
+        conditions[key] = Condition(
+            key=key, kind=REPORT_UNSENT, entity_id=row.id, entity_type="client", entity_key=str(row.id),
+            title=f"Resumen mensual sin entregar: {row.name}"[:255], message=message, href=href,
+            fingerprint=_fingerprint(key),
         )
     return conditions

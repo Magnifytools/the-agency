@@ -36,10 +36,6 @@ export interface Project {
   unit_price: number | null
   unit_label: string | null
   scope: string | null
-  billing_day: number | null
-  billing_amount: number | null
-  next_billing_date: string | null
-  last_billed_date: string | null
   client_id: number
   client_name: string | null
   owner_id: number | null
@@ -53,6 +49,12 @@ export interface Project {
   hours_used_month: number | null
   effective_weekly_hours_budget: number | null
   effective_monthly_hours_budget: number | null
+  /** Lo que sobra (o el exceso) de un mes pasa al siguiente. */
+  hours_carryover: boolean
+  /** Techo de ESTE mes con el arrastre (sólo en la ficha y con lectura de horas). */
+  month_hours_budget?: number | null
+  /** Horas que pasan del mes anterior: + sobran, − exceso; null si no aplica. */
+  month_hours_carried?: number | null
   closing_status: ProjectClosingStatus | null
   created_at: string
   updated_at: string
@@ -139,6 +141,8 @@ export interface ProjectMonthlyCycle {
   total_minutes: number | null
   used_hours: number | null
   budget_hours: number | null
+  base_budget_hours?: number | null
+  carried_hours?: number | null
   remaining_hours: number | null
   tasks: ProjectCycleTask[]
 }
@@ -175,6 +179,7 @@ export interface ProjectCreate {
   budget_hours?: number | null
   weekly_hours_budget?: number | null
   monthly_hours_budget?: number | null
+  hours_carryover?: boolean
   budget_amount?: number | null
   gsc_url?: string | null
   ga4_property_id?: string | null
@@ -184,9 +189,6 @@ export interface ProjectCreate {
   unit_price?: number | null
   unit_label?: string | null
   scope?: string | null
-  billing_day?: number | null
-  billing_amount?: number | null
-  next_billing_date?: string | null
   client_id: number
   owner_id?: number | null
   requires_task_review?: boolean
@@ -249,38 +251,6 @@ export interface ProjectTimeReport {
   total_minutes: number
   entries_count: number
   team_breakdown: ProjectTeamBreakdown[]
-}
-
-// Project Evidence
-export type EvidenceType = "screenshot" | "report" | "analytics" | "ranking" | "content" | "deliverable" | "proposal" | "other"
-
-export interface ProjectEvidence {
-  id: number
-  project_id: number
-  phase_id: number | null
-  title: string
-  url: string | null
-  evidence_type: EvidenceType
-  description: string | null
-  created_by: number | null
-  creator_name: string | null
-  phase_name: string | null
-  has_file: boolean
-  file_name: string | null
-  file_mime_type: string | null
-  file_size_bytes: number | null
-  download_url: string | null
-  preview_url: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface ProjectEvidenceCreate {
-  title: string
-  url?: string | null
-  evidence_type?: EvidenceType
-  phase_id?: number | null
-  description?: string | null
 }
 
 // Communications
@@ -386,8 +356,6 @@ export interface AlertSettings {
   days_before_deadline: number
   days_without_contact: number
   max_tasks_per_week: number
-  notify_in_app: boolean
-  notify_email: boolean
 }
 
 export interface AlertSettingsUpdate {
@@ -395,52 +363,6 @@ export interface AlertSettingsUpdate {
   days_before_deadline?: number
   days_without_contact?: number
   max_tasks_per_week?: number
-  notify_in_app?: boolean
-  notify_email?: boolean
-}
-
-// Reports
-export type ReportType = "client_status" | "weekly_summary" | "project_status" | "client_monthly"
-export type ReportPeriod = "week" | "month"
-export type ReportAudience = "executive" | "marketing" | "operational"
-
-export interface ReportRequest {
-  type: ReportType
-  client_id?: number | null
-  project_id?: number | null
-  period?: ReportPeriod
-  audience?: ReportAudience | null
-}
-
-export interface ReportSection {
-  title: string
-  content: string
-}
-
-export interface Report {
-  id: number
-  type: string
-  title: string
-  generated_at: string
-  period_start: string | null
-  period_end: string | null
-  client_name: string | null
-  project_name: string | null
-  sections: ReportSection[]
-  summary: string
-  audience: string | null
-}
-
-export interface ReportSCQASection {
-  key: string
-  title: string
-  content: string
-}
-
-export interface ReportNarrative {
-  narrative: string
-  executive_summary: string
-  scqa_sections?: ReportSCQASection[]
 }
 
 // Growth Operations

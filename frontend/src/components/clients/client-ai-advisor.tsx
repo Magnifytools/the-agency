@@ -30,7 +30,6 @@ const PRIORITY_BADGE: Record<string, { label: string; variant: "destructive" | "
 
 const CATEGORY_LABELS: Record<string, string> = {
   comunicacion: "Comunicación",
-  facturacion: "Facturación",
   tareas: "Tareas",
   rentabilidad: "Rentabilidad",
   estrategia: "Estrategia",
@@ -41,7 +40,7 @@ export function ClientAiAdvisor({ clientId }: Props) {
   const canWriteClients = hasPermission("clients", true)
   const accessScope = [
     user?.id ?? "anonymous", clientId, canWriteClients,
-    ...(["tasks", "communications", "timesheet", "billing"] as const)
+    ...(["tasks", "communications", "timesheet"] as const)
       .map((module) => hasPermission(module) && isEnabled(module)),
   ].join(":")
   const [result, setResult] = useState<{ scope: string; recommendations: Recommendation[] } | null>(null)

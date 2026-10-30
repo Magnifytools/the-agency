@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from backend.startup.schema_runner import Migration, run_schema_migrations
 from backend.startup import schema_runner
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.asyncio
 
@@ -223,7 +224,7 @@ async def test_failed_unlock_invalidates_session_and_does_not_retain_lock(engine
         # The ledger transaction committed, but invalidating the physical
         # session released its advisory lock. A new session must not time out.
         await asyncio.wait_for(
-            run_schema_migrations(isolated, [migration], _preflight), timeout=2,
+            run_schema_migrations(isolated, [migration], _preflight), timeout=HANG_TIMEOUT,
         )
         assert release_calls == 2
     finally:
@@ -269,7 +270,7 @@ async def test_cancellation_while_waiting_for_lock_does_not_leak_connection(engi
                 "key": schema_runner.SCHEMA_MIGRATION_LOCK,
             }) is True
         await asyncio.wait_for(
-            run_schema_migrations(isolated, [migration], _preflight), timeout=2,
+            run_schema_migrations(isolated, [migration], _preflight), timeout=HANG_TIMEOUT,
         )
     finally:
         await holder.close()

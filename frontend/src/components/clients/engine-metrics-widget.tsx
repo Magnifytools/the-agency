@@ -5,6 +5,7 @@ import { useAuth } from "@/context/auth-context"
 import type { Client } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { formatChangePct } from "@/components/clients/seo-trend"
 import { Globe, FileText, Key, MousePointerClick, Eye, TrendingUp, RefreshCw } from "lucide-react"
 import { formatTimeAgo } from "@/lib/utils"
 import { toast } from "sonner"
@@ -119,12 +120,22 @@ export function EngineMetricsWidget({ client }: Props) {
               <MousePointerClick className="h-3 w-3" /> Clicks
             </p>
             <p className="kpi-value mt-1">{client.engine_clicks_30d != null ? formatNumber(client.engine_clicks_30d) : "-"}</p>
+            {client.seo_clicks_change_pct != null && (
+              <p className={`mono text-xs mt-0.5 ${client.seo_clicks_change_pct < 0 ? "text-red-400" : client.seo_clicks_change_pct > 0 ? "text-green-400" : "text-muted-foreground"}`} title="Frente a los 30 días anteriores">
+                {formatChangePct(client.seo_clicks_change_pct)} vs 30 días previos
+              </p>
+            )}
           </div>
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
               <Eye className="h-3 w-3" /> Impresiones
             </p>
             <p className="kpi-value mt-1">{client.engine_impressions_30d != null ? formatNumber(client.engine_impressions_30d) : "-"}</p>
+            {client.seo_impressions_change_pct != null && (
+              <p className={`mono text-xs mt-0.5 ${client.seo_impressions_change_pct < 0 ? "text-red-400" : client.seo_impressions_change_pct > 0 ? "text-green-400" : "text-muted-foreground"}`} title="Frente a los 30 días anteriores">
+                {formatChangePct(client.seo_impressions_change_pct)} vs 30 días previos
+              </p>
+            )}
           </div>
         </div>
       </CardContent>

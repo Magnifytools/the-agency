@@ -1,4 +1,5 @@
 import enum
+import uuid
 from datetime import datetime
 
 from sqlalchemy import (
@@ -20,10 +21,10 @@ from sqlalchemy import (
     LargeBinary,
     UniqueConstraint,
     func,
-    literal_column,
+    literal_column, Sequence, REAL, BigInteger, text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import DeclarativeBase, deferred, relationship
 
 
 """SQLAlchemy ORM models for The Agency.
@@ -32,13 +33,13 @@ Model inventory (38 models, ~1,500 lines):
 
   --- Core ---
   Base, TimestampMixin
-  User, UserPermission, UserInvitation
+  User, UserPermission
 
   --- Client Management ---
-  Client, ClientContact, ClientResource, ClientDocument
+  Client, ClientContact, ClientDocument
 
   --- Project Management ---
-  Project, ProjectPhase, ProjectEvidence, ProjectTemplateDB
+  Project, ProjectPhase, ProjectTemplateDB
 
   --- Tasks & Time ---
   TaskCategory, Task, TaskChecklist, TaskComment, TaskAttachment, TimeEntry
@@ -69,7 +70,7 @@ Model inventory (38 models, ~1,500 lines):
   DiscordSettings, SyncLog, CsvMapping
 
   --- Reports & Digests ---
-  GeneratedReport, WeeklyDigest, DailyUpdate
+  WeeklyDigest, DailyUpdate
 
   --- Undo ---
   ChangeLog
@@ -77,14 +78,8 @@ Model inventory (38 models, ~1,500 lines):
   --- Notifications & Inbox ---
   Notification, InboxNote, InboxAttachment
 
-  --- Agency Assets ---
-  AgencyAsset
-
-  --- My Week ---
-  UserDayStatus, CompanyHoliday
-
-  --- Automations ---
-  AutomationRule, AutomationLog
+  --- Holidays ---
+  CompanyHoliday
 
 NOTE: Do NOT split this file into separate modules.
 SQLAlchemy relationships require all models to share the same
@@ -316,15 +311,6 @@ class BillingEventType(str, enum.Enum):
     note = "note"
 
 
-class ResourceType(str, enum.Enum):
-    spreadsheet = "spreadsheet"
-    document = "document"
-    email = "email"
-    account = "account"
-    dashboard = "dashboard"
-    other = "other"
-
-
 class GrowthFunnelStage(str, enum.Enum):
     referral = "referral"
     desire = "desire"
@@ -359,7 +345,6 @@ class User(TimestampMixin, Base):
     weekly_hours = Column(Float, nullable=False, default=40.0)
     is_active = Column(Boolean, nullable=False, default=True)
     password_reset_required = Column(Boolean, nullable=False, default=False)
-    invited_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     preferences = Column(JSONB, nullable=True, server_default="{}")
     region = Column(String(10), nullable=True)      # CCAA code: "MAD", "CAT"...
     locality = Column(String(100), nullable=True)    # City: "Madrid", "Barcelona"...
@@ -400,7 +385,6 @@ class Client(UTCTimestampMixin, Base):
     status = Column(Enum(ClientStatus), nullable=False, default=ClientStatus.active)
     notes = Column(Text, nullable=True)
     # Financial fields (from GF)
-    cif = Column(String(50), nullable=True)
     currency = Column(String(10), nullable=False, default="EUR")
     monthly_fee = Column(Numeric(12, 2), nullable=True)
     # Holded integration
@@ -410,12 +394,23 @@ class Client(UTCTimestampMixin, Base):
     # Analytics settings
     ga4_property_id = Column(String(50), nullable=True)
     gsc_url = Column(String(255), nullable=True)
+    # Control SEO: términos que marcan una búsqueda como "de marca" (≤ 20).
+    brand_terms = Column(JSONB, nullable=False, default=list, server_default="[]")
+    # Control SEO: grupos de URL propios [{name, rules: [{type, value}]}] (≤ 30).
+    seo_page_groups = Column(JSONB, nullable=False, default=list, server_default="[]")
+    # Leads por landing (GA4): eventos que cuentan como lead. Nombre exacto o
+    # prefijo terminado en "*" ("generate_lead_*"). Ver `services/ga4_leads.py`.
+    ga4_lead_events = Column(JSONB, nullable=False, default=lambda: ["generate_lead"],
+                             server_default='["generate_lead"]')
     # Billing settings
     billing_cycle = Column(Enum(BillingCycle), nullable=True)
     billing_day = Column(Integer, nullable=True)  # 1-28
     next_invoice_date = Column(Date, nullable=True)
     last_invoiced_date = Column(Date, nullable=True)
     engine_project_id = Column(Integer, nullable=True)
+    # ``vigil_slug`` (y la tabla ``vigil_summary``) siguen en la BD pero fuera del
+    # ORM desde la fase 3b de Vigil; se borran en la 3c (docs/vigil-migration.md).
+    # ``scripts/import_vigil.py`` la lee con SQL.
     # Internal flag
     is_internal = Column(Boolean, nullable=False, default=False)
     # Narrative context / dossier
@@ -424,11 +419,6 @@ class Client(UTCTimestampMixin, Base):
     intermediary_name = Column(String(200), nullable=True)
     is_intermediary_deal = Column(Boolean, nullable=False, default=False)
     # Revenue intelligence
-    business_model = Column(String(50), nullable=True)  # ecommerce, saas, lead_gen, media
-    aov = Column(Float, nullable=True)  # Average Order Value EUR
-    conversion_rate = Column(Float, nullable=True)  # 0-100
-    ltv = Column(Float, nullable=True)  # Lifetime Value EUR
-    seo_maturity_level = Column(String(20), nullable=True)  # none, basic, intermediate, advanced
     # Engine cached metrics (synced periodically)
     engine_content_count = Column(Integer, nullable=True)
     engine_keyword_count = Column(Integer, nullable=True)
@@ -448,7 +438,6 @@ class Client(UTCTimestampMixin, Base):
     communications = relationship("CommunicationLog", back_populates="client", lazy="noload", order_by="CommunicationLog.occurred_at.desc()")
     contacts = relationship("ClientContact", back_populates="client", lazy="noload", order_by="ClientContact.is_primary.desc()")
     incomes = relationship("Income", back_populates="client", lazy="noload")
-    resources = relationship("ClientResource", back_populates="client", lazy="noload", order_by="ClientResource.label")
     billing_events = relationship("BillingEvent", back_populates="client", lazy="noload", order_by="BillingEvent.event_date.desc()")
 
 
@@ -488,7 +477,10 @@ class Project(UTCTimestampMixin, Base):
     progress_percent = Column(Integer, nullable=False, default=0)
     budget_hours = Column(Float, nullable=True)
     weekly_hours_budget = Column(Float, nullable=True)  # guía visual de carga semanal; no dispara alertas por sí solo
-    monthly_hours_budget = Column(Float, nullable=True)  # techo acumulado del mes; warning 80%, alerta 100%
+    monthly_hours_budget = Column(Float, nullable=True)  # techo acumulado del mes; aviso 75 %, alerta 100 %
+    # Lo que sobra (o el exceso) del mes anterior suma (o resta) al techo de este
+    # mes; sólo un mes, sin cadena. Ver services/hours_carryover.py.
+    hours_carryover = Column(Boolean, nullable=False, default=False, server_default="false")
     budget_amount = Column(Numeric(12, 2), nullable=True)
     gsc_url = Column(String(255), nullable=True)
     ga4_property_id = Column(String(50), nullable=True)
@@ -515,7 +507,6 @@ class Project(UTCTimestampMixin, Base):
     owner = relationship("User", lazy="selectin", foreign_keys=[owner_id])
     phases = relationship("ProjectPhase", back_populates="project", lazy="selectin", order_by="ProjectPhase.order_index")
     tasks = relationship("Task", back_populates="project", lazy="selectin")
-    evidence = relationship("ProjectEvidence", back_populates="project", lazy="noload", order_by="ProjectEvidence.created_at.desc()")
 
 
 class ProjectPhase(TimestampMixin, Base):
@@ -671,6 +662,8 @@ class Task(TimestampMixin, Base):
     depends_on = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     scheduled_date = Column(Date, nullable=True)
+    # Orden manual (índice fraccional, services/task_rank.py); NULL = sin orden manual.
+    sort_rank = Column(String(64), nullable=True)
     # Fecha en que se marcó como "Avanzada". La barrida nocturna devuelve a
     # in_progress toda tarea advanced con advanced_at anterior a hoy, de modo
     # que un servidor caído a medianoche se recupera solo al arrancar.
@@ -690,8 +683,14 @@ class Task(TimestampMixin, Base):
 
     # Recurring task fields
     is_recurring = Column(Boolean, nullable=False, default=False, server_default="false")
-    recurrence_pattern = Column(String(20), nullable=True)  # daily|weekly|biweekly|monthly
-    recurrence_day = Column(Integer, nullable=True)  # 0-4 for weekly, 1-28 for monthly
+    # daily|weekly|weekdays|biweekly|monthly|quarterly|last_business_day
+    recurrence_pattern = Column(String(20), nullable=True)
+    recurrence_day = Column(Integer, nullable=True)  # 0-4 weekly/biweekly, 1-28 monthly/quarterly
+    # Days 0-4 of the "weekdays" pattern (several days a week); NULL otherwise.
+    recurrence_weekdays = Column(JSONB, nullable=True)
+    # Catch-up floor: the generator never fills dates before it. Set when the
+    # rule starts, changes or resumes; NULL (older templates) = only today.
+    recurrence_since = Column(Date, nullable=True)
     recurrence_end_date = Column(Date, nullable=True)
     # NULL preserves the historical ISO-even-week calendar. Never backfill it.
     recurrence_anchor_date = Column(Date, nullable=True)
@@ -700,6 +699,10 @@ class Task(TimestampMixin, Base):
     # Historical instances stay NULL because their original date is unknown.
     recurrence_occurrence_date = Column(Date, nullable=True)
     recurring_parent_id = Column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
+    # Written procedure of a recurring template. Each generated occurrence
+    # keeps its own copy, so editing the template only changes future ones.
+    procedure_text = Column(Text, nullable=True)
+    procedure_url = Column(Text, nullable=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -741,6 +744,59 @@ class TaskRecurrenceOccurrence(Base):
     )
 
 
+class UserBlocksCalendar(Base):
+    """Calendario "The Agency" donde una persona publica sus bloques de trabajo.
+
+    Fase 4 (``services/calendar_blocks_sync.py``): una fila por persona que lo
+    activó; sin fila no publica. Tabla aparte y no columna de ``users``.
+    """
+    __tablename__ = "user_blocks_calendars"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    calendar_id = Column(String(300), nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class TaskTimeBlock(TimestampMixin, Base):
+    """Bloque de trabajo con hora: "trabajo en la tarea X de 10:00 a 11:30".
+
+    Horas civiles de la agencia sin zona (como ``Event``). Varios por tarea y
+    persona; lo lee Mi agenda (vista con horas) y el cronómetro se arranca desde
+    él. Migración ``task_time_blocks_v1``; entra en el Deshacer como hijo de la
+    tarea.
+    """
+    __tablename__ = "task_time_blocks"
+    __table_args__ = (
+        CheckConstraint("ends_at > starts_at", name="ck_task_time_blocks_order"),
+        CheckConstraint("ends_at - starts_at <= interval '12 hours'", name="ck_task_time_blocks_length"),
+        CheckConstraint(
+            "starts_at::date = (ends_at - interval '1 microsecond')::date",
+            name="ck_task_time_blocks_same_day",
+        ),
+        Index("ix_task_time_blocks_user_starts", "user_id", "starts_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    starts_at = Column(DateTime, nullable=False)
+    ends_at = Column(DateTime, nullable=False)
+    # Publicación en Google Calendar (services/calendar_blocks_sync.py): su evento,
+    # el ``updated`` de Google en la última conciliación y cuándo se concilió.
+    google_event_id = Column(String(300), nullable=True)
+    google_event_updated = Column(String(40), nullable=True)
+    google_synced_at = Column(DateTime, nullable=True)
+
+    task = relationship("Task", lazy="noload")
+
+    @property
+    def display_label(self) -> str:
+        """Para el Deshacer: "28/10 10:00–11:30"."""
+        if not self.starts_at or not self.ends_at:
+            return "Bloque"
+        return f"{self.starts_at:%d/%m %H:%M}–{self.ends_at:%H:%M}"
+
+
 class TaskChecklist(TimestampMixin, Base):
     __tablename__ = "task_checklists"
 
@@ -764,6 +820,8 @@ class TaskComment(TimestampMixin, Base):
     task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     text = Column(Text, nullable=False)
+    # Borrador de IA pedido por user_id desde el procedimiento de la tarea.
+    is_ai_draft = Column(Boolean, nullable=False, default=False, server_default="false")
 
     user = relationship("User", lazy="selectin")
 
@@ -822,19 +880,6 @@ class ClientContact(UTCTimestampMixin, Base):
     client = relationship("Client", back_populates="contacts", lazy="selectin")
 
 
-class ClientResource(TimestampMixin, Base):
-    __tablename__ = "client_resources"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
-    label = Column(String(200), nullable=False)
-    url = Column(String(500), nullable=False)
-    resource_type = Column(Enum(ResourceType), nullable=False, default=ResourceType.other)
-    notes = Column(Text, nullable=True)
-
-    client = relationship("Client", back_populates="resources", lazy="selectin")
-
-
 class ClientDocument(TimestampMixin, Base):
     __tablename__ = "client_documents"
 
@@ -847,38 +892,6 @@ class ClientDocument(TimestampMixin, Base):
     content = Column(LargeBinary, nullable=False)
 
     client = relationship("Client", lazy="noload")
-
-
-class EvidenceType(str, enum.Enum):
-    screenshot = "screenshot"
-    report = "report"
-    analytics = "analytics"
-    ranking = "ranking"
-    content = "content"
-    deliverable = "deliverable"
-    proposal = "proposal"
-    other = "other"
-
-
-class ProjectEvidence(TimestampMixin, Base):
-    __tablename__ = "project_evidence"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
-    phase_id = Column(Integer, ForeignKey("project_phases.id"), nullable=True, index=True)
-    title = Column(String(200), nullable=False)
-    url = Column(Text, nullable=True)
-    file_name = Column(String(255), nullable=True)
-    file_mime_type = Column(String(100), nullable=True)
-    file_size_bytes = Column(Integer, nullable=True)
-    file_content = Column(LargeBinary, nullable=True)
-    evidence_type = Column(String(20), default="other")
-    description = Column(Text, nullable=True)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-
-    project = relationship("Project", back_populates="evidence", lazy="selectin")
-    phase = relationship("ProjectPhase", lazy="selectin")
-    creator = relationship("User", lazy="selectin")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1155,9 +1168,6 @@ class AlertSettings(TimestampMixin, Base):
     days_without_contact = Column(Integer, nullable=False, default=10)
     max_tasks_per_week = Column(Integer, nullable=False, default=15)
 
-    notify_in_app = Column(Boolean, nullable=False, default=True)
-    notify_email = Column(Boolean, nullable=False, default=False)
-
     user = relationship("User", lazy="selectin")
 
 
@@ -1174,27 +1184,6 @@ class ReportAudience(str, enum.Enum):
     operational = "operational"
 
 
-class GeneratedReport(TimestampMixin, Base):
-    __tablename__ = "generated_reports"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    report_type = Column(Enum(ReportType), nullable=False)
-    title = Column(String(200), nullable=False)
-    generated_at = Column(DateTime, nullable=False)
-    period_start = Column(DateTime, nullable=True)
-    period_end = Column(DateTime, nullable=True)
-    content = Column(Text, nullable=False)  # JSON string with sections and summary
-    audience = Column(String(50), nullable=True)  # stored as varchar in DB
-
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    client_id = Column(Integer, ForeignKey("clients.id"), nullable=True, index=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
-
-    user = relationship("User", lazy="selectin")
-    client = relationship("Client", lazy="selectin")
-    project = relationship("Project", lazy="selectin")
-
-
 # ── User Permissions & Invitations ────────────────────────────
 
 class UserPermission(TimestampMixin, Base):
@@ -1207,20 +1196,6 @@ class UserPermission(TimestampMixin, Base):
     can_write = Column(Boolean, nullable=False, default=False)
 
     user = relationship("User", back_populates="permissions", lazy="selectin")
-
-
-class UserInvitation(TimestampMixin, Base):
-    __tablename__ = "user_invitations"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    email = Column(String(255), nullable=False)
-    token = Column(String(255), unique=True, nullable=False, index=True)
-    role = Column(Enum(UserRole), nullable=False, default=UserRole.member)
-    invited_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    expires_at = Column(DateTime, nullable=False)
-    accepted_at = Column(DateTime, nullable=True)
-
-    inviter = relationship("User", lazy="selectin")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1286,8 +1261,11 @@ class ClientReportPolicy(UTCTimestampMixin, Base):
     __tablename__ = "client_report_policies"
 
     client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
-    enabled = Column(Boolean, nullable=False, default=False, server_default="false")
-    cadence = Column(Enum(ReportCadence, native_enum=False), nullable=False, default=ReportCadence.weekly, server_default="weekly")
+    # Un cliente puede tener informe mensual y seguimiento semanal a la vez, cada
+    # uno con su interruptor; responsable y revisión son comunes. La cadencia de
+    # un resumen sale de su periodo (``digest_periods.period_cadence``).
+    weekly_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
+    monthly_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
     responsible_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     revision = Column(Integer, nullable=False, default=1, server_default="1")
 
@@ -1352,6 +1330,21 @@ class Lead(TimestampMixin, Base):
     assigned_user = relationship("User", lazy="selectin")
     converted_client = relationship("Client", lazy="selectin")
     activities = relationship("LeadActivity", back_populates="lead", lazy="selectin", order_by="LeadActivity.created_at.desc()")
+
+
+class LeadStatusHistory(Base):
+    """Cada vez que un lead entra en una etapa (migración ``lead_status_history_v1``).
+
+    La lee el embudo del Pipeline (conversión entre etapas y días en cada una).
+    Se escribe al crear el lead y en cada cambio de etapa (``services/lead_pipeline``).
+    """
+    __tablename__ = "lead_status_history"
+    __table_args__ = (Index("ix_lead_status_history_lead", "lead_id", "entered_at"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="CASCADE"), nullable=False)
+    status = Column(Enum(LeadStatus), nullable=False)
+    entered_at = Column(DateTime, nullable=False, server_default=func.timezone("UTC", func.now()))
 
 
 class LeadActivity(TimestampMixin, Base):
@@ -1730,43 +1723,6 @@ class DeliveryAttempt(TimestampMixin, Base):
     steps = Column(JSONB, nullable=False)
 
 
-class AssetCategory(str, enum.Enum):
-    email = "email"
-    domain = "domain"
-    hosting = "hosting"
-    tool = "tool"
-
-
-class AgencyAsset(TimestampMixin, Base):
-    __tablename__ = "agency_assets"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    category = Column(Enum(AssetCategory, native_enum=False), nullable=False, index=True)
-    name = Column(String(200), nullable=False)
-    value = Column(String(500))          # email address or domain name
-    provider = Column(String(200))
-    url = Column(String(500))
-    notes = Column(Text)
-    # Email
-    associated_domain = Column(String(200))
-    # Domain
-    registrar = Column(String(200))
-    expiry_date = Column(Date)
-    auto_renew = Column(Boolean, default=False)
-    dns_provider = Column(String(200))
-    # Hosting
-    hosting_type = Column(String(50))    # shared, vps, dedicated, cloud, other
-    # Tool / Hosting
-    tool_category = Column(String(100))
-    monthly_cost = Column(Numeric(10, 2))
-    # Credentials (tools + emails)
-    username = Column(String(200))        # login email / user for the tool
-    password = Column(String(500))        # password (encrypted with Fernet via security.py; vault is admin-only)
-    is_active = Column(Boolean)           # Activa: True/False/None
-    subscription_type = Column(String(50))  # Gratuita, Mensual, Anual, etc.
-    purpose = Column(String(200))         # Uso: Contacto general, Cuentas herramientas...
-
-
 class BalanceSnapshot(TimestampMixin, Base):
     __tablename__ = "balance_snapshots"
 
@@ -1866,29 +1822,7 @@ class InboxAttachment(TimestampMixin, Base):
     uploader = relationship("User", lazy="selectin")
 
 
-# ── My Week: Day Status & Company Holidays ─────────────────
-
-
-class DayStatusType(str, enum.Enum):
-    available = "available"
-    away = "away"
-    vacation = "vacation"
-    sick = "sick"
-    holiday = "holiday"
-
-
-class UserDayStatus(TimestampMixin, Base):
-    __tablename__ = "user_day_statuses"
-    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_user_day_status"),)
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    date = Column(Date, nullable=False, index=True)
-    status = Column(Enum(DayStatusType), nullable=False, default=DayStatusType.available)
-    label = Column(String(100), nullable=True)
-    note = Column(Text, nullable=True)
-
-    user = relationship("User", lazy="selectin")
+# ── Company Holidays ─────────────────
 
 
 class CompanyHoliday(TimestampMixin, Base):
@@ -1924,60 +1858,6 @@ class ProjectTemplateDB(TimestampMixin, Base):
     creator = relationship("User", lazy="selectin")
 
 
-# ── Automation Rules ──────────────────────────────────────
-
-class AutomationTrigger(str, enum.Enum):
-    task_completed = "task_completed"
-    task_overdue = "task_overdue"
-    phase_completed = "phase_completed"
-    project_status_changed = "project_status_changed"
-    time_entry_created = "time_entry_created"
-    communication_logged = "communication_logged"
-    # Scheduled
-    daily_check = "daily_check"
-
-
-class AutomationActionType(str, enum.Enum):
-    create_task = "create_task"
-    change_task_status = "change_task_status"
-    change_project_status = "change_project_status"
-    assign_user = "assign_user"
-    send_notification = "send_notification"
-    send_discord = "send_discord"
-    create_insight = "create_insight"
-
-
-class AutomationRule(TimestampMixin, Base):
-    __tablename__ = "automation_rules"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(200), nullable=False)
-    description = Column(Text, nullable=True)
-    trigger = Column(String(50), nullable=False, index=True)  # AutomationTrigger value
-    conditions = Column(JSON, nullable=False, default=dict)    # {project_id, client_id, status, etc.}
-    action_type = Column(String(50), nullable=False)           # AutomationActionType value
-    action_config = Column(JSON, nullable=False, default=dict) # Parameters for the action
-    is_active = Column(Boolean, nullable=False, default=True)
-    run_count = Column(Integer, nullable=False, default=0)
-    last_run_at = Column(DateTime, nullable=True)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    creator = relationship("User", lazy="selectin")
-
-
-class AutomationLog(TimestampMixin, Base):
-    __tablename__ = "automation_logs"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    rule_id = Column(Integer, ForeignKey("automation_rules.id", ondelete="CASCADE"), nullable=False)
-    trigger_event = Column(String(50), nullable=False)
-    trigger_data = Column(JSON, nullable=True)     # What caused the trigger
-    action_result = Column(JSON, nullable=True)     # What the action did
-    success = Column(Boolean, nullable=False, default=True)
-    error_message = Column(Text, nullable=True)
-    executed_at = Column(DateTime, nullable=False, default=func.now())
-    rule = relationship("AutomationRule", lazy="selectin")
-
-
 class JobRuntime(Base):
     """Latest scheduled cycle; configuration and labels live in the job catalog."""
     __tablename__ = "job_runtime"
@@ -1991,15 +1871,75 @@ class JobRuntime(Base):
 
 
 class GscConnection(Base):
-    """Única conexión de la agencia con Search Console (fila id=1)."""
+    """Una cuenta de Google conectada a Search Console (puede haber varias)."""
     __tablename__ = "gsc_connection"
 
-    id = Column(SmallInteger, primary_key=True, default=1)
-    google_email = Column(String(255), nullable=True)
+    # Secuencia explícita: con autoincrement, create_all la haría SERIAL (int4)
+    # y el contrato publicado (gsc_v1) exige SMALLINT. Es la misma secuencia
+    # que crea la migración gsc_accounts_v1.
+    id = Column(SmallInteger, Sequence("gsc_connection_id_seq"), primary_key=True)
+    google_email = Column(String(255), nullable=True)  # en minúsculas; único
     refresh_token = Column(Text, nullable=False)  # cifrado con encrypt_vault_secret
     status = Column(String(32), nullable=False)  # connected | reconnect_required
     connected_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     connected_at = Column(DateTime(timezone=True), nullable=False)
+
+
+Index(
+    "uq_gsc_connection_google_email", GscConnection.google_email, unique=True,
+    postgresql_where=GscConnection.google_email.isnot(None),
+)
+
+
+class Ga4Daily(Base):
+    """Totales diarios de una propiedad de GA4: sesiones, eventos clave y lo que llega desde asistentes de IA."""
+    __tablename__ = "ga4_daily"
+
+    property_id = Column(String(32), primary_key=True)
+    date = Column(Date, primary_key=True)
+    sessions = Column(Integer, nullable=False)
+    key_events = Column(Float, nullable=False)
+    ai_sessions = Column(Integer, nullable=False)
+    ai_key_events = Column(Float, nullable=False)
+
+
+class Ga4PropertySync(Base):
+    """Estado de importación por propiedad de GA4 y con qué cuenta de Google se lee."""
+    __tablename__ = "ga4_property_sync"
+
+    property_id = Column(String(32), primary_key=True)
+    connection_id = Column(SmallInteger, ForeignKey("gsc_connection.id", ondelete="SET NULL"), nullable=True)
+    backfilled_at = Column(DateTime(timezone=True), nullable=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    last_data_date = Column(Date, nullable=True)
+    error_code = Column(String(64), nullable=True)
+    # Leads por landing (`ga4_lead_daily`): cuándo se importaron los 16 meses,
+    # con qué eventos (si cambian, se vuelve a importar todo) y hasta qué día.
+    leads_backfilled_at = Column(DateTime(timezone=True), nullable=True)
+    leads_events = Column(String(1000), nullable=True)
+    leads_synced_through = Column(Date, nullable=True)
+    # Primer día que importó The Agency: lo anterior sólo puede venir de Engine.
+    leads_covered_from = Column(Date, nullable=True)
+    leads_error_code = Column(String(64), nullable=True)
+
+
+class Ga4LeadDaily(Base):
+    """Leads por día, landing y canal de una propiedad de GA4 (hasta 16 meses).
+
+    `leads` = número de eventos que el cliente cuenta como lead
+    (`clients.ga4_lead_events`). `landing_page` = host + ruta sin parámetros de
+    seguimiento (recortada a 2.000 caracteres). Nada por usuario.
+    """
+    __tablename__ = "ga4_lead_daily"
+    __table_args__ = (
+        CheckConstraint("char_length(landing_page) <= 2000", name="ck_ga4_lead_daily_landing_length"),
+    )
+
+    property_id = Column(String(32), primary_key=True)
+    date = Column(Date, primary_key=True)
+    landing_page = Column(Text, primary_key=True)
+    channel = Column(String(64), primary_key=True)
+    leads = Column(Integer, nullable=False)
 
 
 class GscDaily(Base):
@@ -2013,6 +1953,110 @@ class GscDaily(Base):
     position = Column(Float, nullable=False)
 
 
+class AppSuggestion(Base):
+    """Idea o fallo de la app que deja alguien del equipo (botón "Sugerencias").
+
+    Los admins las ven todas y las marcan como hechas; quien la escribió ve
+    las suyas. `page_path` es la pantalla desde la que se envió.
+    """
+    __tablename__ = "app_suggestions"
+    __table_args__ = (CheckConstraint("length(btrim(text)) > 0", name="ck_app_suggestions_text"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    text = Column(Text, nullable=False)
+    page_path = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    done_at = Column(DateTime(timezone=True), nullable=True)
+    done_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class AppSuggestionImage(Base):
+    """Pantallazo de una sugerencia (sólo imágenes; se borra con ella)."""
+    __tablename__ = "app_suggestion_images"
+    __table_args__ = (
+        CheckConstraint(
+            "mime_type IN ('image/png','image/jpeg','image/gif','image/webp')",
+            name="ck_app_suggestion_images_type",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    suggestion_id = Column(Integer, ForeignKey("app_suggestions.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    mime_type = Column(String(50), nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+SCOPE_DECISIONS = ("pending", "absorb", "bill", "swap")
+
+
+class ClientScopeRequest(Base):
+    """Petición de un cliente fuera de lo contratado (llamada, Slack, email).
+
+    Se apunta con su coste estimado en minutos y se decide qué hacer con ella:
+    ``pending`` (sin decidir), ``absorb`` (la asumimos), ``bill`` (se factura
+    aparte) o ``swap`` (se hace a cambio de otra cosa del plan). El mes al que
+    cuenta es el de ``requested_on``. Migración ``client_scope_requests_v1``.
+    """
+    __tablename__ = "client_scope_requests"
+    __table_args__ = (
+        CheckConstraint("length(btrim(title)) > 0", name="ck_client_scope_requests_title"),
+        CheckConstraint(
+            "estimated_minutes > 0 AND estimated_minutes <= 60000",
+            name="ck_client_scope_requests_minutes",
+        ),
+        CheckConstraint(
+            "decision IN ('pending','absorb','bill','swap')",
+            name="ck_client_scope_requests_decision",
+        ),
+        CheckConstraint(
+            "(decision = 'pending') = (decided_at IS NULL)",
+            name="ck_client_scope_requests_decided",
+        ),
+        Index("ix_client_scope_requests_client_requested", "client_id", "requested_on"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    title = Column(String(200), nullable=False)
+    detail = Column(Text, nullable=True)
+    estimated_minutes = Column(Integer, nullable=False)
+    requested_on = Column(Date, nullable=False)
+    decision = Column(String(10), nullable=False, default="pending", server_default="pending")
+    decision_note = Column(Text, nullable=True)
+    decided_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    decided_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ClientShareLink(Base):
+    """Enlace de sólo lectura para el cliente: sus resúmenes entregados y su tráfico.
+
+    Sólo se guarda el SHA-256 del token; el enlace completo se enseña una vez al
+    crearlo. Un enlace activo por cliente (índice único parcial).
+    """
+    __tablename__ = "client_share_links"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+    last_viewed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+Index(
+    "uq_client_share_links_active", ClientShareLink.client_id, unique=True,
+    postgresql_where=ClientShareLink.revoked_at.is_(None),
+)
+
+
 class GscSiteSync(Base):
     """Estado de importación por propiedad: decide si un mes está completo."""
     __tablename__ = "gsc_site_sync"
@@ -2022,3 +2066,744 @@ class GscSiteSync(Base):
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
     last_data_date = Column(Date, nullable=True)
     error_code = Column(String(64), nullable=True)
+    # Cuenta con la que se importa (la que tiene acceso a la propiedad).
+    connection_id = Column(SmallInteger, ForeignKey("gsc_connection.id", ondelete="SET NULL"), nullable=True)
+
+
+class GscQueryDaily(Base):
+    """Cifras diarias finales por consulta de una propiedad (sólo los últimos 120 días).
+
+    Google anonimiza las consultas poco frecuentes: la suma de consultas de un
+    día es MENOR que el total de `gsc_daily` (la diferencia es "sin clasificar").
+    """
+    __tablename__ = "gsc_query_daily"
+
+    site_url = Column(String(255), primary_key=True)
+    date = Column(Date, primary_key=True)
+    query = Column(Text, primary_key=True)
+    clicks = Column(Integer, nullable=False)
+    impressions = Column(Integer, nullable=False)
+    position = Column(REAL, nullable=False)
+
+
+class SeoAnnotation(Base):
+    """Nota con fecha en las gráficas SEO de un cliente ("migramos la web", "cambio de títulos")."""
+    __tablename__ = "seo_annotations"
+    __table_args__ = (
+        CheckConstraint("length(btrim(text)) > 0", name="ck_seo_annotations_text"),
+        Index("ix_seo_annotations_client_date", "client_id", "date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    date = Column(Date, nullable=False)
+    text = Column(String(160), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class DigestSeoDetail(Base):
+    """Foto del detalle de Search Console del mes de un resumen mensual: top de
+    consultas y páginas, oportunidades y marca. Se pinta con código en el email,
+    el PDF y el enlace del cliente; nunca va a la IA. Mientras el resumen no ha
+    salido de la app se recalcula al pintarlo; después es lo que se envió.
+    Fuera del Deshacer (dato de máquina) y con la retención del detalle."""
+    __tablename__ = "digest_seo_details"
+    __table_args__ = (Index("ix_digest_seo_details_site_url", "site_url"),)
+
+    digest_id = Column(Integer, ForeignKey("weekly_digests.id", ondelete="CASCADE"), primary_key=True)
+    site_url = Column(String(255), nullable=False)
+    payload = Column(JSONB, nullable=False)
+    computed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class GscPageDaily(Base):
+    """Cifras diarias finales por página de una propiedad (sólo los últimos 120 días).
+
+    Las impresiones por página NO suman el total de la propiedad: una búsqueda
+    que enseña dos páginas cuenta una impresión en cada una.
+    """
+    __tablename__ = "gsc_page_daily"
+
+    site_url = Column(String(255), primary_key=True)
+    date = Column(Date, primary_key=True)
+    page = Column(Text, primary_key=True)  # recortada a 2.000 caracteres
+    clicks = Column(Integer, nullable=False)
+    impressions = Column(Integer, nullable=False)
+    position = Column(REAL, nullable=False)
+
+
+class GscDetailSync(Base):
+    """Estado de importación del detalle (consultas y páginas) por propiedad."""
+    __tablename__ = "gsc_detail_sync"
+
+    site_url = Column(String(255), primary_key=True)
+    backfilled_at = Column(DateTime(timezone=True), nullable=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    last_data_date = Column(Date, nullable=True)
+    error_code = Column(String(64), nullable=True)
+    # Filas guardadas en la ventana de 120 días tras la última pasada.
+    query_rows = Column(Integer, nullable=True)
+    page_rows = Column(Integer, nullable=True)
+    # Cuándo se importaron de Google los meses anteriores a los 120 días
+    # (`gsc_query_monthly`). NULL = pendiente: la próxima pasada lo intenta.
+    monthly_backfilled_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class GscQueryMonthly(Base):
+    """Total MENSUAL por consulta de una propiedad: historial de posiciones más
+    allá de los 120 días del detalle diario (hasta 16 meses).
+
+    Sólo meses completos. `weighted_position_sum` = SUM(posición × impresiones),
+    para recalcular la posición ponderada al juntar meses. PK con la consulta
+    antes del mes: la lectura es "el historial de ESTA consulta".
+    """
+    __tablename__ = "gsc_query_monthly"
+    __table_args__ = (
+        CheckConstraint("EXTRACT(DAY FROM month) = 1", name="ck_gsc_query_monthly_first_day"),
+        CheckConstraint("source IN ('google', 'engine')", name="ck_gsc_query_monthly_source"),
+    )
+
+    site_url = Column(String(255), primary_key=True)
+    query = Column(Text, primary_key=True)
+    month = Column(Date, primary_key=True)  # día 1 del mes
+    clicks = Column(Integer, nullable=False)
+    impressions = Column(Integer, nullable=False)
+    weighted_position_sum = Column(Float, nullable=False)
+    # 'google' = importado por The Agency (retención de 16 meses);
+    # 'engine' = historial traído una vez de The Engine
+    # (`scripts/import_engine_positions.py`): no caduca a los 16 meses, pero se
+    # borra igual si la web deja de tener cliente activo o al purgar la cuenta.
+    source = Column(String(16), nullable=False, default="google", server_default="google")
+
+
+# ── Accesos (credenciales compartidas) ───────────────────────────────────────
+
+CREDENTIAL_LOG_ACTIONS = ("reveal", "copy", "create", "update", "share", "delete")
+
+
+class Credential(Base):
+    """Un acceso compartido (WordPress del cliente, GA, herramientas…).
+
+    La contraseña sólo existe cifrada (``encrypt_vault_secret``, prefijo ``v1:``;
+    el CHECK impide guardar texto plano). Ningún listado la devuelve: sólo
+    ``POST /api/credentials/{id}/reveal``, que deja rastro en el registro.
+    Fuera del journal de Deshacer a propósito (ver ``change_journal._SPECS``).
+    """
+    __tablename__ = "credentials"
+    __table_args__ = (
+        CheckConstraint("secret_encrypted LIKE 'v1:%'", name="ck_credentials_secret_encrypted"),
+        CheckConstraint("totp_encrypted IS NULL OR totp_encrypted LIKE 'v1:%'", name="ck_credentials_totp_encrypted"),
+        CheckConstraint("notes IS NULL OR notes LIKE 'v1:%'", name="ck_credentials_notes_encrypted"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(200), nullable=False)
+    url = Column(String(500), nullable=True)
+    username = Column(String(255), nullable=True)
+    secret_encrypted = Column(Text, nullable=False)
+    # Clave del autenticador (2FA) como enlace otpauth:// normalizado, cifrada
+    # igual que la contraseña. Sólo sale convertida en código (`/totp`).
+    totp_encrypted = Column(Text, nullable=True)
+    # Notas cifradas como la contraseña (columna "notes"; migración
+    # `credentials_notes_v1`). Sólo salen por `/notes`, que deja rastro.
+    notes_encrypted = Column("notes", Text, nullable=True)
+    # Último cambio de contraseña: la salida de alguien lo compara con lo que vio.
+    secret_changed_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class CredentialShare(Base):
+    """Con quién se comparte un acceso. Los admins ven todos sin fila aquí."""
+    __tablename__ = "credential_shares"
+
+    credential_id = Column(Integer, ForeignKey("credentials.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+
+
+class CredentialAccessLog(Base):
+    """Quién vio, copió o cambió un acceso y cuándo. Sobrevive al borrado del acceso
+    (``credential_id`` pasa a NULL y queda ``credential_name``)."""
+    __tablename__ = "credential_access_log"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('reveal','copy','create','update','share','delete','totp','notes')",
+            name="ck_credential_access_log_action",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    credential_id = Column(Integer, ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True)
+    credential_name = Column(String(200), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action = Column(String(16), nullable=False)
+    detail = Column(String(500), nullable=True)
+    at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_credential_access_log_credential_at", CredentialAccessLog.credential_id, CredentialAccessLog.at)
+
+
+# ── Webs: disponibilidad (monitor de caídas) ─────────────────────────────────
+# Fuera del journal de Deshacer: son datos de máquina (estado, sondeos, caídas) y
+# un webhook cifrado. Lo guarda ``test_webs_quedan_fuera_del_journal``.
+
+
+class WebUptimeTarget(Base):
+    """Una URL de un cliente que se comprueba cada pocos minutos."""
+    __tablename__ = "web_uptime_targets"
+    __table_args__ = (UniqueConstraint("client_id", "url", name="uq_web_uptime_targets_client_url"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    url = Column(String(500), nullable=False)
+    label = Column(String(120), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true", default=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class WebUptimeState(Base):
+    """Máquina de estados de un objetivo: qué vimos, cuántas veces y cuándo toca mirar."""
+    __tablename__ = "web_uptime_state"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('unknown','up','suspect','down','blocked')", name="ck_web_uptime_state_status",
+        ),
+    )
+
+    target_id = Column(Integer, ForeignKey("web_uptime_targets.id", ondelete="CASCADE"), primary_key=True)
+    status = Column(String(16), nullable=False, server_default="unknown", default="unknown")
+    status_since = Column(DateTime(timezone=True), nullable=True)
+    consecutive_failures = Column(SmallInteger, nullable=False, server_default="0", default=0)
+    consecutive_successes = Column(SmallInteger, nullable=False, server_default="0", default=0)
+    failing_since = Column(DateTime(timezone=True), nullable=True)
+    blocked_since = Column(DateTime(timezone=True), nullable=True)
+    last_checked_at = Column(DateTime(timezone=True), nullable=True)
+    last_outcome = Column(String(16), nullable=True)
+    last_status_code = Column(Integer, nullable=True)
+    last_error = Column(String(32), nullable=True)
+    last_response_ms = Column(Integer, nullable=True)
+    next_check_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_web_uptime_state_next_check", WebUptimeState.next_check_at)
+
+
+class WebOutage(Base):
+    """Una caída (o un bloqueo largo) confirmada, con su aviso a Slack como outbox."""
+    __tablename__ = "web_outages"
+    __table_args__ = (
+        CheckConstraint("kind IN ('down','blocked')", name="ck_web_outages_kind"),
+        CheckConstraint(
+            "slack_down_status IN ('pending','sent','failed','skipped')", name="ck_web_outages_slack_down",
+        ),
+        CheckConstraint(
+            "slack_recovery_status IS NULL OR slack_recovery_status IN ('pending','sent','failed','skipped')",
+            name="ck_web_outages_slack_recovery",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    target_id = Column(Integer, ForeignKey("web_uptime_targets.id", ondelete="CASCADE"), nullable=False)
+    kind = Column(String(16), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    confirmed_at = Column(DateTime(timezone=True), nullable=False)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+    cause = Column(String(32), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    slack_down_status = Column(String(16), nullable=False, server_default="pending", default="pending")
+    slack_down_sent_at = Column(DateTime(timezone=True), nullable=True)
+    slack_recovery_status = Column(String(16), nullable=True)
+    slack_recovery_sent_at = Column(DateTime(timezone=True), nullable=True)
+    slack_attempts = Column(SmallInteger, nullable=False, server_default="0", default=0)
+
+
+Index("uq_web_outages_open", WebOutage.target_id, unique=True, postgresql_where=WebOutage.ended_at.is_(None))
+Index("ix_web_outages_target_started", WebOutage.target_id, WebOutage.started_at)
+
+
+class WebUptimeProbe(Base):
+    """Cada comprobación programada (30 días). Las de "Probar ahora" no se guardan."""
+    __tablename__ = "web_uptime_probes"
+    __table_args__ = (
+        CheckConstraint("outcome IN ('up','down','blocked')", name="ck_web_uptime_probes_outcome"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    target_id = Column(Integer, ForeignKey("web_uptime_targets.id", ondelete="CASCADE"), nullable=False)
+    checked_at = Column(DateTime(timezone=True), nullable=False)
+    outcome = Column(String(16), nullable=False)
+    status_code = Column(Integer, nullable=True)
+    error = Column(String(32), nullable=True)
+    response_ms = Column(Integer, nullable=True)
+
+
+Index("ix_web_uptime_probes_target_checked", WebUptimeProbe.target_id, WebUptimeProbe.checked_at)
+Index("ix_web_uptime_probes_checked", WebUptimeProbe.checked_at)
+
+
+class ClientWebSettings(Base):
+    """Ajustes web de un cliente: su canal de Slack (webhook cifrado) y su User-Agent.
+
+    El webhook sólo existe cifrado (``encrypt_vault_secret``, prefijo ``v1:``; el
+    CHECK impide guardarlo en claro) y ninguna respuesta lo devuelve.
+    """
+    __tablename__ = "client_web_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "slack_webhook_url IS NULL OR slack_webhook_url LIKE 'v1:%'",
+            name="ck_client_web_settings_webhook_encrypted",
+        ),
+        CheckConstraint(
+            "digest_min_severity IS NULL OR digest_min_severity IN ('critical','warning','info')",
+            name="ck_client_web_settings_digest_min_severity",
+        ),
+    )
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    slack_webhook_url = Column(Text, nullable=True)
+    slack_channel_hint = Column(String(100), nullable=True)
+    slack_enabled = Column(Boolean, nullable=False, server_default="false", default=False)
+    slack_revoked_at = Column(DateTime(timezone=True), nullable=True)
+    downtime_to_slack = Column(Boolean, nullable=False, server_default="true", default=True)
+    user_agent = Column(String(300), nullable=True)
+    # ── Vigilancia de cambios (migración ``web_changes_v1``) ──
+    # Se enciende por cliente (``web_changes_toggle_v1``): apagada, ni se barre,
+    # ni avisa, ni cuenta en su estado. Sus URLs y su historial se quedan.
+    changes_enabled = Column(Boolean, nullable=False, server_default="false", default=False)
+    # Sin DEFAULT a propósito: NULL = el valor de ``services/web/capture_defaults.py``.
+    # Así corregir un default en código corrige a todos los clientes que no lo
+    # cambiaron (lección de Vigil: el DEFAULT de una columna se queda congelado).
+    digest_min_severity = Column(String(16), nullable=True)
+    default_content_selector = Column(String(500), nullable=True)
+    default_ignore_selectors = Column(JSONB, nullable=True)
+    default_ignore_regexes = Column(JSONB, nullable=True)
+    max_concurrency = Column(SmallInteger, nullable=True)
+    request_timeout_s = Column(SmallInteger, nullable=True)
+    crawl_delay_ms = Column(Integer, nullable=True)
+    sweep_weekdays = Column(JSONB, nullable=True)
+    sweep_skip_dates = Column(JSONB, nullable=True)
+    sweep_summary_to_slack = Column(Boolean, nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+# ── Webs: vigilancia de cambios (portado de Vigil, migración ``web_changes_v1``) ──
+# EXCEPCIÓN a la convención de PK enteras: estas tablas usan UUID para que la
+# importación de Vigil (fase 3) conserve sus ids (enlaces de Slack ya enviados,
+# ``last_snapshot_id``, ``prev_snapshot_id``…). Fuera del journal de Deshacer:
+# datos de máquina y revisiones (``test_cambios_web_quedan_fuera_del_journal``).
+
+_WEB_SEVERITIES = "('critical','warning','info')"
+
+
+def _uuid_pk():
+    return Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4,
+                  server_default=func.gen_random_uuid())
+
+
+class WebWatch(Base):
+    """Una URL de un cliente cuyos cambios se vigilan (SEO, texto, enlaces, HTML)."""
+    __tablename__ = "web_watches"
+    __table_args__ = (
+        UniqueConstraint("client_id", "url", name="uq_web_watches_client_url"),
+        CheckConstraint("source IN ('manual','bulk','sitemap','csv')", name="ck_web_watches_source"),
+    )
+
+    id = _uuid_pk()
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    url = Column(String(500), nullable=False)
+    label = Column(String(200), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true", default=True)
+    # Archivada = fuera de la lista y del barrido, con su historial intacto.
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+    watch_seo = Column(Boolean, nullable=False, server_default="true", default=True)
+    watch_content = Column(Boolean, nullable=False, server_default="true", default=True)
+    watch_links = Column(Boolean, nullable=False, server_default="false", default=False)
+    watch_html = Column(Boolean, nullable=False, server_default="false", default=False)
+    # NULL = hereda de ``client_web_settings`` (y ésta, de ``capture_defaults``).
+    content_selector = Column(String(500), nullable=True)
+    ignore_selectors = Column(JSONB, nullable=True)
+    ignore_regexes = Column(JSONB, nullable=True)
+    muted = Column(Boolean, nullable=False, server_default="false", default=False)
+    source = Column(String(16), nullable=False, server_default="manual", default="manual")
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # "Comprobar ahora": la petición deja la marca y el job ``web_sweep`` la recoge.
+    check_requested_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_web_watches_client_active", WebWatch.client_id, WebWatch.is_active)
+Index("ix_web_watches_check_requested", WebWatch.check_requested_at,
+      postgresql_where=WebWatch.check_requested_at.is_not(None))
+
+
+class WebSweepRun(Base):
+    """Un barrido de un cliente (programado o pedido a mano)."""
+    __tablename__ = "web_sweep_runs"
+    __table_args__ = (
+        CheckConstraint("trigger IN ('scheduler','manual','api')", name="ck_web_sweep_runs_trigger"),
+        CheckConstraint("status IN ('running','done','partial','failed')", name="ck_web_sweep_runs_status"),
+    )
+
+    id = _uuid_pk()
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    # Fecha civil de la agencia (Europe/Madrid): el programado es uno por día.
+    run_date = Column(Date, nullable=False)
+    trigger = Column(String(16), nullable=False, server_default="scheduler", default="scheduler")
+    status = Column(String(16), nullable=False, server_default="running", default="running")
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    watches_total = Column(Integer, nullable=False, server_default="0", default=0)
+    watches_done = Column(Integer, nullable=False, server_default="0", default=0)
+    watches_error = Column(Integer, nullable=False, server_default="0", default=0)
+    changes_found = Column(Integer, nullable=False, server_default="0", default=0)
+    notified_at = Column(DateTime(timezone=True), nullable=True)
+    # no_procede | disabled | revoked | sent | failed | skipped_no_changes | summary_sent
+    notify_status = Column(String(32), nullable=True)
+    notify_error = Column(String(500), nullable=True)
+
+
+# Sólo el PROGRAMADO es único por cliente y día (lección 0bis de Vigil): lo
+# manual se repite tantas veces como haga falta.
+Index("uq_web_sweep_runs_scheduler_day", WebSweepRun.client_id, WebSweepRun.run_date, unique=True,
+      postgresql_where=WebSweepRun.trigger == "scheduler")
+Index("ix_web_sweep_runs_client_started", WebSweepRun.client_id, WebSweepRun.started_at)
+Index("ix_web_sweep_runs_started", WebSweepRun.started_at)
+
+
+class WebSnapshot(Base):
+    """Cuerpos de una captura. Sólo se escriben cuando algún hash cambió."""
+    __tablename__ = "web_snapshots"
+
+    id = _uuid_pk()
+    watch_id = Column(UUID(as_uuid=True), ForeignKey("web_watches.id", ondelete="CASCADE"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("web_sweep_runs.id", ondelete="SET NULL"), nullable=True)
+    captured_at = Column(DateTime(timezone=True), nullable=False)
+    content_hash = Column(String(64), nullable=True)
+    html_hash = Column(String(64), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    byte_size = Column(Integer, nullable=True)
+    # gzip. NULL = ese cuerpo no se guardó en esta captura.
+    text_gz = Column(LargeBinary, nullable=True)
+    html_gz = Column(LargeBinary, nullable=True)
+    # Texto sin comprimir si cabe en 32 KB (el diff de la noche siguiente no descomprime).
+    text_inline = Column(Text, nullable=True)
+    is_pinned = Column(Boolean, nullable=False, server_default="false", default=False)
+
+
+Index("ix_web_snapshots_watch_captured", WebSnapshot.watch_id, WebSnapshot.captured_at)
+
+
+class WebWatchState(Base):
+    """Estado ACTUAL de cada URL: hashes, última extracción y si se está mirando."""
+    __tablename__ = "web_watch_state"
+
+    watch_id = Column(UUID(as_uuid=True), ForeignKey("web_watches.id", ondelete="CASCADE"), primary_key=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    last_checked_at = Column(DateTime(timezone=True), nullable=True)
+    last_changed_at = Column(DateTime(timezone=True), nullable=True)
+    last_status_code = Column(Integer, nullable=True)
+    last_final_url = Column(Text, nullable=True)
+    last_error = Column(String(500), nullable=True)
+    consecutive_errors = Column(Integer, nullable=False, server_default="0", default=0)
+    hash_seo = Column(String(64), nullable=True)
+    hash_content = Column(String(64), nullable=True)
+    hash_links = Column(String(64), nullable=True)
+    hash_html = Column(String(64), nullable=True)
+    # Última extracción normalizada = la "versión anterior" del diff.
+    seo_json = Column(JSONB, nullable=True)
+    links_json = Column(JSONB, nullable=True)
+    needs_js_render = Column(Boolean, nullable=False, server_default="false", default=False)
+    scope_missed = Column(Boolean, nullable=False, server_default="false", default=False)
+    checking_since = Column(DateTime(timezone=True), nullable=True)
+    last_snapshot_id = Column(UUID(as_uuid=True), ForeignKey("web_snapshots.id", ondelete="SET NULL"),
+                              nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_web_watch_state_client_changed", WebWatchState.client_id, WebWatchState.last_changed_at)
+
+
+class WebRunError(Base):
+    """Sólo fallos de un barrido (una URL que no se pudo mirar, un host cortado)."""
+    __tablename__ = "web_run_errors"
+
+    id = _uuid_pk()
+    run_id = Column(UUID(as_uuid=True), ForeignKey("web_sweep_runs.id", ondelete="CASCADE"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    watch_id = Column(UUID(as_uuid=True), ForeignKey("web_watches.id", ondelete="CASCADE"), nullable=True)
+    kind = Column(String(32), nullable=False)
+    message = Column(String(500), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_web_run_errors_run", WebRunError.run_id)
+
+
+class WebChange(Base):
+    """Un cambio detectado en una URL (uno por URL y barrido), con su revisión."""
+    __tablename__ = "web_changes"
+    __table_args__ = (
+        UniqueConstraint("watch_id", "run_id", name="uq_web_changes_watch_run"),
+        CheckConstraint(f"max_severity IN {_WEB_SEVERITIES}", name="ck_web_changes_max_severity"),
+    )
+
+    id = _uuid_pk()
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    watch_id = Column(UUID(as_uuid=True), ForeignKey("web_watches.id", ondelete="CASCADE"), nullable=False)
+    # SET NULL, NO cascade: el histórico de cambios sobrevive a la retención de barridos.
+    run_id = Column(UUID(as_uuid=True), ForeignKey("web_sweep_runs.id", ondelete="SET NULL"), nullable=True)
+    snapshot_id = Column(UUID(as_uuid=True), ForeignKey("web_snapshots.id", ondelete="SET NULL"), nullable=True)
+    prev_snapshot_id = Column(UUID(as_uuid=True), ForeignKey("web_snapshots.id", ondelete="SET NULL"),
+                              nullable=True)
+    max_severity = Column(String(16), nullable=False)
+    detected_at = Column(DateTime(timezone=True), nullable=False)
+    acknowledged_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    # Nombre de quien lo revisó: sobrevive al borrado del usuario y, en la
+    # importación de Vigil, lleva el suyo cuando el email no casa con nadie.
+    acknowledged_by_label = Column(String(120), nullable=True)
+    acknowledged_at = Column(DateTime(timezone=True), nullable=True)
+    note = Column(Text, nullable=True)
+
+
+Index("ix_web_changes_client_detected", WebChange.client_id, WebChange.detected_at)
+Index("ix_web_changes_watch_detected", WebChange.watch_id, WebChange.detected_at)
+Index("ix_web_changes_pending", WebChange.client_id, WebChange.max_severity,
+      postgresql_where=WebChange.acknowledged_at.is_(None))
+
+
+class WebChangeItem(Base):
+    """Detalle de un cambio: un item por campo que se movió."""
+    __tablename__ = "web_change_items"
+    __table_args__ = (
+        CheckConstraint("kind IN ('seo','content','links','html','availability')",
+                        name="ck_web_change_items_kind"),
+        CheckConstraint(f"severity IN {_WEB_SEVERITIES}", name="ck_web_change_items_severity"),
+    )
+
+    id = _uuid_pk()
+    change_id = Column(UUID(as_uuid=True), ForeignKey("web_changes.id", ondelete="CASCADE"), nullable=False)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    kind = Column(String(16), nullable=False)
+    field = Column(String(64), nullable=False)
+    severity = Column(String(16), nullable=False)
+    rule_code = Column(String(64), nullable=False)
+    before_val = Column(Text, nullable=True)
+    after_val = Column(Text, nullable=True)
+    detail = Column(JSONB, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+Index("ix_web_change_items_change", WebChangeItem.change_id)
+
+
+# ── Webs: salud diaria (migración ``web_health_v1``) ─────────────────────────
+# Caducidad de certificado y dominio, robots.txt + sitemap y la revisión tras
+# publicar de las tareas. Datos de máquina: fuera del journal de Deshacer.
+
+
+class WebHostExpiry(Base):
+    """Cuándo caducan el certificado TLS y el dominio de un host vigilado.
+
+    Una fila por (cliente, host) de sus URLs de disponibilidad activas; el job
+    ``web_health`` la reescribe a diario y borra las de hosts que ya no se miran.
+    """
+    __tablename__ = "web_host_expiry"
+    __table_args__ = (
+        CheckConstraint("cert_status IN ('ok','invalid','error','no_https')", name="ck_web_host_expiry_cert_status"),
+        CheckConstraint(
+            "domain_status IN ('ok','no_date','unsupported','not_found','error')",
+            name="ck_web_host_expiry_domain_status",
+        ),
+    )
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    host = Column(String(253), primary_key=True)
+    checked_at = Column(DateTime(timezone=True), nullable=False)
+    cert_status = Column(String(16), nullable=False)
+    cert_expires_at = Column(DateTime(timezone=True), nullable=True)
+    cert_issuer = Column(String(200), nullable=True)
+    cert_error = Column(String(200), nullable=True)
+    domain_name = Column(String(253), nullable=True)
+    domain_status = Column(String(16), nullable=False)
+    domain_expires_at = Column(DateTime(timezone=True), nullable=True)
+    domain_error = Column(String(200), nullable=True)
+
+
+class WebRobotsState(Base):
+    """robots.txt y sitemap de un origen (``https://host``) de un cliente con la
+    vigilancia de cambios encendida. Se guarda el último robots.txt (acotado), el
+    anterior cuando cambia y si alguien revisó ese cambio."""
+    __tablename__ = "web_robots_state"
+    __table_args__ = (
+        CheckConstraint("robots_status IN ('ok','missing','error')", name="ck_web_robots_state_status"),
+        CheckConstraint(
+            "sitemap_status IS NULL OR sitemap_status IN ('ok','empty','invalid','error')",
+            name="ck_web_robots_state_sitemap_status",
+        ),
+        CheckConstraint(
+            "sitemap_source IS NULL OR sitemap_source IN ('declared','default')",
+            name="ck_web_robots_state_sitemap_source",
+        ),
+    )
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    origin = Column(String(300), primary_key=True)
+    checked_at = Column(DateTime(timezone=True), nullable=False)
+    robots_status = Column(String(16), nullable=False)
+    robots_error = Column(String(120), nullable=True)
+    robots_hash = Column(String(64), nullable=True)
+    robots_body = Column(Text, nullable=True)
+    robots_blocks_all = Column(Boolean, nullable=False, server_default="false", default=False)
+    robots_previous_body = Column(Text, nullable=True)
+    robots_changed_at = Column(DateTime(timezone=True), nullable=True)
+    robots_reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    robots_reviewed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    sitemap_url = Column(String(500), nullable=True)
+    sitemap_source = Column(String(16), nullable=True)
+    sitemap_status = Column(String(16), nullable=True)
+    sitemap_url_count = Column(Integer, nullable=True)
+    sitemap_has_more = Column(Boolean, nullable=True)
+    sitemap_error = Column(String(200), nullable=True)
+
+
+class TaskPublishCheck(Base):
+    """Revisión tras publicar: lo que vimos en el enlace de una tarea al completarla.
+
+    Una fila por tarea (la última finalización). ``task_completed_at`` y ``url``
+    dicen a qué finalización y a qué enlace corresponde: si la tarea se reabre y
+    se vuelve a completar, o cambia el enlace, se comprueba de nuevo.
+    """
+    __tablename__ = "task_publish_checks"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','ok','problems','unreachable','skipped')", name="ck_task_publish_checks_status",
+        ),
+    )
+
+    task_id = Column(Integer, ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True)
+    url = Column(Text, nullable=False)
+    task_completed_at = Column(DateTime, nullable=False)
+    status = Column(String(16), nullable=False)
+    attempts = Column(SmallInteger, nullable=False, server_default="0", default=0)
+    next_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    checked_at = Column(DateTime(timezone=True), nullable=True)
+    http_status = Column(Integer, nullable=True)
+    final_url = Column(Text, nullable=True)
+    error = Column(String(32), nullable=True)
+    results = Column(JSONB, nullable=True)
+
+
+Index("ix_task_publish_checks_pending", TaskPublishCheck.next_attempt_at,
+      postgresql_where=TaskPublishCheck.status == "pending")
+
+
+# ═══════════════════════════════════════════════════════════════
+# INFORME MENSUAL SEO LOCAL (services/local_report/, migración local_reports_v1)
+# ═══════════════════════════════════════════════════════════════
+
+
+class ClientLocalReportConfig(Base):
+    """Configuración del informe SEO local de un cliente.
+
+    ``template`` es una carpeta de ``backend/report_templates/`` (plantilla,
+    estilos, logo y valores de partida). ``settings``: familias de consultas
+    de grupos, nombres de páginas, clasificación de la ficha, datos del
+    cliente para la portada y punto de partida técnico. ``roadmap``: el plan
+    por meses (nombre interno y texto para el cliente de cada tarea); el
+    estado lo ponen las tareas ``E<n> - <nombre>`` del cliente.
+    """
+    __tablename__ = "client_local_report_configs"
+    __table_args__ = (
+        CheckConstraint("landing_url ~ '^https?://'", name="ck_local_report_configs_landing"),
+    )
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    template = Column(String(40), nullable=False)
+    landing_url = Column(Text, nullable=False)
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
+    settings = Column(JSONB, nullable=False)
+    roadmap = Column(JSONB, nullable=False)
+    updated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ClientLocalReport(Base):
+    """Una versión del informe de un periodo: datos, textos, plan y archivos.
+
+    Mientras no se entrega se recalcula y se regenera sobre la misma fila (una
+    abierta por cliente y periodo); entregada queda tal cual y un cambio crea
+    otra versión. ``datos`` es el contrato de la plantilla (``datos.json``),
+    así un mes pasado se rehace sin volver a pedir nada.
+    """
+    __tablename__ = "client_local_reports"
+    __table_args__ = (
+        CheckConstraint("period_start <= period_end", name="ck_local_reports_period"),
+        CheckConstraint("ai_status IS NULL OR ai_status IN ('running','done','failed')",
+                        name="ck_local_reports_ai_status"),
+        CheckConstraint("(html IS NULL) = (pdf IS NULL)", name="ck_local_reports_files"),
+        CheckConstraint("delivered_at IS NULL OR generated_at IS NOT NULL", name="ck_local_reports_delivered"),
+        Index("ix_local_reports_client_period", "client_id", "period_start"),
+        Index("uq_local_reports_open_period", "client_id", "period_start", "period_end", unique=True,
+              postgresql_where=text("delivered_at IS NULL")),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    datos = Column(JSONB, nullable=False)
+    roadmap = Column(JSONB, nullable=False)
+    inputs = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+    warnings = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
+    checks = Column(JSONB, nullable=True)
+    computed_at = Column(DateTime(timezone=True), nullable=True)
+    ai_status = Column(String(12), nullable=True)
+    ai_started_at = Column(DateTime(timezone=True), nullable=True)
+    ai_error = Column(Text, nullable=True)
+    ai_drafted_at = Column(DateTime(timezone=True), nullable=True)
+    file_stem = Column(String(120), nullable=True)
+    html = deferred(Column(LargeBinary, nullable=True))
+    pdf = deferred(Column(LargeBinary, nullable=True))
+    generated_at = Column(DateTime(timezone=True), nullable=True)
+    generated_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    delivered_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ClientLocalReportSource(Base):
+    """Lo que subió el equipo para una versión: CSV de la ficha (periodo, anterior
+    y año anterior), CSV del rastreo y capturas. Se guarda tal cual."""
+    __tablename__ = "client_local_report_sources"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('gbp_actual','gbp_anterior','gbp_ano_anterior','rastreo','captura','otro')",
+            name="ck_local_report_sources_kind",
+        ),
+        CheckConstraint("size > 0 AND size <= 10485760", name="ck_local_report_sources_size"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_id = Column(Integer, ForeignKey("client_local_reports.id", ondelete="CASCADE"), nullable=False,
+                       index=True)
+    kind = Column(String(20), nullable=False)
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(100), nullable=False)
+    content = deferred(Column(LargeBinary, nullable=False))
+    size = Column(Integer, nullable=False)
+    uploaded_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())

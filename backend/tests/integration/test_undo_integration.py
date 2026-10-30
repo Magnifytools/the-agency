@@ -33,6 +33,7 @@ from backend.db.models import (
     UserRole,
 )
 from backend.services import change_journal as cj
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.asyncio
 
@@ -696,7 +697,7 @@ async def test_project_edit_started_during_undo_wins_after_locked_conflict_check
             undo_task = asyncio.create_task(changes_route.undo_change(
                 ids["change"], db=undo_db, current_user=actor_view,
             ))
-            await asyncio.wait_for(locked.wait(), timeout=2)
+            await asyncio.wait_for(locked.wait(), timeout=HANG_TIMEOUT)
             other_project = await edit_db.get(Project, ids["project"])
             other_project.name = "Editado por B"
             edit_task = asyncio.create_task(edit_db.commit())
@@ -704,7 +705,7 @@ async def test_project_edit_started_during_undo_wins_after_locked_conflict_check
             assert not edit_task.done(), "el editor concurrente no esperó el bloqueo de Undo"
             release.set()
             await undo_task
-            await asyncio.wait_for(edit_task, timeout=2)
+            await asyncio.wait_for(edit_task, timeout=HANG_TIMEOUT)
 
         async with AsyncSession(engine) as reader:
             assert await reader.scalar(select(Project.name).where(Project.id == ids["project"])) == "Editado por B"
@@ -936,29 +937,6 @@ async def test_closing_session_discards_pending_journal_before_reuse(engine, jou
         assert (await journal.peek()) == []
     finally:
         await writer.close()
-
-
-async def test_automation_batch_journals_only_successful_actions_once(admin_client, db_session, journal):
-    from backend.api.routes.automations import execute_automations
-    from backend.db.models import AutomationRule, AutomationLog
-    rules = [
-        AutomationRule(name="Good A", trigger="task_completed", action_type="create_task", action_config={"title": "A"}, is_active=True),
-        AutomationRule(name="Invalid", trigger="task_completed", action_type="create_insight", action_config={"task_id": 987654321}, is_active=True),
-        AutomationRule(name="Good B", trigger="task_completed", action_type="create_task", action_config={"title": "B"}, is_active=True),
-    ]
-    db_session.add_all(rules)
-    await db_session.commit()
-    cj.set_actor(admin_client.test_user.id)
-    await execute_automations("task_completed", {}, db_session)
-    entry = await journal.only()
-    assert len(entry.operations) == 2
-    assert {op["after"]["title"] for op in entry.operations} == {"A", "B"}
-    failed = (await db_session.execute(select(AutomationLog).where(AutomationLog.rule_id == rules[1].id))).scalar_one()
-    assert failed.success is False
-    response = await admin_client.post(f"/api/changes/{entry.id}/undo")
-    assert response.status_code == 200, response.text
-    for op in entry.operations:
-        assert await db_session.get(Task, op["entity_id"]) is None
 
 
 async def test_journal_write_failure_rolls_back_domain_change(db_session, admin_user, journal):

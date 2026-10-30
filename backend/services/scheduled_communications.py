@@ -21,7 +21,8 @@ TEAM_KINDS = ("weekly", "team_morning")
 SCHEDULER_STARTED_AT = utc_now_naive()
 CALENDAR_FRESHNESS = timedelta(minutes=20)
 EXTENSION_MIN_VERSION = "2.2.0"
-EXTENSION_DOWNLOAD_URL = "/extension/agency-manager.crx"
+# Ajustes → Extensión de Chrome: zip de la versión desplegada (el .crx de dist/ se arma a mano).
+EXTENSION_DOWNLOAD_URL = "/settings#extension"
 
 
 def policy_key(kind, user_id):
@@ -279,12 +280,12 @@ async def plan_policy(db, policy, now):
     today = local.date()
     actor = await load_actor(db, policy.approved_by)
     if policy.kind in ("morning", "evening", "team_morning"):
-        from backend.services.daily_reminders import is_working_day
+        from backend.services.holidays import is_working_day
         for day in (today - timedelta(days=1), today):
             # A shared plan follows company-wide holidays, not the owner's
             # regional calendar; individual sections handle regional days off.
-            region = None if policy.kind == "team_morning" else actor.region if actor else None
-            if not await is_working_day(db, day, region):
+            owner = None if policy.kind == "team_morning" else actor
+            if not await is_working_day(db, day, owner):
                 continue
             due = local_instant(day, policy.time)
             expires = local_instant(day + timedelta(days=1), "00:00")

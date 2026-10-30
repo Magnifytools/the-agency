@@ -1,5 +1,13 @@
 import type { DigestSeo } from "@/lib/types/integration"
 
+/** Mensaje tras desconectar: si Google confirmó la revocación y qué pasó con las cifras. */
+export function disconnectMessage(result: { google_revoked: boolean; purged: unknown | null }): string {
+  const data = result.purged ? "Se han borrado las cifras importadas de sus propiedades." : "Las cifras importadas se conservan."
+  return result.google_revoked
+    ? `Cuenta desconectada y acceso revocado en Google. ${data}`
+    : `Cuenta desconectada y token borrado, pero Google no confirmó la revocación: retira el acceso en myaccount.google.com/permissions. ${data}`
+}
+
 /** Motivo legible de un fallo de importación de una propiedad. */
 export function gscErrorLabel(code: string | null | undefined): string | null {
   switch (code) {
@@ -12,6 +20,10 @@ export function gscErrorLabel(code: string | null | undefined): string | null {
       return "La propiedad no existe en Search Console. Revisa cómo está escrita."
     case "rate_limited":
       return "Google ha limitado las peticiones. Se reintentará en la próxima pasada."
+    case "pending_access":
+      return "Aún sin cuenta asignada: se importará cuando la importación diaria encuentre una cuenta que la vea."
+    case "reconnect_required":
+      return "La cuenta de Google de esta propiedad necesita reconectarse."
     default:
       return "Search Console no respondió. Se reintentará en la próxima pasada."
   }

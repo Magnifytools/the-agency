@@ -6,6 +6,8 @@ from uuid import uuid4
 from unittest.mock import AsyncMock
 
 import httpx
+
+from backend.services.extension_package import read_version
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI, HTTPException
@@ -80,7 +82,10 @@ async def client(fixture, identity="member"):
         async with maker() as db: return await svc.load_actor(db, ids[identity])
     app.dependency_overrides[get_db] = session
     app.dependency_overrides[get_current_user] = actor
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as http: yield http
+    # Como la extensión al día: el aviso de versión nueva tiene su propio test
+    # (test_extension_release.py) y aquí sólo cuentan las reuniones.
+    headers = {"X-Agency-Extension-Version": read_version()}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test", headers=headers) as http: yield http
 
 
 async def count(maker, model):
@@ -222,6 +227,25 @@ async def test_team_morning_uses_global_holidays_and_skips_members_regionally_of
     now[0] += timedelta(days=1)
     await svc.run_scheduler_once(maker)
     assert await count(maker, Occurrence) == 1
+
+
+async def test_team_morning_ignores_another_towns_local_holiday(fixture):
+    """Regresión: el festivo local de Alcalá sacaba del plan a quien vive en Madrid."""
+    maker, ids, _ = fixture
+    day = date(2026, 9, 15)
+    async with maker() as db:
+        await db.execute(update(User).where(User.id == ids["admin"]).values(region="MAD", locality="Madrid"))
+        await db.execute(update(User).where(User.id == ids["member"]).values(region="MAD", locality="Alcalá de Henares"))
+        db.add_all([
+            CompanyHoliday(date=day, name="Fiesta local", region="MAD", locality="Alcalá de Henares"),
+            Task(title="Admin working", assigned_to=ids["admin"], scheduled_date=day),
+            Task(title="Member day off", assigned_to=ids["member"], scheduled_date=day),
+        ])
+        await db.commit()
+        from backend.services.daily_reminders import generate_team_morning_plan
+        message = await generate_team_morning_plan(db, day)
+    assert "**Schedule Admin**" in message and "Admin working" in message
+    assert "**Schedule Member**" not in message and "Member day off" not in message
 
 
 async def test_two_schedulers_restart_prepare_once_per_channel(fixture):
@@ -519,7 +543,8 @@ async def test_calendar_reconciliation_is_complete_user_window_scoped_and_civil(
         other = Event(user_id=ids["admin"], title="Other owner", event_type=EventType.meeting, start_time=local_start + timedelta(hours=12), source="google", source_calendar_id="primary", google_event_id="removed")
         other_calendar = Event(user_id=user.id, title="Other calendar", event_type=EventType.meeting, start_time=local_start + timedelta(hours=12), source="google", source_calendar_id="other", google_event_id="removed")
         manual = Event(user_id=user.id, title="Manual", event_type=EventType.meeting, start_time=local_start + timedelta(hours=12))
-        outside = Event(user_id=user.id, title="Outside", event_type=EventType.meeting, start_time=local_start + timedelta(days=10), source="google", source_calendar_id="primary", google_event_id="outside")
+        # La ventana va del lunes de esta semana al final de la siguiente: +20 días queda siempre fuera.
+        outside = Event(user_id=user.id, title="Outside", event_type=EventType.meeting, start_time=local_start + timedelta(days=20), source="google", source_calendar_id="primary", google_event_id="outside")
         db.add_all([existing, removed, other, other_calendar, manual, outside]); await db.commit()
         preserved = [e.id for e in (other, other_calendar, manual, outside)]
         kept_id, removed_id = existing.id, removed.id

@@ -1,5 +1,10 @@
 import { parseApiInstant } from "@/lib/dates"
 
+/** A partir de aquí se pregunta al parar (y la campana avisa, `incident_timer_conditions`). */
+export const LONG_TIMER_SECONDS = 4 * 3600
+/** Lo contado se recorta a esto al parar si no se corrige. */
+export const TIMER_CAP_SECONDS = 8 * 3600
+
 export function elapsedSeconds(
   startedAt: string,
   accumulatedSeconds = 0,

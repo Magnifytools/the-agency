@@ -97,7 +97,7 @@ async def put_report_policy(
     if client_exists is None:
         raise HTTPException(404, "Client not found")
     await db.execute(text("SELECT pg_advisory_xact_lock(76241313, :client_id)"), {"client_id": client_id})
-    if request.enabled and request.responsible_user_id is None:
+    if (request.weekly_enabled or request.monthly_enabled) and request.responsible_user_id is None:
         raise HTTPException(422, detail={"code": "responsible_required", "message": "Selecciona una persona responsable"})
     await validate_responsible(db, request.responsible_user_id)
 
@@ -110,23 +110,26 @@ async def put_report_policy(
             raise HTTPException(409, detail={"code": "policy_changed", "current": (await policy_response(db, client_id)).model_dump(mode="json")})
         policy = ClientReportPolicy(
             client_id=client_id,
-            enabled=request.enabled,
-            cadence=request.cadence,
             responsible_user_id=request.responsible_user_id,
             revision=1,
         )
+        _set_cadences(policy, request)
         db.add(policy)
     else:
         if request.revision != policy.revision:
             raise HTTPException(409, detail={"code": "policy_changed", "current": (await policy_response(db, client_id, policy)).model_dump(mode="json")})
-        policy.enabled = request.enabled
-        policy.cadence = request.cadence
+        _set_cadences(policy, request)
         policy.responsible_user_id = request.responsible_user_id
         policy.revision += 1
     await validate_responsible(db, request.responsible_user_id)
     await db.commit()
     await db.refresh(policy)
     return await policy_response(db, client_id, policy)
+
+
+def _set_cadences(policy: ClientReportPolicy, request: ReportPolicyUpdate) -> None:
+    policy.weekly_enabled = request.weekly_enabled
+    policy.monthly_enabled = request.monthly_enabled
 
 
 @router.get("/generation-preview", response_model=GenerationPreviewResponse)
@@ -174,6 +177,7 @@ async def generate_cohort(
     await db.rollback()  # each item below owns an independent transaction
     results: list[CohortGenerateResult] = []
     for item in sorted(request.items, key=lambda value: (value.client_id, value.period_start, value.period_end)):
+        period = {"client_id": item.client_id, "period_start": item.period_start, "period_end": item.period_end}
         try:
             digest = await generate_locked_digest(
                 db,
@@ -191,14 +195,17 @@ async def generate_cohort(
             )
             digest_id = digest.id
             await db.commit()
-            results.append(CohortGenerateResult(client_id=item.client_id, outcome="generated", digest_id=digest_id))
+            results.append(CohortGenerateResult(**period, outcome="generated", digest_id=digest_id))
         except DigestGenerationRejected as exc:
             await db.rollback()
-            results.append(CohortGenerateResult(client_id=item.client_id, outcome="skipped", reason=exc.reason))
+            results.append(CohortGenerateResult(**period, outcome="skipped", reason=exc.reason))
         except Exception as exc:
             await db.rollback()
-            logger.error("Cohort digest generation failed for client_id=%s type=%s", item.client_id, type(exc).__name__)
-            results.append(CohortGenerateResult(client_id=item.client_id, outcome="failed", reason="generation_failed"))
+            # ValueError lleva un mensaje nuestro (qué regla falló); el resto, sólo el tipo.
+            detail = f": {exc}" if isinstance(exc, ValueError) else ""
+            logger.error("Cohort digest generation failed for client_id=%s type=%s%s",
+                         item.client_id, type(exc).__name__, detail)
+            results.append(CohortGenerateResult(**period, outcome="failed", reason="generation_failed"))
     return CohortGenerateResponse(results=results)
 
 

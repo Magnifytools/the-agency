@@ -120,7 +120,7 @@ async def test_stale_invalid_grant_cannot_disable_a_new_callback(fixture, monkey
         assert provider.decrypt_vault_secret((await db.get(User, ids["member"])).google_refresh_token) == "newer-synthetic-grant"
 
 
-async def test_disconnect_distinguishes_removed_credentials_and_preserves_events(fixture):
+async def test_disconnect_distinguishes_removed_credentials_and_deletes_imported_events(fixture):
     maker, ids, _ = fixture
     event_id = await connected(fixture)
     async with maker() as db:
@@ -132,7 +132,8 @@ async def test_disconnect_distinguishes_removed_credentials_and_preserves_events
         assert status["connection_status"] == "disconnected"
     async with maker() as db:
         assert (await db.get(User, ids["member"])).google_refresh_token is None
-        assert await db.get(Event, event_id) is not None
+        # Desconectar borra los eventos importados de Google de esa persona.
+        assert await db.get(Event, event_id) is None
 
 
 async def test_connected_flag_without_credential_is_effectively_disconnected(
@@ -232,3 +233,23 @@ async def test_callback_failure_does_not_log_error_details_or_remove_saved_state
     async with maker() as db:
         assert (await db.get(User, ids["member"])).google_refresh_token == "synthetic-retained-grant"
         assert await db.get(Event, event_id) is not None
+
+
+async def test_sync_reads_from_monday_to_the_end_of_next_week(fixture, monkeypatch):
+    """La vista con horas de Mi agenda enseña la semana entera (y la próxima)."""
+    maker, ids, now = fixture
+    await connected(fixture)
+    async with maker() as db:
+        user = await db.get(User, ids["member"])
+        user.google_calendar_connected = True
+        await db.commit()
+    now[0] = datetime(2026, 9, 17, 9, 0)  # jueves 17 sep, 11:00 en Madrid
+    windows = []
+    def capture(*args, time_min=None, time_max=None, **kwargs):
+        windows.append((time_min, time_max))
+        return []
+    monkeypatch.setattr(route, "fetch_events", capture)
+    async with client(fixture) as http:
+        assert (await http.post("/api/calendar/sync")).status_code == 200
+    (start, end), = windows
+    assert (start.replace(tzinfo=None), end.replace(tzinfo=None)) == (datetime(2026, 9, 14), datetime(2026, 9, 28))

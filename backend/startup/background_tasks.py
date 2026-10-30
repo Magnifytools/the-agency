@@ -68,55 +68,6 @@ async def _generate_recurring_instances():
             logging.info("Generated %d recurring task instance(s) for %s", created, business_today())
 
 
-async def _check_overdue_tasks():
-    """Check for overdue tasks and fire automation triggers."""
-    from datetime import date as date_type, datetime as dt_type
-    from sqlalchemy import select
-    from backend.db.database import async_session
-    from backend.db.models import Task, TaskStatus
-
-    today = business_today()
-    today_midnight = dt_type.combine(today, dt_type.min.time())
-
-    async with async_session() as session:
-        result = await session.execute(
-            select(Task).where(
-                Task.retired_at.is_(None),
-                Task.status.notin_([TaskStatus.completed]),
-                Task.due_date < today_midnight,
-            )
-        )
-        overdue_tasks = result.scalars().all()
-
-        if not overdue_tasks:
-            return
-
-        count = 0
-        failures = 0
-        for task in overdue_tasks:
-            try:
-                from backend.api.routes.automations import execute_automations
-                await execute_automations("task_overdue", {
-                    "task_id": task.id,
-                    "task_title": task.title,
-                    "project_id": task.project_id,
-                    "client_id": task.client_id,
-                    "assigned_to": task.assigned_to,
-                    "due_date": str(task.due_date),
-                    "status": task.status.value if hasattr(task.status, "value") else str(task.status),
-                }, session)
-                count += 1
-            except Exception as exc:
-                failures += 1
-                logging.warning("Overdue automation failed for task %d: %s", task.id, exc)
-
-        logging.info("Checked %d overdue tasks, triggered %d automations.", len(overdue_tasks), count)
-        if failures:
-            from backend.services.job_runtime import JobFailure
-
-            raise JobFailure("partial_failure")
-
-
 async def _reset_advanced_tasks():
     """Devolver a "En curso" las tareas marcadas como "Avanzada" días anteriores.
 
@@ -228,6 +179,88 @@ async def _gsc_sync_once():
         raise JobFailure("partial_failure")
 
 
+async def _gsc_detail_sync_once():
+    from backend.db.database import async_session
+    from backend.services.gsc_detail_service import sync_all_detail
+    from backend.services.job_runtime import JobFailure
+
+    result = await sync_all_detail(async_session)
+    if result["status"] == "reconnect_required":
+        raise JobFailure("reconnect_required")
+    if result["failed"]:
+        raise JobFailure("partial_failure")
+
+
+async def _ga4_sync_once():
+    from backend.db.database import async_session
+    from backend.services.ga4_service import sync_all
+    from backend.services.job_runtime import JobFailure
+
+    result = await sync_all(async_session)
+    if result["failed"] or result.get("leads_failed"):
+        raise JobFailure("partial_failure")
+
+
+async def _uptime_once():
+    """Una pasada del monitor de caídas (ver backend/services/web/uptime.py)."""
+    from backend.db.database import async_session
+    from backend.services.job_runtime import JobFailure
+    from backend.services.web.uptime import run_cycle
+
+    result = await run_cycle(async_session)
+    # Canario caído o fallos de red correlacionados: el problema es nuestro y
+    # no se ha avisado de nada; que lo vea el estado del job.
+    if result.canary_failed or result.network_issue:
+        raise JobFailure("provider_unavailable")
+    if result.failed:
+        raise JobFailure("partial_failure")
+
+
+async def _web_sweep_once():
+    """Una pasada de la vigilancia de cambios (ver backend/services/web/sweep.py)."""
+    from backend.db.database import async_session
+    from backend.services.job_runtime import JobFailure
+    from backend.services.web.sweep import run_cycle
+
+    result = await run_cycle(async_session)
+    if result.failed:
+        raise JobFailure("partial_failure")
+
+
+async def _web_health_once():
+    """Pasada diaria de dominio, certificado, robots.txt y sitemap (services/web/health.py)."""
+    from backend.db.database import async_session
+    from backend.services.job_runtime import JobFailure
+    from backend.services.web.health import run_cycle
+
+    result = await run_cycle(async_session)
+    # Sin el registro de la IANA no hay fechas de dominio: lo ve el estado del job.
+    if result.bootstrap_failed:
+        raise JobFailure("provider_unavailable")
+
+
+async def _publish_checks_once():
+    """Revisión tras publicar de las tareas completadas (services/web/publish_check.py)."""
+    from backend.db.database import async_session
+    from backend.services.job_runtime import JobFailure
+    from backend.services.web.publish_check import run_cycle
+
+    result = await run_cycle(async_session)
+    if result.failed:
+        raise JobFailure("partial_failure")
+
+
+async def _calendar_blocks_once():
+    """Bloques de trabajo ↔ Google Calendar (services/calendar_blocks_sync.py)."""
+    from backend.db.database import async_session
+    from backend.services.calendar_blocks_sync import sync_all
+    from backend.services.job_runtime import JobFailure
+
+    result = await sync_all(async_session)
+    if result["failed"]:
+        raise JobFailure("partial_failure")
+
+
 # ── Retention cleanup ───────────────────────────────────────
 
 async def _retention_cleanup_once():
@@ -235,21 +268,28 @@ async def _retention_cleanup_once():
 
     Runs once shortly after startup and then every 24h. Logs and
     audit-style rows older than 90 days are deleted; notifications
-    that have already been read get a 30-day window.
+    that have already been read get a 30-day window. Eventos importados de
+    Google Calendar: se borran 30 días después de terminar (política de
+    privacidad); los manuales no se tocan. Sondeos del monitor de caídas: 30
+    días (las caídas se conservan). Barridos de la vigilancia de cambios: 180
+    días (los cambios y sus capturas se conservan, con ``run_id`` a NULL).
     """
-    from datetime import datetime, timedelta
+    from datetime import UTC, datetime, timedelta
     from sqlalchemy import delete
     from backend.db.database import async_session
-    from backend.db.models import AuditLog, ChangeLog, SyncLog, HoldedSyncLog, AutomationLog, Notification
+    from backend.db.models import AuditLog, ChangeLog, SyncLog, HoldedSyncLog, Notification, WebUptimeProbe
+    from backend.services.google_calendar_service import purge_past_google_events
+    from backend.services.web.sweep import purge_old_runs
 
     now = utc_now_naive()
     cutoff_90d = now - timedelta(days=90)
     cutoff_30d = now - timedelta(days=30)
+    now_aware = datetime.now(UTC)
 
     async with async_session() as db:
         total = 0
         # Tables with created_at via TimestampMixin
-        for model in (AuditLog, ChangeLog, SyncLog, AutomationLog):
+        for model in (AuditLog, ChangeLog, SyncLog):
             r = await db.execute(delete(model).where(model.created_at < cutoff_90d))
             total += r.rowcount or 0
         # HoldedSyncLog doesn't use TimestampMixin; key off started_at
@@ -266,14 +306,42 @@ async def _retention_cleanup_once():
             )
         )
         total += r.rowcount or 0
+        r = await db.execute(delete(WebUptimeProbe).where(WebUptimeProbe.checked_at < now_aware - timedelta(days=30)))
+        total += r.rowcount or 0
+        total += await purge_old_runs(db, now=now_aware, days=180)
+        google_events = await purge_past_google_events(db)
         await db.commit()
         logging.info(
-            "Retention sweep: deleted %d rows (logs >90d, read notifications >30d)",
-            total,
+            "Retention sweep: deleted %d rows (logs >90d, read notifications >30d, uptime probes >30d, "
+            "web sweep runs >180d) "
+            "and %d imported Google events ended >30d ago",
+            total, google_events,
         )
 
 
 # ── Coordinated runtime ──────────────────────────────────────
+
+async def _due_tomorrow_once():
+    from backend.db.database import async_session
+    from backend.services.task_notifications import notify_due_tomorrow
+
+    async with async_session() as session:
+        created = await notify_due_tomorrow(session)
+        await session.commit()
+    if created:
+        logging.info("Due-tomorrow notices created: %d", created)
+
+
+async def _extension_release_once():
+    from backend.db.database import async_session
+    from backend.services.extension_release import notify_release
+
+    async with async_session() as session:
+        created = await notify_release(session)
+        await session.commit()
+    if created:
+        logging.info("Extension release notices created: %d", created)
+
 
 async def _incident_once():
     from backend.db.database import async_session
@@ -334,7 +402,6 @@ def start_background_tasks() -> list[asyncio.Task]:
         "holded": ("holded-sync", _holded_sync_once),
         "advanced_reset": ("advanced-reset", _reset_advanced_tasks),
         "recurrence": ("recurring-reconcile", _generate_recurring_instances),
-        "overdue_automations": ("overdue-automations", _check_overdue_tasks),
         "scheduled_communications": (
             "scheduled-communications", _scheduled_communications_once,
         ),
@@ -342,6 +409,15 @@ def start_background_tasks() -> list[asyncio.Task]:
         "retention": ("retention-cleanup", _retention_cleanup_once),
         "inbox_classification": ("inbox-classification", _inbox_classification_once),
         "gsc": ("gsc-sync", _gsc_sync_once),
+        "gsc_detail": ("gsc-detail-sync", _gsc_detail_sync_once),
+        "ga4": ("ga4-sync", _ga4_sync_once),
+        "uptime": ("web-uptime", _uptime_once),
+        "web_sweep": ("web-sweep", _web_sweep_once),
+        "web_health": ("web-health", _web_health_once),
+        "publish_checks": ("publish-checks", _publish_checks_once),
+        "due_tomorrow": ("due-tomorrow", _due_tomorrow_once),
+        "extension_release": ("extension-release", _extension_release_once),
+        "calendar_blocks": ("calendar-blocks", _calendar_blocks_once),
     }
 
     for key, (task_name, operation) in operations.items():

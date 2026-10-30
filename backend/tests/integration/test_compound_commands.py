@@ -16,6 +16,7 @@ from backend.services.commands import (
     STATUS_REVIEW, _lock_compound_scope, check_step_replay, execute_or_prompt, parse_command,
     record_step, request_hash, step_hash,
 )
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.asyncio
 
@@ -304,7 +305,7 @@ async def test_reviewed_scope_locks_block_client_and_user_changes(engine):
             assert not rename.done()
             assert not deactivate.done()
             await locker.commit()
-        await asyncio.wait_for(asyncio.gather(rename, deactivate), timeout=2)
+        await asyncio.wait_for(asyncio.gather(rename, deactivate), timeout=HANG_TIMEOUT)
         async with AsyncSession(engine) as verify:
             assert await verify.scalar(select(Client.name).where(Client.id == client_id)) == f"Renamed client {suffix}"
             assert await verify.scalar(select(User.is_active).where(User.id == user_id)) is False

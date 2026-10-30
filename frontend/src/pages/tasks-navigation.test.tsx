@@ -71,13 +71,13 @@ describe("tasks URL navigation", () => {
   })
   it("defaults an administrator to personal work and explicitly switches all cohorts to team", async () => {
     showAgenda("/tasks?view=my_day")
-    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(5))
     expect(api.agenda.mock.calls.every(([params]) => params.assigned_to === "me")).toBe(true)
     expect(screen.getByText("Alertas personales")).toBeInTheDocument()
     expect(screen.getByText("Próxima reunión personal")).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText("Ámbito de Hoy"), "team")
-    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(8))
-    expect(api.agenda.mock.calls.slice(4).every(([params]) => params.assigned_to === "all")).toBe(true)
+    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(10))
+    expect(api.agenda.mock.calls.slice(5).every(([params]) => params.assigned_to === "all")).toBe(true)
     expect(screen.queryByText("Alertas personales")).not.toBeInTheDocument()
     expect(screen.queryByText("Próxima reunión personal")).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", {name:"Atrás navegador"}))
@@ -86,7 +86,7 @@ describe("tasks URL navigation", () => {
   it("ignores a team URL for members and always requests their own tasks", async () => {
     api.user.role = "member"
     showAgenda("/tasks?view=my_day&scope=team")
-    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(api.agenda).toHaveBeenCalledTimes(5))
     expect(screen.queryByLabelText("Ámbito de Hoy")).not.toBeInTheDocument()
     expect(api.agenda.mock.calls.every(([params]) => params.assigned_to === "me")).toBe(true)
   })
@@ -99,12 +99,12 @@ describe("tasks URL navigation", () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(<QueryClientProvider client={queryClient}><MemoryRouter initialEntries={["/tasks?qaFilter=overdue"]}><TasksPage /><Back /></MemoryRouter></QueryClientProvider>)
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: true })))
-    await userEvent.click(screen.getByRole("button", { name: "Todas" }))
+    await userEvent.click(screen.getByRole("button", { name: "Lista" }))
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: undefined, page: 1 })))
-    expect(screen.queryByRole("button", { name: "Limpiar filtros QA" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Quitar revisión" })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Atrás navegador" }))
     await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ overdue: true })))
-    expect(screen.getByRole("button", { name: "Limpiar filtros QA" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Quitar revisión" })).toBeInTheDocument()
   })
   it("renders recurring templates from their own query without ordinary task filters or counts", async () => {
     api.list.mockResolvedValue({ items: [], total: 99, page: 1, page_size: 25 })
@@ -144,5 +144,44 @@ describe("tasks URL navigation", () => {
     clock.today = "2027-02-01"
     view.rerender(view.tree)
     expect(screen.getByText(/enero 2027/i)).toBeInTheDocument()
+  })
+  it("los filtros viven en la URL y la búsqueda espera a que dejes de escribir", async () => {
+    showAgenda("/tasks?view=all&cliente=7&estado=completed&prioridad=high")
+    await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ client_id: 7, status: "completed", priority: "high" })))
+    // Un filtro secundario activo abre "Más filtros" y lo cuenta.
+    expect(screen.getByText("Más filtros (1)").closest("details")).toHaveAttribute("open")
+    api.list.mockClear()
+    await userEvent.type(screen.getByRole("searchbox", { name: "Buscar tareas" }), "informe")
+    expect(api.list).not.toHaveBeenCalledWith(expect.objectContaining({ search: "i" }))
+    await waitFor(() => expect(api.list).toHaveBeenLastCalledWith(expect.objectContaining({ search: "informe" })))
+    expect(api.list.mock.calls.filter(([params]) => params.search).length).toBe(1)
+  })
+  it("el título de la fila abre la tarea", async () => {
+    api.list.mockResolvedValueOnce({ items: [{ id: 8, title: "Preparar informe", status: "pending", priority: "medium", assigned_to: null, scheduled_date: null, estimated_minutes: null, due_date: null }], total: 1, page: 1, page_size: 25 })
+    showAgenda("/tasks?view=all")
+    expect(await screen.findByRole("button", { name: "Preparar informe" })).toBeInTheDocument()
+  })
+  it("el tablero no pagina: pide todas las activas y aparte lo cerrado esta semana", async () => {
+    clock.today = "2026-10-01"
+    showAgenda("/tasks?view=sprint")
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ status: "backlog,pending,in_progress,advanced,waiting,in_review", page: 1, page_size: 500 })))
+    expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ status: "completed", completed_from: "2026-09-25", page_size: 200 }))
+    expect(screen.queryByRole("navigation", { name: /paginación/i })).not.toBeInTheDocument()
+  })
+  it("avisa cuando el tablero no cabe entero", async () => {
+    api.list.mockResolvedValue({ items: [{ id: 8, title: "Preparar informe", status: "pending", priority: "medium", assigned_to: null, scheduled_date: null, estimated_minutes: null, due_date: null }], total: 640, page: 1, page_size: 500 })
+    showAgenda("/tasks?view=sprint")
+    expect(await screen.findByText(/Se ven 1 de 640 tareas/)).toBeInTheDocument()
+  })
+  it("la semana trae también las tareas sin planificar para poder arrastrarlas", async () => {
+    showAgenda("/tasks?view=weekly&semana=2026-10-07")
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ status: "pending,backlog", unscheduled: true })))
+    expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ scheduled_date_from: "2026-10-05", scheduled_date_to: "2026-10-09", page_size: 500 }))
+  })
+  it("el enlace del menú abre la última vista de Tareas", async () => {
+    window.localStorage.setItem("agency.tasks.lastView", "calendar")
+    showAgenda("/tasks?view=tareas")
+    expect(await screen.findByRole("button", { name: "Calendario", pressed: true })).toBeInTheDocument()
+    window.localStorage.removeItem("agency.tasks.lastView")
   })
 })

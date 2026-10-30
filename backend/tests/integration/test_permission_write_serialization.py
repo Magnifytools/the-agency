@@ -7,11 +7,12 @@ from uuid import uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.routes.invitations import update_user_permissions
+from backend.api.routes.users import update_user_permissions
 from backend.api.routes.users import sync_default_permissions_all_users, sync_user_permissions
 from backend.db.models import Notification, Task, TaskStatus, User, UserPermission, UserRole
-from backend.schemas.invitation import PermissionItem, UserPermissionsUpdate
+from backend.schemas.permission import PermissionItem, UserPermissionsUpdate
 from backend.services.incidents import reconcile_recipient
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 
 NOW = datetime(2026, 9, 19, 10)
@@ -97,7 +98,7 @@ async def test_permission_revocation_waits_for_reconciliation_and_next_pass_reso
 
     try:
         reconcile_task = asyncio.create_task(reconcile())
-        await asyncio.wait_for(entered_collection.wait(), timeout=5)
+        await asyncio.wait_for(entered_collection.wait(), timeout=HANG_TIMEOUT)
         revoke_task = asyncio.create_task(revoke())
         await asyncio.sleep(0.1)
         assert not revoke_task.done()

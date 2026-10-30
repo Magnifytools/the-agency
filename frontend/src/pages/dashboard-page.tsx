@@ -1,19 +1,19 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { dashboardApi, discordApi, tasksApi, timeEntriesApi, timerApi, usersApi, clientsApi, leadsApi, proposalsApi, engineApi, holdedApi } from "@/lib/api"
-import { dashboardKeys, holdedKeys, invalidateTaskChange, invalidateTimeChange, taskKeys, timeKeys } from "@/lib/query-keys"
+import { dashboardApi, discordApi, tasksApi, timeEntriesApi, usersApi, leadsApi, proposalsApi, holdedApi } from "@/lib/api"
+import { dashboardKeys, holdedKeys, taskKeys, timeKeys } from "@/lib/query-keys"
 import { profitabilityStatus } from "@/lib/profitability"
 import { isEnabled } from "@/lib/hidden-modules"
-import type { PricingOption, Task } from "@/lib/types"
+import type { PricingOption } from "@/lib/types"
 import { useAuth } from "@/context/auth-context"
 import { MetricCard } from "@/components/dashboard/metric-card"
 import { OperationalOverview } from "@/components/dashboard/operational-overview"
+import { OperationsRow } from "@/components/dashboard/operations-row"
 import { ProfitabilityChart } from "@/components/dashboard/profitability-chart"
 import { InsightsPanel } from "@/components/pm/insights-panel"
 import { DailyBriefingButton } from "@/components/pm/daily-briefing"
 import { deliveryToast, ManualDeliveryReceipts } from "@/components/delivery-receipts"
 import { OverdueTasks } from "@/components/dashboard/overdue-tasks"
-import { EngineAlertsWidget } from "@/components/dashboard/engine-alerts-widget"
 import { LeadFollowups } from "@/components/dashboard/lead-followups"
 import { MonthlyCloseChecklist } from "@/components/dashboard/monthly-close-checklist"
 import { TeamSummaryTable } from "@/components/dashboard/team-summary-table"
@@ -24,7 +24,7 @@ import { Select } from "@/components/ui/select"
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table"
 import { Dialog, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { InfoTooltip } from "@/components/ui/tooltip"
-import { CheckSquare, Clock, DollarSign, Send, Eye, FileText, ExternalLink, Play, Square, Check, UserCog, AlertTriangle, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react"
+import { CheckSquare, Clock, DollarSign, Send, Eye, FileText, UserCog, AlertTriangle, ChevronLeft, ChevronRight, BarChart3 } from "lucide-react"
 import { toast } from "sonner"
 import { Link } from "react-router-dom"
 import { InboxWidget } from "@/components/dashboard/inbox-widget"
@@ -51,16 +51,6 @@ function isForbidden(error: unknown) {
     && (error as { response?: { status?: number } }).response?.status === 403
 }
 
-function completionAction(task: Task, actorId: number, isAdmin: boolean) {
-  const requiresReview = !task.is_recurring
-    && task.project_requires_task_review === true
-    && !isAdmin
-    && task.project_review_owner_id !== actorId
-
-  return requiresReview
-    ? { status: "in_review" as const, label: "Enviar a revisión" }
-    : { status: "completed" as const, label: "Completar" }
-}
 
 export default function DashboardPage() {
   const { user, hasPermission } = useAuth()
@@ -76,8 +66,6 @@ export default function DashboardPage() {
 
   const params = { year, month }
   const isAdmin = user?.role === "admin"
-  const canWriteTasks = hasPermission("tasks", true)
-  const canWriteTime = hasPermission("timesheet", true)
   const financeEnabled = isAdmin && isEnabled("finance")
   const dashboardPermissionSignature = user ? `${user.role}:${[...(user.permissions ?? [])].sort((left, right) => left.module.localeCompare(right.module)).map((permission) => `${permission.module}:${Number(permission.can_read)}:${Number(permission.can_write)}`).join(",")}:${Number(isEnabled("finance"))}` : ""
   const isCurrentMonth = year === businessNow.getFullYear() && month === businessNow.getMonth() + 1
@@ -100,6 +88,12 @@ export default function DashboardPage() {
     retry: false,
   })
   const overview = overviewQuery.data
+  const operationsQuery = useQuery({
+    queryKey: dashboardKeys.operations(user?.id, dashboardPermissionSignature),
+    queryFn: () => dashboardApi.operations(),
+    enabled: !!user,
+    retry: false,
+  })
   const financialOverviewQuery = useQuery({
     queryKey: dashboardKeys.financialOverview(year, month, user?.id, dashboardPermissionSignature),
     queryFn: () => dashboardApi.financialOverview(params),
@@ -131,23 +125,13 @@ export default function DashboardPage() {
   const financialOverviewForbidden = isForbidden(financialOverviewQuery.error)
   const monthlyCloseForbidden = isForbidden(monthlyCloseFailure)
   const financialSettingsForbidden = isForbidden(financialSettingsFailure)
-  const { data: allClients, isError: allClientsError, refetch: refetchClients } = useQuery({
-    queryKey: ["dashboard", "clients-active", user?.id ?? "anonymous", dashboardPermissionSignature],
-    queryFn: () => clientsApi.listAll("active"),
-    enabled: !!user && hasPermission("clients") && isEnabled("clients"),
-  })
-  const { data: engineConfig } = useQuery({
-    queryKey: ["dashboard", "engine-config", user?.id ?? "anonymous", dashboardPermissionSignature],
-    queryFn: () => engineApi.getConfig(),
-    staleTime: 10 * 60_000,
-    enabled: !!user && isEnabled("engine"),
-  })
+  // The Engine está congelado (21 oct 2026): el panel ya no lee nada de Engine.
   // `enabled` corta la petición de raíz cuando el módulo está oculto: su router
   // no está registrado, así que la llamada sería un 404 en cada carga del panel.
   const { data: leadReminders } = useQuery({
     queryKey: ["dashboard", "lead-reminders", user?.id ?? "anonymous", dashboardPermissionSignature],
     queryFn: () => leadsApi.reminders(),
-    enabled: !!user && hasPermission("leads") && isEnabled("leads"),
+    enabled: !!user && hasPermission("growth") && isEnabled("leads"),
   })
   const { data: allProposals } = useQuery({
     queryKey: ["dashboard", "proposals-pipeline", user?.id ?? "anonymous", dashboardPermissionSignature],
@@ -199,15 +183,6 @@ export default function DashboardPage() {
     queryFn: () => timeEntriesApi.weekly(thisMonday),
     enabled: !!user && user.role === "member" && hasPermission("timesheet") && isEnabled("timesheet"),
   })
-  const activeTimerQuery = useQuery({
-    queryKey: ["active-timer"],
-    queryFn: () => timerApi.active(),
-    enabled: !!user && user.role === "member" && hasPermission("tasks") && canWriteTime && isEnabled("tasks"),
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
-  })
-  const activeTimer = activeTimerQuery.isError ? undefined : activeTimerQuery.data
-  const timerUnknown = activeTimerQuery.isLoading || activeTimerQuery.isError
   // ─── Admin queries ──────────────────────────────────────────
   const { data: allOverdueTasks } = useQuery({
     queryKey: taskKeys.assigned("dashboard", "all", "overdue"),
@@ -282,36 +257,6 @@ export default function DashboardPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: dashboardKeys.financialSettings(user?.id, dashboardPermissionSignature) }),
     onError: (err) => toast.error(getErrorMessage(err, "Error al actualizar los guardarraíles")),
   })
-  const markDoneMutation = useMutation({
-    mutationFn: ({ taskId, status }: { taskId: number; status: "completed" | "in_review" }) => tasksApi.update(taskId, { status }),
-    onSuccess: (task, action) => {
-      toast.success(action.status === "in_review" ? "Tarea enviada a revisión" : "Tarea completada")
-      invalidateTaskChange(queryClient, { projectId: task.project_id, clientId: task.client_id })
-    },
-    onError: (err, action) => toast.error(getErrorMessage(err, action.status === "in_review" ? "Error al enviar la tarea a revisión" : "Error al completar la tarea")),
-  })
-  const startTimerMutation = useMutation({
-    mutationFn: (taskId: number) => timerApi.start({ task_id: taskId }),
-    onSuccess: () => {
-      toast.success("Timer iniciado")
-      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.all() })
-    },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar el timer")),
-  })
-  const stopTimerMutation = useMutation({
-    mutationFn: (timerId: number) => timerApi.stop(timerId),
-    onSuccess: () => {
-      toast.success("Timer parado")
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.all() })
-      invalidateTimeChange(queryClient)
-    },
-    onError: (err) => {
-      queryClient.invalidateQueries({ queryKey: ["active-timer"] })
-      toast.error(getErrorMessage(err, "Error al parar el timer"))
-    },
-  })
-
   const weeklyReportMutation = useMutation({
     mutationFn: () => discordApi.sendWeeklyReport(),
     onSuccess: (data) => {
@@ -377,7 +322,7 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold uppercase tracking-wide">Visión general</h2>
+          <h1 className="text-2xl font-bold uppercase tracking-wide">Visión general</h1>
           {!overviewQuery.isError && overview && overview.pending_tasks != null && overview.in_progress_tasks != null && overview.active_clients != null && (
             <p className="text-sm text-muted-foreground mt-1">
               {MONTHS[month - 1]}: {overview.pending_tasks + overview.in_progress_tasks} tareas activas · {overview.active_clients} clientes externos activos hoy
@@ -386,18 +331,6 @@ export default function DashboardPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <DailyBriefingButton />
-          {isAdmin && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={weeklyReportMutation.isPending}
-              onClick={() => weeklyReportMutation.mutate()}
-              title="Enviar por Discord DM el último informe laboral cerrado (lunes a viernes)"
-            >
-              <BarChart3 className={`h-4 w-4 mr-1 ${weeklyReportMutation.isPending ? "animate-spin" : ""}`} />
-              {weeklyReportMutation.isPending ? "Enviando..." : "Enviar informe semanal"}
-            </Button>
-          )}
           {isAdmin && memberUsers.length > 0 && (
             <Select
               aria-label="Persona del dashboard"
@@ -452,47 +385,12 @@ export default function DashboardPage() {
       )}
 
       {/* Today Block */}
-      {hasPermission("tasks") && isEnabled("tasks") && <TodayBlock />}
+      {isAdmin && hasPermission("tasks") && isEnabled("tasks") && <TodayBlock />}
 
       {/* Worker Dashboard */}
       {!isAdmin && user && (
         <div className="space-y-4">
           {(myInProgressError || myPendingError || weeklyTimesheetError) && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo actualizar tu trabajo del día.</p><Button type="button" variant="outline" size="sm" onClick={() => { void refetchMyInProgress(); void refetchMyPending(); void refetchWeeklyTimesheet() }}>Reintentar</Button></CardContent></Card>}
-
-          {canWriteTime && activeTimerQuery.isError && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
-              <p role="alert" className="text-sm">No se pudo comprobar el cronómetro. Reintenta antes de iniciar otro.</p>
-              <Button variant="outline" size="sm" disabled={activeTimerQuery.isFetching} onClick={() => void activeTimerQuery.refetch()}>Reintentar cronómetro</Button>
-            </div>
-          )}
-          {/* Active timer */}
-          {activeTimer && (
-            <Card className="border-brand/30 bg-brand/5">
-              <CardContent className="pt-4 pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-brand animate-pulse" />
-                    <div>
-                      <p className="text-sm font-medium text-brand">Timer activo</p>
-                      <p className="text-xs text-muted-foreground">
-                        {activeTimer.task_title || "Sin tarea asignada"}
-                        {activeTimer.client_name ? ` · ${activeTimer.client_name}` : ""}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => stopTimerMutation.mutate(activeTimer.id)}
-                    disabled={stopTimerMutation.isPending || !canWriteTime}
-                  >
-                    <Square className="h-3 w-3 mr-1.5" />
-                    Parar
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
           {weeklyTimesheet && (() => {
             const myRow = weeklyTimesheet.users.find((u: { user_id: number; total_minutes: number }) => u.user_id === user.id)
@@ -507,120 +405,12 @@ export default function DashboardPage() {
 
           <DeberesWidget userId={user.id} />
 
-          {/* Las 3 de hoy — tareas en curso como tarjetas visuales */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">En curso hoy</p>
-              {myInProgressTasks && myInProgressTasks.length > 3 && (
-                <p className="text-xs text-amber-400 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  {myInProgressTasks.length} tareas activas — enfócate en menos
-                </p>
-              )}
-            </div>
-            {myInProgressTasks && myInProgressTasks.length > 0 ? (
-              <div className="space-y-2">
-                {myInProgressTasks.slice(0, 5).map((t) => {
-                  const completion = completionAction(t, user.id, isAdmin)
-                  return (
-                  <div
-                    key={t.id}
-                    className="flex items-center gap-3 bg-card border border-border rounded-xl px-4 py-3 hover:border-brand/30 transition-colors"
-                  >
-                    {canWriteTasks && <button
-                      onClick={() => markDoneMutation.mutate({ taskId: t.id, status: completion.status })}
-                      disabled={markDoneMutation.isPending}
-                      className="group w-5 h-5 rounded-full border-2 border-border hover:border-green-400 hover:bg-green-400/10 flex items-center justify-center flex-shrink-0 transition-colors"
-                      aria-label={`${completion.label}: ${t.title}`}
-                      title={completion.label}
-                    >
-                      <Check className="h-3 w-3 text-transparent group-hover:text-green-400 transition-colors" />
-                    </button>}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate"><Link to={`/tasks?task=${t.id}`} className="hover:text-brand hover:underline focus-visible:underline">{t.title}</Link></p>
-                      {t.client_name && <p className="text-xs text-muted-foreground">{t.client_name}</p>}
-                    </div>
-                    {t.due_date && (
-                      <span className={`text-xs mono flex-shrink-0 ${t.due_date < todayStr ? "text-red-400" : "text-muted-foreground"}`}>
-                        {formatCivilDate(t.due_date, { day: "numeric", month: "short" })}
-                      </span>
-                    )}
-                    {activeTimer?.task_id === t.id ? (
-                      <span className="text-brand text-xs font-medium flex items-center gap-1 flex-shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-brand animate-pulse" />timer
-                      </span>
-                    ) : canWriteTime ? (
-                      <button
-                        onClick={() => startTimerMutation.mutate(t.id)}
-                        disabled={startTimerMutation.isPending || timerUnknown || !!activeTimer}
-                        className="p-1.5 text-muted-foreground hover:text-brand hover:bg-brand/10 rounded-lg transition-colors disabled:opacity-40 flex-shrink-0"
-                        title="Iniciar timer"
-                      >
-                        <Play className="h-3.5 w-3.5" />
-                      </button>
-                    ) : null}
-                  </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <div className="border border-dashed border-border rounded-xl p-5 text-center">
-                <p className="text-sm text-muted-foreground">Sin tareas en curso</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {canWriteTasks ? <>Ve a <Link to="/tasks" className="text-brand hover:underline">Tareas</Link> y pon en curso las de hoy</> : <Link to="/tasks?view=all" className="text-brand hover:underline">Consulta tus tareas en Trabajo</Link>}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Pendientes — lista compacta */}
-          {myPendingTasks && myPendingTasks.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Pendientes ({myPendingTasks.length})
-              </p>
-              <div className="space-y-1">
-                {myPendingTasks.slice(0, 8).map((t) => {
-                  const completion = completionAction(t, user.id, isAdmin)
-                  return (
-                  <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-muted/50 transition-colors group">
-                    <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 flex-shrink-0" />
-                    <Link to={`/tasks?task=${t.id}`} className="text-sm flex-1 truncate hover:text-brand hover:underline focus-visible:underline">{t.title}</Link>
-                    {t.client_name && <span className="text-xs text-muted-foreground hidden group-hover:block">{t.client_name}</span>}
-                    {t.due_date && (
-                      <span className={`text-xs mono flex-shrink-0 ${t.due_date < todayStr ? "text-red-400" : "text-muted-foreground"}`}>
-                        {formatCivilDate(t.due_date, { day: "numeric", month: "short" })}
-                      </span>
-                    )}
-                    {(canWriteTime || canWriteTasks) && <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex-shrink-0">
-                      {canWriteTime && <button
-                        onClick={() => startTimerMutation.mutate(t.id)}
-                        disabled={startTimerMutation.isPending || timerUnknown || !!activeTimer}
-                        className="p-1 text-muted-foreground hover:text-brand rounded transition-colors disabled:opacity-40"
-                        title="Iniciar timer"
-                      >
-                        <Play className="h-3 w-3" />
-                      </button>}
-                      {canWriteTasks && <button
-                        onClick={() => markDoneMutation.mutate({ taskId: t.id, status: completion.status })}
-                        disabled={markDoneMutation.isPending}
-                        className="p-1 text-muted-foreground hover:text-green-400 rounded transition-colors"
-                        aria-label={`${completion.label}: ${t.title}`}
-                        title={completion.label}
-                      >
-                        <Check className="h-3 w-3" />
-                      </button>}
-                    </div>}
-                  </div>
-                  )
-                })}
-                {myPendingTasks.length > 8 && (
-                  <Link to="/tasks" className="block text-xs text-muted-foreground hover:text-brand px-4 py-1.5">
-                    +{myPendingTasks.length - 8} más en Tareas →
-                  </Link>
-                )}
-              </div>
-            </div>
+          {/* Las tareas del día viven en Mi agenda (con su ▶); aquí sólo el resumen de la semana. */}
+          {hasPermission("tasks") && (
+            <Link to="/tasks?view=my_day" className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 text-sm hover:border-brand/30 transition-colors">
+              <span>Tus tareas de hoy y el cronómetro están en <strong>Mi agenda</strong></span>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </Link>
           )}
         </div>
       )}
@@ -704,6 +494,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 2xl:gap-6">
         <div className="xl:col-span-2 space-y-4 2xl:space-y-6">
           <OperationalOverview overview={overview} isLoading={overviewQuery.isLoading} isError={overviewQuery.isError} onRetry={() => void overviewQuery.refetch()} />
+          <OperationsRow operations={operationsQuery.data} isError={operationsQuery.isError} onRetry={() => void operationsQuery.refetch()} />
           {financeEnabled && !financialOverviewForbidden && (
             financialOverviewQuery.isError ? <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo cargar el resumen financiero.</p><Button type="button" variant="outline" size="sm" onClick={() => void financialOverviewQuery.refetch()}>Reintentar</Button></CardContent></Card> : financialOverviewQuery.data ? <div className="space-y-2"><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><MetricCard icon={DollarSign} label="Presupuesto total" value={financialOverviewQuery.data.total_budget == null ? "—" : formatCurrency(financialOverviewQuery.data.total_budget)} tooltip="Suma de presupuestos del mes seleccionado." /><MetricCard icon={DollarSign} label="Coste total" value={financialOverviewQuery.data.total_cost == null ? "—" : formatCurrency(financialOverviewQuery.data.total_cost)} subtitle={financialOverviewQuery.data.margin == null ? undefined : `Margen: ${formatCurrency(financialOverviewQuery.data.margin)}`} tooltip="Coste registrado del mes seleccionado." /></div></div> : null
           )}
@@ -716,14 +507,6 @@ export default function DashboardPage() {
       <InsightsPanel />
 
       {isAdmin && allOverdueTasks && allOverdueTasks.length > 0 && <OverdueTasks tasks={allOverdueTasks} showAssigned title="Tareas vencidas del equipo" />}
-      {allClientsError ? (
-        <Card>
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-            <p role="alert" className="text-sm">No se pudo cargar la relación de clientes para las métricas de Engine.</p>
-            <Button variant="outline" size="sm" onClick={() => void refetchClients()}>Reintentar</Button>
-          </CardContent>
-        </Card>
-      ) : allClients ? <EngineAlertsWidget clients={allClients} /> : null}
       {leadReminders && <LeadFollowups reminders={leadReminders} />}
 
       {/* Proposals pipeline */}
@@ -799,7 +582,7 @@ export default function DashboardPage() {
                     <TableHead><span className="inline-flex items-center gap-1">Presupuesto <InfoTooltip content="Fee mensual del cliente" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Coste <InfoTooltip content="Horas trabajadas × tarifa/hora" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Estimado <InfoTooltip content="Suma de horas estimadas declaradas en las tareas del mes (campo opcional)" /></span></TableHead>
-                    <TableHead><span className="inline-flex items-center gap-1">Real <InfoTooltip content="Tiempo tracked del mes (timesheet/cronómetro real). Es la fuente de verdad para horas trabajadas." /></span></TableHead>
+                    <TableHead><span className="inline-flex items-center gap-1">Real <InfoTooltip content="Tiempo fichado del mes (cronómetro real). Es la fuente de verdad para horas trabajadas." /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Δ <InfoTooltip content="Diferencia real − estimado" /></span></TableHead>
                     <TableHead><span className="inline-flex items-center gap-1">Margen <InfoTooltip content="Presupuesto − Coste" /></span></TableHead>
                     <TableHead>Estado</TableHead>
@@ -807,26 +590,9 @@ export default function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                   {profitability.clients.map((c) => {
-                    const linkedClient = allClients?.find((cl) => cl.id === c.client_id)
-                    const enginePid = linkedClient?.engine_project_id
                     return (
                     <TableRow key={c.client_id}>
-                      <TableCell className="font-medium">
-                        <span className="flex items-center gap-1.5">
-                          {c.client_name}
-                          {enginePid && engineConfig?.engine_frontend_url && (
-                            <a
-                              href={`${engineConfig.engine_frontend_url}/p/${enginePid}/dashboard`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title="Abrir en Engine"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-brand" />
-                            </a>
-                          )}
-                        </span>
-                      </TableCell>
+                      <TableCell className="font-medium">{c.client_name}</TableCell>
                       <TableCell className="mono">{formatCurrency(c.budget)}</TableCell>
                       <TableCell className="mono">{formatCurrency(c.cost)}</TableCell>
                       <TableCell className="mono">{Math.round((c.estimated_minutes || 0) / 60)}h</TableCell>
@@ -853,15 +619,22 @@ export default function DashboardPage() {
       {isAdmin && teamError && <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p role="alert" className="text-sm">No se pudo actualizar el resumen del equipo.</p><Button type="button" variant="outline" size="sm" onClick={() => void refetchTeam()}>Reintentar</Button></CardContent></Card>}
 
       {isAdmin && (
-        <Card>
-          <CardHeader><CardTitle>Resumen Diario</CardTitle></CardHeader>
-          <CardContent className="pt-4">
-            <div className="flex flex-wrap gap-2 items-center">
-              <Button variant="outline" onClick={handlePreview}><Eye className="h-4 w-4 mr-2" /> Vista previa antes de enviar</Button>
-              {!discordConfigured && <span className="text-xs text-muted-foreground">Configura el webhook en Ajustes → Discord</span>}
-            </div>
-          </CardContent>
-        </Card>
+        <details className="rounded-xl border border-border bg-card">
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">Discord del equipo (interno)</summary>
+          <div className="flex flex-wrap gap-2 items-center border-t border-border p-4">
+            <Button variant="outline" onClick={handlePreview}><Eye className="h-4 w-4 mr-2" /> Cierre del día: vista previa antes de enviar</Button>
+            <Button
+              variant="outline"
+              disabled={weeklyReportMutation.isPending}
+              onClick={() => weeklyReportMutation.mutate()}
+              title="Enviar por Discord DM el último informe laboral cerrado (lunes a viernes)"
+            >
+              <BarChart3 className={`h-4 w-4 mr-2 ${weeklyReportMutation.isPending ? "animate-spin" : ""}`} />
+              {weeklyReportMutation.isPending ? "Enviando..." : "Enviar informe semanal"}
+            </Button>
+            {!discordConfigured && <span className="text-xs text-muted-foreground">Discord no está conectado: falta la variable DISCORD_WEBHOOK_URL en Railway</span>}
+          </div>
+        </details>
       )}
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>

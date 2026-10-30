@@ -12,8 +12,20 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
+from backend.startup import (
+    alert_settings_notify_retirement_schema, phase0_retirement_schema,
+    report_policy_legacy_retirement_schema, vigil_retirement_schema,
+)
 from backend.startup.schema_indexes import check_unique_indexes
 from backend.startup.schema_runner import Migration, run_schema_migrations
+
+# Pasos posteriores que retiran parte de P12 (ver ``retirement_schema``).
+RETIREMENTS = (
+    phase0_retirement_schema.STEP, report_policy_legacy_retirement_schema.STEP, vigil_retirement_schema.STEP,
+    alert_settings_notify_retirement_schema.STEP,
+)
+RETIRED_TABLES = frozenset().union(*(step.tables for step in RETIREMENTS))
+RETIRED_COLUMNS = frozenset().union(*(step.columns for step in RETIREMENTS))
 
 
 _ARTIFACT = Path(__file__).with_name("schema_versions") / "p12.json"
@@ -33,7 +45,10 @@ async def check_structure(conn, *, allow_upgrade=False):
     tables = await _tables(conn)
     expected = BASELINE["columns"]
     optional_tables = set(BASELINE["optional_tables"]) if allow_upgrade else set()
-    missing = set(expected) - tables - optional_tables
+    # Lo que retiró un paso posterior sólo se perdona si ya no existe: antes
+    # de ese paso P12 lo sigue exigiendo entero.
+    retired_tables = RETIRED_TABLES - tables
+    missing = set(expected) - tables - optional_tables - retired_tables
     if missing:
         raise RuntimeError(f"Unsupported schema: missing tables {', '.join(sorted(missing))}")
     rows = (await conn.execute(text("""
@@ -48,7 +63,7 @@ async def check_structure(conn, *, allow_upgrade=False):
         optional = set(BASELINE["optional_columns"].get(table, [])) if allow_upgrade else set()
         for column, contract in columns.items():
             row = actual.get((table, column))
-            if row is None and column in optional:
+            if row is None and (column in optional or (table, column) in RETIRED_COLUMNS):
                 continue
             if row is None:
                 raise RuntimeError(f"Unsupported schema: missing column {table}.{column}")
@@ -82,6 +97,10 @@ async def check_structure(conn, *, allow_upgrade=False):
             if not any(k["table_name"] == table and k["kind"] == "p" and k["columns"] == pk for k in keys):
                 raise RuntimeError(f"Unsupported schema: primary key of {table}")
     for fk in BASELINE["foreign_keys"]:
+        if fk["table"] in retired_tables or any(
+            (fk["table"], c) in RETIRED_COLUMNS and (fk["table"], c) not in actual for c in fk["columns"]
+        ):
+            continue
         if allow_upgrade and (fk["table"] not in tables or
                               any((fk["table"], c) not in actual for c in fk["columns"])):
             continue
@@ -153,7 +172,8 @@ async def _apply_schema(conn):
 
 async def _verify_schema(conn):
     await check_structure(conn)
-    await check_unique_indexes(conn, BASELINE["unique_indexes"])
+    retired = RETIRED_TABLES - await _tables(conn)
+    await check_unique_indexes(conn, [u for u in BASELINE["unique_indexes"] if u["table"] not in retired])
 
 
 MIGRATIONS = (

@@ -5,11 +5,16 @@ import json
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi import HTTPException
 from fastapi.responses import Response, FileResponse
 
+from backend.api.deps import get_current_user
 from backend.core.rate_limiter import _SlidingWindowLimiter
+from backend.db.models import User
+from backend.services.extension_package import (
+    ExtensionPackageUnavailable, build_package, package_filename, read_release_notes, read_version,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,4 +78,50 @@ async def extension_crx(request: Request):
         str(_CRX),
         media_type="application/x-chrome-extension",
         filename="agency-manager.crx",
+    )
+
+
+# ── Descarga para "Cargar descomprimida" (Ajustes → Extensión de Chrome) ──
+# Requiere sesión: la extensión es una herramienta interna del equipo.
+DOWNLOAD_PATH = "/api/extension/download"
+
+
+@router.get("/api/extension")
+async def extension_info(_: User = Depends(get_current_user)):
+    """Versión que se descargaría ahora, cuándo salió y qué trae, para enseñarlo
+    junto al botón. Las novedades son las de esa versión y las dos anteriores."""
+    try:
+        version = read_version()
+    except ExtensionPackageUnavailable:
+        raise HTTPException(status_code=503, detail="La extensión no está disponible en este despliegue")
+    try:
+        releases = read_release_notes()
+    except (OSError, ValueError, KeyError, TypeError):
+        logger.error("novedades.json de la extensión mal formado")
+        releases = []
+    current = next((r for r in releases if r.version == version), None)
+    return {
+        "version": version, "filename": package_filename(version), "download_url": DOWNLOAD_PATH,
+        "released_on": current.date.isoformat() if current else None,
+        "releases": [
+            {"version": r.version, "date": r.date.isoformat(), "changes": list(r.changes)} for r in releases[:3]
+        ],
+    }
+
+
+@router.get(DOWNLOAD_PATH)
+async def extension_download(_: User = Depends(get_current_user)):
+    """Zip de la versión desplegada, armado desde los ficheros de la imagen."""
+    try:
+        package = build_package()
+    except ExtensionPackageUnavailable as exc:
+        logger.error("Extension package unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="La extensión no está disponible en este despliegue")
+    return Response(
+        content=package.content,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{package.filename}"',
+            "Cache-Control": "no-store",
+        },
     )

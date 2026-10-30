@@ -1,0 +1,11 @@
+{
+  "version": "20261022_client_seo_page_groups_v1",
+  "sql": "ALTER TABLE clients ADD COLUMN IF NOT EXISTS seo_page_groups JSONB NOT NULL DEFAULT '[]'::jsonb",
+  "columns": {
+    "seo_page_groups": [
+      "jsonb",
+      false,
+      "'[]'::jsonb"
+    ]
+  }
+}

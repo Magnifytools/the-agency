@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.db.models import Client, Project, Task, TaskStatus, User, UserPermission, UserRole
 from backend.services.domain_writes import lock_task, update_task
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 
 @pytest.mark.asyncio
@@ -37,7 +38,7 @@ async def test_completion_contending_with_policy_update_fails_fast_then_rechecks
             policy.requires_task_review = True
             await policy_db.flush()
             with pytest.raises(HTTPException) as contention:
-                await asyncio.wait_for(update_task(task_db, task, {"status": TaskStatus.completed}, actor=actor), timeout=2)
+                await asyncio.wait_for(update_task(task_db, task, {"status": TaskStatus.completed}, actor=actor), timeout=HANG_TIMEOUT)
             assert contention.value.status_code == 409
             assert "cambiando" in contention.value.detail
             await task_db.rollback()

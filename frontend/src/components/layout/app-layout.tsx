@@ -5,11 +5,13 @@ import { inboxApi } from "@/lib/api"
 import { inboxKeys } from "@/lib/query-keys"
 import { Search, Inbox, LogOut, LayoutGrid } from "lucide-react"
 import { navigationFor, activeArea, activeAreaLink } from "./navigation"
+import { useSectionTitle } from "@/hooks/use-page-title"
 import { cn } from "@/lib/utils"
 import { BottomDrawer } from "@/components/ui/bottom-drawer"
 import { ActiveTimerBar } from "@/components/timer/active-timer-bar"
 import { NotificationBell } from "@/components/layout/notification-bell"
 import { UndoPanel } from "@/components/layout/undo-panel"
+import { SuggestionButton } from "@/components/layout/suggestion-button"
 import { SearchPalette } from "@/components/layout/search-palette"
 import { QuickCaptureDialog } from "@/components/inbox/quick-capture-dialog"
 import { ShortcutsHelpModal } from "@/components/shortcuts/shortcuts-help-modal"
@@ -50,6 +52,8 @@ export function AppLayout() {
   const currentArea = activeArea(location.pathname, location.search)
   const currentLinks = navigation.find((area) => area.id === currentArea)?.links ?? []
   const isActive = (to: string) => activeAreaLink(to, location.pathname, location.search)
+  // Cada pestaña del navegador dice dónde está; las fichas lo afinan con usePageTitle.
+  useSectionTitle(currentLinks.find((link) => isActive(link.to))?.label ?? navigation.find((area) => area.id === currentArea)?.label)
 
   return (
     <div className="flex h-screen flex-col bg-background overflow-hidden relative">
@@ -62,8 +66,11 @@ export function AppLayout() {
       <ActiveTimerBar />
       <div className="md:hidden flex items-center justify-between border-b border-border px-4 py-1.5 bg-card">
         <button onClick={() => setSearchOpen(true)} className="flex items-center gap-2 min-h-11 text-sm"><Search className="h-4 w-4" />Buscar</button>
-        <button onClick={() => setCaptureOpen(true)} className="flex items-center gap-2 min-h-11 text-sm font-semibold" title="Pide una acción o guarda una nota para aclararla después"><Inbox className="h-4 w-4" />Hacer o anotar</button>
-        <button onClick={() => setMoreDrawerOpen(true)} className="flex items-center gap-2 min-h-11 text-sm" aria-label="Abrir menú de cuenta"><LayoutGrid className="h-4 w-4" />Cuenta</button>
+        <button onClick={() => setCaptureOpen(true)} className="flex items-center gap-2 min-h-11 text-sm font-semibold" title="Pide una acción o guarda una nota para aclararla después"><Inbox className="h-4 w-4" />Anotar</button>
+        <div className="flex items-center gap-1">
+          <NotificationBell />
+          <button onClick={() => setMoreDrawerOpen(true)} className="flex items-center gap-2 min-h-11 text-sm" aria-label="Abrir menú de cuenta"><LayoutGrid className="h-4 w-4" />Cuenta</button>
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden pb-[60px] md:pb-0">
@@ -76,10 +83,11 @@ export function AppLayout() {
             </svg>
           </div>
 
-          {/* Search Button */}
+          {/* Buscar y, a su lado, la campana: los avisos se ven sin bajar al pie. */}
+          <div className="flex items-center gap-1">
           <button
             onClick={() => setSearchOpen(true)}
-            className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all group w-full"
+            className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[14px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-all group flex-1 min-w-0"
           >
             <Search className="h-[18px] w-[18px] text-muted-foreground group-hover:text-foreground transition-colors" />
             <span className="flex-1 text-left">Buscar</span>
@@ -87,9 +95,11 @@ export function AppLayout() {
               ⌘K
             </kbd>
           </button>
+          <NotificationBell />
+          </div>
 
           <button onClick={() => setCaptureOpen(true)} className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-brand text-black text-sm font-semibold" title="Pide una acción o guarda una nota para aclararla después">
-            <Inbox className="h-[18px] w-[18px]" /> Hacer o anotar
+            <Inbox className="h-[18px] w-[18px]" /> Anotar
           </button>
           <nav className="flex flex-col gap-2 flex-1 overflow-y-auto min-h-0" aria-label="Menú principal">
             {navigation.map((area) => (
@@ -102,7 +112,10 @@ export function AppLayout() {
           </nav>
 
           {/* User info at bottom */}
-          <div className="mt-auto border-t border-border pt-5 px-1">
+          <div className="mt-auto border-t border-border pt-3 px-1">
+            <div className="mb-3 -mx-1">
+              <SuggestionButton />
+            </div>
             <div className="flex items-center justify-between">
               <div className="text-sm truncate pr-2">
                 <p className="font-semibold text-foreground truncate">{user?.full_name}</p>
@@ -110,7 +123,6 @@ export function AppLayout() {
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">
                 <UndoPanel />
-                <NotificationBell />
                 <button
                   onClick={() => void logout()}
                   className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
@@ -149,12 +161,12 @@ export function AppLayout() {
       </nav>
 
       <BottomDrawer open={moreDrawerOpen} onOpenChange={setMoreDrawerOpen}>
-        <h2 className="font-semibold mb-1">Cuenta y avisos</h2>
+        <h2 className="font-semibold mb-1">Cuenta</h2>
         <p className="font-semibold mb-1">{user?.full_name}</p>
         <p className="text-sm text-muted-foreground mb-4">{user?.email}</p>
         <div className="grid grid-cols-3 gap-2">
+          <SuggestionButton showLabel />
           <UndoPanel showLabel />
-          <NotificationBell showLabel onNavigate={() => setMoreDrawerOpen(false)} />
           <button onClick={() => { setMoreDrawerOpen(false); void logout() }} className="flex min-h-11 flex-col items-center justify-center gap-1 rounded-lg p-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"><LogOut className="h-4 w-4" />Cerrar sesión</button>
         </div>
       </BottomDrawer>

@@ -1,23 +1,34 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { clientsApi, engineApi, gscApi } from "@/lib/api"
+import { clientsApi, engineApi, ga4Api, gscApi } from "@/lib/api"
+import { ga4ErrorLabel, parseLeadEvents } from "@/lib/ga4"
 import { formatDay, gscErrorLabel } from "@/lib/gsc"
 import type { Client } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart3, Search, Save, Globe } from "lucide-react"
+import { BarChart3, Search, Save, Globe, Target } from "lucide-react"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 import { invalidateClientChange } from "@/lib/query-keys"
+import { ClientShareLinkCard } from "@/components/clients/client-share-link-card"
+import { ClientSlackCard } from "@/components/web/client-slack-card"
+import { BrandTermsEditor } from "@/components/clients/seo-control/brand-terms-editor"
+import { SeoPageGroupsEditor } from "@/components/clients/seo-control/seo-page-groups-editor"
 
 interface Props {
   client: Client
+  /** "marca": llega desde el aviso de la ficha y baja a los términos de marca. */
+  focus?: string | null
 }
 
-export function ClientSettingsTab({ client }: Props) {
+export function ClientSettingsTab({ client, focus = null }: Props) {
+  // Desde el aviso de la ficha: lleva directo a los términos de marca.
+  useEffect(() => {
+    if (focus === "marca") document.getElementById("terminos-de-marca")?.scrollIntoView({ behavior: "smooth" })
+  }, [focus])
   const { isAdmin, hasPermission } = useAuth()
   const canWriteClients = hasPermission("clients", true)
   const qc = useQueryClient()
@@ -26,11 +37,19 @@ export function ClientSettingsTab({ client }: Props) {
   const [engineProjectId, setEngineProjectId] = useState(
     client.engine_project_id?.toString() ?? ""
   )
+  const savedBrandTerms = client.brand_terms ?? []
+  const [brandTerms, setBrandTerms] = useState<string[]>(savedBrandTerms)
+  const brandTermsDirty = brandTerms.join("\n") !== savedBrandTerms.join("\n")
+  const savedLeadEvents = (client.ga4_lead_events ?? ["generate_lead"]).join(", ")
+  const [leadEvents, setLeadEvents] = useState(savedLeadEvents)
+  const leadEventsDirty = leadEvents.trim() !== savedLeadEvents
 
   const isDirty =
     ga4 !== (client.ga4_property_id ?? "") ||
     gsc !== (client.gsc_url ?? "") ||
-    engineProjectId !== (client.engine_project_id?.toString() ?? "")
+    engineProjectId !== (client.engine_project_id?.toString() ?? "") ||
+    brandTermsDirty ||
+    leadEventsDirty
 
   const { data: engineProjects = [] } = useQuery({
     queryKey: ["engine-projects"],
@@ -45,6 +64,10 @@ export function ClientSettingsTab({ client }: Props) {
       clientsApi.update(client.id, {
         ga4_property_id: ga4.trim() || null,
         gsc_url: gsc.trim() || null,
+        // Sólo si cambian: así guardar otro campo no pisa términos editados por otra persona.
+        ...(brandTermsDirty ? { brand_terms: brandTerms } : {}),
+        // Igual: sólo si cambian. El servidor valida los nombres.
+        ...(leadEventsDirty ? { ga4_lead_events: parseLeadEvents(leadEvents) } : {}),
         ...(isAdmin ? { engine_project_id: engineProjectId.trim() ? parseInt(engineProjectId) : null } : {}),
       }),
     onSuccess: () => {
@@ -54,9 +77,13 @@ export function ClientSettingsTab({ client }: Props) {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
 
+  const { data: ga4Status } = useQuery({ queryKey: ["ga4-status"], queryFn: ga4Api.getStatus, staleTime: 60_000 })
+  const savedGa4 = client.ga4_property_id?.trim().replace(/^properties\//, "")
+  const ga4State = ga4Status?.properties.find((p) => p.property_id === savedGa4)
+
   // Estado de importación de la propiedad GUARDADA (no la que se está escribiendo).
   const { data: gscStatus } = useQuery({ queryKey: ["gsc-status"], queryFn: gscApi.getStatus, staleTime: 60_000 })
-  const gscConnected = gscStatus?.connection?.status === "connected"
+  const gscConnected = !!gscStatus?.connections.some((c) => c.status === "connected")
   const { data: gscSites } = useQuery({
     queryKey: ["gsc-sites"],
     queryFn: gscApi.listSites,
@@ -97,7 +124,33 @@ export function ClientSettingsTab({ client }: Props) {
                   disabled={!canWriteClients}
                 />
                 <p className="text-[11px] text-muted-foreground mt-1">
-                  ID numerico de la propiedad de Google Analytics 4
+                  ID numérico de la propiedad de Google Analytics 4
+                </p>
+                {savedGa4 && ga4Status && (
+                  <p className="text-[11px] mt-1">
+                    {ga4State?.last_data_date ? (
+                      <span className="text-muted-foreground">Datos importados hasta el {formatDay(ga4State.last_data_date)}.</span>
+                    ) : (
+                      <span className="text-muted-foreground">Se importará en la próxima pasada diaria.</span>
+                    )}
+                    {ga4ErrorLabel(ga4State?.error_code) && <span className="block text-amber-600">{ga4ErrorLabel(ga4State?.error_code)}</span>}
+                  </p>
+                )}
+                <Label htmlFor="ga4-lead-events" className="mt-3 flex items-center gap-1.5">
+                  <Target className="h-3.5 w-3.5 text-muted-foreground" />
+                  Eventos que cuentan como lead
+                </Label>
+                <Input
+                  id="ga4-lead-events"
+                  value={leadEvents}
+                  onChange={(e) => setLeadEvents(e.target.value)}
+                  placeholder="generate_lead"
+                  className="mt-1"
+                  disabled={!canWriteClients}
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Nombres de evento de GA4 separados por comas. Termina en * para contar todos los que empiezan
+                  así (generate_lead_*). Si cambian, los leads se vuelven a importar.
                 </p>
               </div>
               <div>
@@ -123,7 +176,7 @@ export function ClientSettingsTab({ client }: Props) {
                 </p>
                 {savedSite && gscStatus && (
                   <p className="text-[11px] mt-1">
-                    {!gscStatus.connection ? (
+                    {gscStatus.connections.length === 0 ? (
                       <span className="text-muted-foreground">Search Console no está conectado (Ajustes).</span>
                     ) : siteState?.last_data_date ? (
                       <span className="text-muted-foreground">Datos importados hasta el {formatDay(siteState.last_data_date)}.</span>
@@ -134,6 +187,17 @@ export function ClientSettingsTab({ client }: Props) {
                   </p>
                 )}
               </div>
+            </div>
+
+            {/* Control SEO: separa las búsquedas de marca de las demás. */}
+            <div id="terminos-de-marca" className="scroll-mt-4">
+            <BrandTermsEditor
+              value={brandTerms}
+              onChange={setBrandTerms}
+              disabled={!canWriteClients}
+              client={client}
+              gscDraft={gsc}
+            />
             </div>
 
             {/* Engine Integration */}
@@ -180,6 +244,14 @@ export function ClientSettingsTab({ client }: Props) {
           </form>
         </CardContent>
       </Card>
+
+      {/* Control SEO: grupos de URL propios (se guardan aparte del formulario). */}
+      <SeoPageGroupsEditor client={client} canWrite={canWriteClients} />
+
+      <ClientShareLinkCard clientId={client.id} />
+
+      {/* Avisos de caída de su web al Slack del cliente: sólo admin. */}
+      {isAdmin && <ClientSlackCard clientId={client.id} />}
     </div>
   )
 }

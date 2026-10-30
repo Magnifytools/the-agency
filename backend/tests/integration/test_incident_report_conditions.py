@@ -16,7 +16,6 @@ from backend.db.models import (
     DailyUpdate,
     Delivery,
     Notification,
-    ReportCadence,
     User,
     UserPermission,
     UserRole,
@@ -32,11 +31,11 @@ from backend.services.incident_report_conditions import (
 NOW = datetime(2026, 9, 20, 10)
 
 
-async def policy(db, actor, *, cadence=ReportCadence.weekly, enabled=True):
+async def policy(db, actor, *, weekly=True, monthly=False):
     client = Client(name=f"Cliente {uuid4().hex}", status=ClientStatus.active, is_internal=False)
     db.add(client)
     await db.flush()
-    row = ClientReportPolicy(client_id=client.id, enabled=enabled, cadence=cadence, responsible_user_id=actor.id)
+    row = ClientReportPolicy(client_id=client.id, weekly_enabled=weekly, monthly_enabled=monthly, responsible_user_id=actor.id)
     db.add(row)
     await db.flush()
     return client, row
@@ -53,12 +52,70 @@ async def test_pending_report_requires_current_enabled_explicit_policy_and_exact
     db_session.add(WeeklyDigest(client_id=client.id, period_start=start, period_end=end, created_by=admin_user.id))
     await db_session.flush()
     assert await collect_report_conditions(db_session, admin_user.id, NOW) == {}
-    row.cadence = ReportCadence.monthly
+    row.weekly_enabled, row.monthly_enabled = False, True
     await db_session.flush()
     assert len(await collect_report_conditions(db_session, admin_user.id, NOW)) == 1
-    row.enabled = False
+    row.monthly_enabled = False
     await db_session.flush()
     assert await collect_report_conditions(db_session, admin_user.id, NOW) == {}
+
+
+async def test_both_cadences_raise_one_pending_each_with_their_own_message(db_session, admin_user):
+    client, _ = await policy(db_session, admin_user, weekly=True, monthly=True)
+    week = policy_digest_period("weekly", today=NOW.date())
+    month = policy_digest_period("monthly", today=NOW.date())
+    conditions = await collect_report_conditions(db_session, admin_user.id, NOW)
+    by_key = {key: item for key, item in conditions.items() if item.kind == "report_pending"}
+    monthly_key = f"report_pending:client:{client.id}:monthly:{month[0].isoformat()}:{month[1].isoformat()}"
+    weekly_key = f"report_pending:client:{client.id}:weekly:{week[0].isoformat()}:{week[1].isoformat()}"
+    assert set(by_key) == {monthly_key, weekly_key}
+    assert by_key[monthly_key].message.startswith("Falta preparar el informe mensual del 01/08/2026")
+    assert by_key[weekly_key].message.startswith("Falta preparar el seguimiento semanal")
+    # El pendiente mensual tapa el "sin entregar" del mismo mes.
+    assert not [item for item in conditions.values() if item.kind == "report_unsent"]
+
+    db_session.add(WeeklyDigest(client_id=client.id, period_start=week[0], period_end=week[1], created_by=admin_user.id))
+    await db_session.flush()
+    conditions = await collect_report_conditions(db_session, admin_user.id, NOW)
+    assert {key for key, item in conditions.items() if item.kind == "report_pending"} == {monthly_key}
+
+
+async def test_weekly_pending_does_not_hide_an_unsent_monthly_report(db_session, admin_user):
+    client, _ = await policy(db_session, admin_user, weekly=True, monthly=True)
+    month = policy_digest_period("monthly", today=NOW.date())
+    db_session.add(WeeklyDigest(client_id=client.id, period_start=month[0], period_end=month[1], created_by=admin_user.id))
+    await db_session.flush()
+    kinds = sorted(
+        (item.kind, item.key.split(":")[3]) for item in (await collect_report_conditions(db_session, admin_user.id, NOW)).values()
+        if item.entity_id == client.id
+    )
+    assert kinds == [("report_pending", "weekly"), ("report_unsent", "monthly")]
+
+
+async def test_current_visibility_follows_each_cadence_switch(db_session, admin_user):
+    client, row = await policy(db_session, admin_user, weekly=True, monthly=True)
+    notices = {}
+    for cadence in ("weekly", "monthly"):
+        start, end = policy_digest_period(cadence, today=NOW.date())
+        notice = Notification(user_id=admin_user.id, type="report_pending", title=cadence, entity_type="client", entity_id=client.id,
+                              dedupe_key=f"report_pending:client:{client.id}:{cadence}:{start.isoformat()}:{end.isoformat()}")
+        db_session.add(notice); notices[cadence] = notice
+    await db_session.flush()
+
+    async def live():
+        rows = await db_session.scalars(select(Notification.title).where(
+            Notification.id.in_([n.id for n in notices.values()]),
+            report_visibility_clause(admin_user.id, current_only=True, now=NOW),
+        ))
+        return set(rows)
+
+    assert await live() == {"weekly", "monthly"}
+    row.weekly_enabled = False; await db_session.flush()
+    assert await live() == {"monthly"}
+    month = policy_digest_period("monthly", today=NOW.date())
+    db_session.add(WeeklyDigest(client_id=client.id, period_start=month[0], period_end=month[1], created_by=admin_user.id))
+    await db_session.flush()
+    assert await live() == set()
 
 
 async def test_policy_owner_needs_current_digest_write_permission(db_session):
@@ -80,7 +137,7 @@ async def test_report_current_visibility_expires_previous_period_but_preserves_a
     db_session.add(notice); await db_session.flush()
     current = select(Notification.id).where(Notification.id == notice.id, report_visibility_clause(admin_user.id, current_only=True, now=NOW))
     assert await db_session.scalar(current) == notice.id
-    policy_row.cadence = ReportCadence.monthly; await db_session.flush()
+    policy_row.weekly_enabled, policy_row.monthly_enabled = False, True; await db_session.flush()
     assert await db_session.scalar(current) is None
     history = select(Notification.id).where(Notification.id == notice.id, report_visibility_clause(admin_user.id, current_only=False, now=NOW))
     assert await db_session.scalar(history) == notice.id

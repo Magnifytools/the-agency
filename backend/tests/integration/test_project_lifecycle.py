@@ -12,6 +12,7 @@ from backend.db.models import (
     ChangeLog,
     Client,
     ClientStatus,
+    Notification,
     Project,
     ProjectStatus,
     Task,
@@ -25,6 +26,7 @@ from backend.db.models import (
 )
 from backend.services.project_lifecycle import close_project, get_close_preview
 from backend.services.recurrence import generate_recurring_instances
+from backend.tests.integration.concurrency import HANG_TIMEOUT
 
 pytestmark = pytest.mark.integration
 
@@ -354,7 +356,7 @@ async def test_generator_winning_advisory_makes_close_recheck_and_refuse(engine)
                 generator_db, target_date=date(2026, 9, 21),
             ) == 1
             with pytest.raises(HTTPException) as changed:
-                await asyncio.wait_for(close_attempt, timeout=3)
+                await asyncio.wait_for(close_attempt, timeout=HANG_TIMEOUT)
             assert changed.value.status_code == 409
             assert changed.value.detail["code"] == "project_close_changed"
             await close_db.rollback()
@@ -439,7 +441,7 @@ async def test_permission_revoked_while_waiting_for_advisory_cannot_close(engine
             await permission_db.commit()
             await lock_db.commit()
             with pytest.raises(HTTPException) as denied:
-                await asyncio.wait_for(close_attempt, timeout=3)
+                await asyncio.wait_for(close_attempt, timeout=HANG_TIMEOUT)
             assert denied.value.status_code == 403
             await close_db.rollback()
 
@@ -521,3 +523,31 @@ async def test_close_reopen_generator_preserves_receipts_and_explicit_pauses(
     assert await db_session.scalar(select(func.count()).select_from(Task).where(
         Task.recurring_parent_id == paused_id,
     )) == 0
+
+
+async def test_closing_a_billable_project_stores_no_hidden_billing_reminder(admin_client, db_session):
+    """Close → reopen → close used to pile up invisible unread billing rows."""
+    _client, project = await _project(db_session, admin_client.test_user.id)
+    project.billing_amount = 1200
+    await db_session.commit()
+
+    for _ in range(2):
+        preview = await _preview(admin_client, project.id)
+        response = await admin_client.post(f"/api/projects/{project.id}/close", json={
+            "target": "completed",
+            "expected_updated_at": preview["expected_updated_at"],
+            "preview_revision": preview["preview_revision"],
+        })
+        assert response.status_code == 200, response.text
+        reopen = (await admin_client.get(f"/api/projects/{project.id}/reopen-preview")).json()
+        response = await admin_client.post(f"/api/projects/{project.id}/reopen", json={
+            "expected_updated_at": reopen["expected_updated_at"],
+            "preview_revision": reopen["preview_revision"],
+        })
+        assert response.status_code == 200, response.text
+
+    assert (await db_session.execute(select(func.count(Notification.id)).where(
+        Notification.type == "billing_reminder",
+        Notification.entity_type == "project",
+        Notification.entity_id == project.id,
+    ))).scalar_one() == 0

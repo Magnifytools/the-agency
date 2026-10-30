@@ -1,0 +1,105 @@
+{
+  "version": "20261021_web_uptime_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS web_uptime_targets (\n id SERIAL PRIMARY KEY,\n client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,\n url VARCHAR(500) NOT NULL,\n label VARCHAR(120),\n is_active BOOLEAN NOT NULL DEFAULT true,\n created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n created_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT uq_web_uptime_targets_client_url UNIQUE (client_id, url)\n)",
+    "CREATE TABLE IF NOT EXISTS web_uptime_state (\n target_id INTEGER PRIMARY KEY REFERENCES web_uptime_targets(id) ON DELETE CASCADE,\n status VARCHAR(16) NOT NULL DEFAULT 'unknown',\n status_since TIMESTAMPTZ,\n consecutive_failures SMALLINT NOT NULL DEFAULT 0,\n consecutive_successes SMALLINT NOT NULL DEFAULT 0,\n failing_since TIMESTAMPTZ,\n blocked_since TIMESTAMPTZ,\n last_checked_at TIMESTAMPTZ,\n last_outcome VARCHAR(16),\n last_status_code INTEGER,\n last_error VARCHAR(32),\n last_response_ms INTEGER,\n next_check_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT ck_web_uptime_state_status CHECK (status IN ('unknown','up','suspect','down','blocked'))\n)",
+    "CREATE INDEX IF NOT EXISTS ix_web_uptime_state_next_check ON web_uptime_state (next_check_at)",
+    "CREATE TABLE IF NOT EXISTS web_outages (\n id SERIAL PRIMARY KEY,\n target_id INTEGER NOT NULL REFERENCES web_uptime_targets(id) ON DELETE CASCADE,\n kind VARCHAR(16) NOT NULL,\n started_at TIMESTAMPTZ NOT NULL,\n confirmed_at TIMESTAMPTZ NOT NULL,\n ended_at TIMESTAMPTZ,\n cause VARCHAR(32),\n status_code INTEGER,\n slack_down_status VARCHAR(16) NOT NULL DEFAULT 'pending',\n slack_down_sent_at TIMESTAMPTZ,\n slack_recovery_status VARCHAR(16),\n slack_recovery_sent_at TIMESTAMPTZ,\n slack_attempts SMALLINT NOT NULL DEFAULT 0,\n CONSTRAINT ck_web_outages_kind CHECK (kind IN ('down','blocked')),\n CONSTRAINT ck_web_outages_slack_down CHECK (slack_down_status IN ('pending','sent','failed','skipped')),\n CONSTRAINT ck_web_outages_slack_recovery CHECK (slack_recovery_status IS NULL OR slack_recovery_status IN ('pending','sent','failed','skipped'))\n)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_web_outages_open ON web_outages (target_id) WHERE ended_at IS NULL",
+    "CREATE INDEX IF NOT EXISTS ix_web_outages_target_started ON web_outages (target_id, started_at)",
+    "CREATE TABLE IF NOT EXISTS web_uptime_probes (\n id BIGSERIAL PRIMARY KEY,\n target_id INTEGER NOT NULL REFERENCES web_uptime_targets(id) ON DELETE CASCADE,\n checked_at TIMESTAMPTZ NOT NULL,\n outcome VARCHAR(16) NOT NULL,\n status_code INTEGER,\n error VARCHAR(32),\n response_ms INTEGER,\n CONSTRAINT ck_web_uptime_probes_outcome CHECK (outcome IN ('up','down','blocked'))\n)",
+    "CREATE INDEX IF NOT EXISTS ix_web_uptime_probes_target_checked ON web_uptime_probes (target_id, checked_at)",
+    "CREATE INDEX IF NOT EXISTS ix_web_uptime_probes_checked ON web_uptime_probes (checked_at)",
+    "CREATE TABLE IF NOT EXISTS client_web_settings (\n client_id INTEGER PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,\n slack_webhook_url TEXT,\n slack_channel_hint VARCHAR(100),\n slack_enabled BOOLEAN NOT NULL DEFAULT false,\n slack_revoked_at TIMESTAMPTZ,\n downtime_to_slack BOOLEAN NOT NULL DEFAULT true,\n user_agent VARCHAR(300),\n updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT ck_client_web_settings_webhook_encrypted CHECK (slack_webhook_url IS NULL OR slack_webhook_url LIKE 'v1:%')\n)"
+  ],
+  "columns": {
+    "web_uptime_targets": {
+      "id": ["int4", false, null],
+      "client_id": ["int4", false, null],
+      "url": ["varchar", false, 500],
+      "label": ["varchar", true, 120],
+      "is_active": ["bool", false, null],
+      "created_by": ["int4", true, null],
+      "created_at": ["timestamptz", false, null],
+      "updated_at": ["timestamptz", false, null]
+    },
+    "web_uptime_state": {
+      "target_id": ["int4", false, null],
+      "status": ["varchar", false, 16],
+      "status_since": ["timestamptz", true, null],
+      "consecutive_failures": ["int2", false, null],
+      "consecutive_successes": ["int2", false, null],
+      "failing_since": ["timestamptz", true, null],
+      "blocked_since": ["timestamptz", true, null],
+      "last_checked_at": ["timestamptz", true, null],
+      "last_outcome": ["varchar", true, 16],
+      "last_status_code": ["int4", true, null],
+      "last_error": ["varchar", true, 32],
+      "last_response_ms": ["int4", true, null],
+      "next_check_at": ["timestamptz", false, null]
+    },
+    "web_outages": {
+      "id": ["int4", false, null],
+      "target_id": ["int4", false, null],
+      "kind": ["varchar", false, 16],
+      "started_at": ["timestamptz", false, null],
+      "confirmed_at": ["timestamptz", false, null],
+      "ended_at": ["timestamptz", true, null],
+      "cause": ["varchar", true, 32],
+      "status_code": ["int4", true, null],
+      "slack_down_status": ["varchar", false, 16],
+      "slack_down_sent_at": ["timestamptz", true, null],
+      "slack_recovery_status": ["varchar", true, 16],
+      "slack_recovery_sent_at": ["timestamptz", true, null],
+      "slack_attempts": ["int2", false, null]
+    },
+    "web_uptime_probes": {
+      "id": ["int8", false, null],
+      "target_id": ["int4", false, null],
+      "checked_at": ["timestamptz", false, null],
+      "outcome": ["varchar", false, 16],
+      "status_code": ["int4", true, null],
+      "error": ["varchar", true, 32],
+      "response_ms": ["int4", true, null]
+    },
+    "client_web_settings": {
+      "client_id": ["int4", false, null],
+      "slack_webhook_url": ["text", true, null],
+      "slack_channel_hint": ["varchar", true, 100],
+      "slack_enabled": ["bool", false, null],
+      "slack_revoked_at": ["timestamptz", true, null],
+      "downtime_to_slack": ["bool", false, null],
+      "user_agent": ["varchar", true, 300],
+      "updated_by": ["int4", true, null],
+      "updated_at": ["timestamptz", false, null]
+    }
+  },
+  "primary_keys": {
+    "web_uptime_targets": ["id"],
+    "web_uptime_state": ["target_id"],
+    "web_outages": ["id"],
+    "web_uptime_probes": ["id"],
+    "client_web_settings": ["client_id"]
+  },
+  "foreign_keys": [
+    {"table": "web_uptime_targets", "column": "client_id", "references": "clients", "on_delete": "c"},
+    {"table": "web_uptime_targets", "column": "created_by", "references": "users", "on_delete": "n"},
+    {"table": "web_uptime_state", "column": "target_id", "references": "web_uptime_targets", "on_delete": "c"},
+    {"table": "web_outages", "column": "target_id", "references": "web_uptime_targets", "on_delete": "c"},
+    {"table": "web_uptime_probes", "column": "target_id", "references": "web_uptime_targets", "on_delete": "c"},
+    {"table": "client_web_settings", "column": "client_id", "references": "clients", "on_delete": "c"},
+    {"table": "client_web_settings", "column": "updated_by", "references": "users", "on_delete": "n"}
+  ],
+  "checks": {
+    "ck_web_uptime_state_status": "web_uptime_state",
+    "ck_web_outages_kind": "web_outages",
+    "ck_web_outages_slack_down": "web_outages",
+    "ck_web_outages_slack_recovery": "web_outages",
+    "ck_web_uptime_probes_outcome": "web_uptime_probes",
+    "ck_client_web_settings_webhook_encrypted": "client_web_settings"
+  },
+  "unique_indexes": [
+    {"table": "web_uptime_targets", "columns": ["client_id", "url"]},
+    {"table": "web_outages", "columns": ["target_id"], "predicate": "(ended_at IS NULL)"}
+  ]
+}

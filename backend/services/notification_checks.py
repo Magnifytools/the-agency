@@ -7,7 +7,7 @@ Each condition supplies its own cycle (due date, reporting month, etc.).
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 
 from sqlalchemy import and_, exists, false, or_, select
 from sqlalchemy.orm import aliased, noload
@@ -15,6 +15,8 @@ from sqlalchemy.orm import aliased, noload
 from backend.core.modules import is_enabled
 from backend.db.models import Notification, Project, Task, User, WeeklyDigest
 from backend.services.incident_conditions import module_permission
+from backend.services.task_notifications import TASK_ACTIVITY_TYPES
+from backend.services.temporal import business_today
 
 # These rows came from the retired ``/notifications/generate-checks`` writer.
 # They remain stored as history, but the activity feed must not present stale
@@ -49,6 +51,10 @@ def visible_notification_condition(user_id: int):
     project_read = module_permission(user_id, "projects") if is_enabled("projects") else false()
     digest_read = module_permission(user_id, "digests") if is_enabled("digests") else false()
     task_activity = ("task_assigned",)
+    # Revisión tras publicar (services/web/publish_check.py) y comentarios,
+    # menciones, revisión y "vence mañana" (services/task_notifications.py): se
+    # ven mientras se pueda leer la tarea, aunque luego se reasigne.
+    task_checks = ("task_publish_check", *TASK_ACTIVITY_TYPES)
     project_activity = ("phase_completed",)
     digest_activity = ("digest_generated",)
     task_summaries = ("scheduled_morning", "scheduled_evening")
@@ -74,7 +80,10 @@ def visible_notification_condition(user_id: int):
             and_(Notification.type.in_(digest_activity), Notification.entity_type == "digest",
                  digest_read, exists().where(WeeklyDigest.id == Notification.entity_id)),
             and_(Notification.type.in_(task_summaries), task_read),
-            Notification.type.notin_((*task_activity, *project_activity, *digest_activity, *task_summaries)),
+            and_(Notification.type.in_(task_checks), Notification.entity_type == "task",
+                 task_read, exists().where(Task.id == Notification.entity_id)),
+            Notification.type.notin_((*task_activity, *project_activity, *digest_activity, *task_summaries,
+                                      *task_checks)),
         ),
     )
 
@@ -103,13 +112,14 @@ class NotificationChecks:
         key = f"{kind}:{entity}:{entity_id}:{cycle.isoformat()}"
         if key in self.keys:
             return True
-        # Adopt an existing legacy check, including one already read. Billing
-        # starts three days before its due date. Never delete historical rows.
-        start = cycle - timedelta(days=3) if kind == "billing_reminder" else cycle
+        # Adopt an existing legacy check, including one already read. Never
+        # delete historical rows.
         for row in self.rows:
             if (row.type, row.entity_type, row.entity_id) != identity or row.dedupe_key:
                 continue
-            if row.created_at and row.created_at.date() >= start:
+            # created_at es UTC sin zona y el ciclo es un día de Madrid: entre las
+            # 23:00 y las 00:00 UTC la fecha UTC aún es la de ayer allí.
+            if row.created_at and business_today(now=row.created_at) >= cycle:
                 row.dedupe_key = key
                 self.keys.add(key)
                 return True

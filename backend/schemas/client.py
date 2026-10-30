@@ -1,9 +1,12 @@
 from __future__ import annotations
 from typing import Optional
 
-from datetime import date, datetime
-from pydantic import BaseModel, ConfigDict, Field
-from backend.db.models import ContractType, ClientStatus, BillingCycle
+from datetime import datetime
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from backend.db.models import ContractType, ClientStatus
+from backend.services.ga4_leads import clean_lead_events
+from backend.services.seo_control import clean_brand_terms, clean_page_groups
+from backend.services.seo_traffic import SeoTrend
 
 
 class ClientCreate(BaseModel):
@@ -19,20 +22,10 @@ class ClientCreate(BaseModel):
     is_internal: bool = False
     intermediary_name: Optional[str] = None
     is_intermediary_deal: bool = False
-    cif: Optional[str] = None
     vat_number: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
-    billing_cycle: Optional[BillingCycle] = None
-    billing_day: Optional[int] = None
-    next_invoice_date: Optional[date] = None
-    last_invoiced_date: Optional[date] = None
     # Revenue intelligence
-    business_model: Optional[str] = None
-    aov: Optional[float] = None
-    conversion_rate: Optional[float] = None
-    ltv: Optional[float] = None
-    seo_maturity_level: Optional[str] = None
     context: Optional[str] = None
 
 
@@ -47,25 +40,44 @@ class ClientUpdate(BaseModel):
     status: Optional[ClientStatus] = None
     notes: Optional[str] = None
     is_internal: Optional[bool] = None
-    cif: Optional[str] = None
     vat_number: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
-    billing_cycle: Optional[BillingCycle] = None
-    billing_day: Optional[int] = None
-    next_invoice_date: Optional[date] = None
-    last_invoiced_date: Optional[date] = None
     engine_project_id: Optional[int] = None
     intermediary_name: Optional[str] = None
     is_intermediary_deal: Optional[bool] = None
     # Revenue intelligence
-    business_model: Optional[str] = None
-    aov: Optional[float] = None
-    conversion_rate: Optional[float] = None
-    ltv: Optional[float] = None
-    seo_maturity_level: Optional[str] = None
     context: Optional[str] = None
     slack_template: Optional[dict] = None
+    # Control SEO: búsquedas que cuentan como "de marca".
+    brand_terms: Optional[list[str]] = None
+
+    @field_validator("brand_terms", mode="before")
+    @classmethod
+    def _brand_terms(cls, value):
+        # null = sin términos (la columna no admite NULL).
+        if value is not None and not isinstance(value, list):
+            raise ValueError("Los términos de marca son una lista")
+        return clean_brand_terms(value)
+
+    # Control SEO: grupos de URL [{name, rules: [{type, value}]}].
+    seo_page_groups: Optional[list[dict]] = None
+
+    @field_validator("seo_page_groups", mode="before")
+    @classmethod
+    def _page_groups(cls, value):
+        # null = sin grupos (la columna no admite NULL).
+        return clean_page_groups(value)
+
+    # Leads por landing (GA4): eventos que cuentan como lead ("generate_lead",
+    # "generate_lead_*" = todos los que empiezan así).
+    ga4_lead_events: Optional[list[str]] = None
+
+    @field_validator("ga4_lead_events", mode="before")
+    @classmethod
+    def _lead_events(cls, value):
+        # null = vuelve al valor por defecto (la columna no admite NULL).
+        return clean_lead_events(value)
 
 
 class ClientResponse(BaseModel):
@@ -81,10 +93,9 @@ class ClientResponse(BaseModel):
     notes: Optional[str] = None
     ga4_property_id: Optional[str] = None
     gsc_url: Optional[str] = None
-    billing_cycle: Optional[BillingCycle] = None
-    billing_day: Optional[int] = None
-    next_invoice_date: Optional[date] = None
-    last_invoiced_date: Optional[date] = None
+    brand_terms: list[str] = Field(default_factory=list)
+    seo_page_groups: list[dict] = Field(default_factory=list)
+    ga4_lead_events: list[str] = Field(default_factory=lambda: ["generate_lead"])
     engine_project_id: Optional[int] = None
     engine_content_count: Optional[int] = None
     engine_keyword_count: Optional[int] = None
@@ -95,15 +106,9 @@ class ClientResponse(BaseModel):
     engine_summary_data: Optional[dict] = None
     engine_alerts_data: Optional[dict] = None
     # Revenue intelligence
-    business_model: Optional[str] = None
-    aov: Optional[float] = None
-    conversion_rate: Optional[float] = None
-    ltv: Optional[float] = None
-    seo_maturity_level: Optional[str] = None
     is_internal: bool = False
     intermediary_name: Optional[str] = None
     is_intermediary_deal: bool = False
-    cif: Optional[str] = None
     vat_number: Optional[str] = None
     context: Optional[str] = None
     slack_template: Optional[dict] = None
@@ -112,6 +117,28 @@ class ClientResponse(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("brand_terms", mode="before")
+    @classmethod
+    def _brand_terms_list(cls, value):
+        return value or []
+
+    @field_validator("seo_page_groups", mode="before")
+    @classmethod
+    def _page_groups_list(cls, value):
+        return value or []
+
+    @field_validator("ga4_lead_events", mode="before")
+    @classmethod
+    def _lead_events_list(cls, value):
+        return value or ["generate_lead"]
+
+    # Semáforo SEO (Search Console propio, misma ventana que el estado). No
+    # son columnas: los rellena `seo_traffic.attach_seo_traffic` en la lista y
+    # en la ficha; sin propiedad o sin datos quedan a null.
+    seo_clicks_change_pct: Optional[float] = None
+    seo_impressions_change_pct: Optional[float] = None
+    seo_trend: Optional[SeoTrend] = None
 
 
 class ClientDocumentResponse(BaseModel):

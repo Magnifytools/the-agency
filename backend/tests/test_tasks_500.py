@@ -32,6 +32,7 @@ class TestTaskToResponse:
         task.depends_on = None
         task.created_by = None
         task.scheduled_date = None
+        task.sort_rank = None
         task.waiting_for = None
         task.follow_up_date = None
         task.retired_at = None
@@ -47,6 +48,8 @@ class TestTaskToResponse:
         task.recurrence_occurrence_date = None
         task.recurring_parent_id = None
         task.link_url = None
+        task.procedure_text = None
+        task.procedure_url = None
         # All relationships are None
         task.client = None
         task.category = None
@@ -87,6 +90,7 @@ class TestTaskToResponse:
         task.depends_on = None
         task.created_by = 1
         task.scheduled_date = None
+        task.sort_rank = None
         task.waiting_for = None
         task.follow_up_date = None
         task.retired_at = None
@@ -102,6 +106,8 @@ class TestTaskToResponse:
         task.recurrence_occurrence_date = None
         task.recurring_parent_id = None
         task.link_url = None
+        task.procedure_text = None
+        task.procedure_url = None
 
         # Simulate a broken relationship where accessing .name raises
         class BrokenClient:

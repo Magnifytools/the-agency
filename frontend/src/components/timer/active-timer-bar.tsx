@@ -10,7 +10,8 @@ import { toast } from "sonner"
 import { getErrorMessage } from "@/lib/utils"
 import type { Task, Client, TimeEntry } from "@/lib/types"
 import { invalidateTaskChange, invalidateTimeChange, projectKeys, taskKeys } from "@/lib/query-keys"
-import { elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
+import { LONG_TIMER_SECONDS, elapsedSeconds, formatElapsedSeconds } from "@/lib/timer"
+import { LongTimerDialog } from "@/components/timer/long-timer-dialog"
 import { useAuth } from "@/context/auth-context"
 import { useBusinessDate } from "@/hooks/use-business-date"
 
@@ -31,6 +32,13 @@ function orderTimerTasks(tasks: Task[], today: string) {
     }
     return left.title.localeCompare(right.title, "es")
   })
+}
+
+// El cliente va delante del recorte: dos tareas con el mismo título ("Informe
+// mensual") sólo se distinguen por él.
+function timerOptionLabel(task: Task) {
+  const title = task.title.length > 50 ? `${task.title.slice(0, 50)}…` : task.title
+  return task.client_name ? `${title} · ${task.client_name}` : title
 }
 
 function TimerTaskSelector({
@@ -56,7 +64,7 @@ function TimerTaskSelector({
   const orderedTasks = useMemo(() => orderTimerTasks(tasks, today), [tasks, today])
   const normalizedSearch = search.trim().toLocaleLowerCase("es")
   const matches = normalizedSearch
-    ? orderedTasks.filter((task) => task.title.toLocaleLowerCase("es").includes(normalizedSearch))
+    ? orderedTasks.filter((task) => `${task.title} ${task.client_name ?? ""}`.toLocaleLowerCase("es").includes(normalizedSearch))
     : orderedTasks
   const selected = orderedTasks.find((task) => String(task.id) === value)
   const visible = normalizedSearch || orderedTasks.length <= TIMER_OPTION_INITIAL_LIMIT
@@ -86,7 +94,7 @@ function TimerTaskSelector({
       <option value="">{loading ? "Cargando tareas…" : emptyLabel}</option>
       {options.map((task) => (
         <option key={task.id} value={task.id}>
-          {task.title.length > 50 ? `${task.title.slice(0, 50)}…` : task.title}
+          {timerOptionLabel(task)}
         </option>
       ))}
     </Select>
@@ -113,6 +121,8 @@ function TimerBar() {
   const [selectedTaskId, setSelectedTaskId] = useState<string>("")
   const [recentlyCreatedTask, setRecentlyCreatedTask] = useState<Task | null>(null)
   const [reminderShown, setReminderShown] = useState(false)
+  // Segundos contados al pulsar Detener, si eran muchos: se pregunta antes.
+  const [longStopSeconds, setLongStopSeconds] = useState<number | null>(null)
   const businessToday = useBusinessDate()
 
   // Post-stop assignment dialog
@@ -235,8 +245,8 @@ function TimerBar() {
         timer.accumulated_seconds || 0,
         timer.is_paused || false,
       )
-      if (secs > 14400 && !reminderShown) {
-        toast.warning("¡Llevas más de 4 horas con el timer activo! ¿Sigue corriendo?")
+      if (secs > LONG_TIMER_SECONDS && !reminderShown) {
+        toast.warning("Llevas más de 4 horas con el cronómetro en marcha. ¿Sigue corriendo?")
         setReminderShown(true)
       }
     }
@@ -253,34 +263,36 @@ function TimerBar() {
       setSelectedTaskId("")
       setRecentlyCreatedTask(null)
     },
-    onError: (err) => toast.error(getErrorMessage(err, "Error al iniciar timer")),
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo iniciar el cronómetro")),
   })
 
   const stopMutation = useMutation({
-    mutationFn: (timerId: number) => timerApi.stop(timerId),
+    mutationFn: ({ timerId, minutes }: { timerId: number; minutes?: number }) => timerApi.stop(timerId, { minutes }),
     onSuccess: (entry: TimeEntry) => {
+      setLongStopSeconds(null)
       queryClient.invalidateQueries({ queryKey: ["active-timer"] })
       invalidateTimeChange(queryClient)
       if (!entry.task_id) {
         setStoppedEntryId(entry.id)
         setAssignTaskId("")
         setShowAssignDialog(true)
-        toast.success("Timer detenido — asigna una tarea al registro")
+        toast.success("Cronómetro parado: asigna una tarea al registro")
       } else {
-        toast.success("Timer detenido")
+        toast.success("Cronómetro parado")
       }
     },
     onError: (err) => {
+      setLongStopSeconds(null)
       resyncTimer()
       const status = (err as { response?: { status?: number } })?.response?.status
       if (status === 404) {
         // Intención cumplida: no hay nada corriendo. No es un fallo del usuario.
-        toast.info("Ese timer ya estaba parado", {
+        toast.info("Ese cronómetro ya estaba parado", {
           description: "La barra estaba desactualizada; ya se ha refrescado.",
         })
         return
       }
-      toast.error(getErrorMessage(err, "Error al detener timer"))
+      toast.error(getErrorMessage(err, "No se pudo parar el cronómetro"))
     },
   })
 
@@ -365,7 +377,8 @@ function TimerBar() {
   if (!timer) {
     return (
       <>
-        <div className="bg-card border-b px-4 py-2 flex justify-center items-center">
+        {/* En el móvil la barra vacía no ocupa pantalla: se ficha con el ▶ de Mi agenda. */}
+        <div className="hidden md:flex bg-card border-b px-4 py-2 justify-center items-center">
           <form onSubmit={handleOmniSubmit} className="flex items-center gap-2 w-full max-w-2xl">
             {canReadTasks && tasksQuery.isError && <span role="alert" className="sr-only">No se pudieron cargar las tareas del cronómetro.</span>}
             <div className="w-36 shrink-0 sm:w-48">
@@ -510,7 +523,7 @@ function TimerBar() {
   // Si hay timer activo, mostramos la barra superior
   return (
     <>
-      <div className="bg-brand text-primary-foreground px-4 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm">
+      <div className="bg-brand text-primary-foreground px-4 py-1.5 sm:py-2 flex flex-row items-center justify-between gap-2 text-sm">
         <span role="status" className="sr-only">{timer.is_paused ? "Cronómetro en pausa" : "Cronómetro en marcha"}</span>
         <div className="flex min-w-0 items-center gap-2">
           <Clock className="h-4 w-4 shrink-0" />
@@ -547,7 +560,11 @@ function TimerBar() {
           <Button
             size="sm"
             variant="secondary"
-              onClick={() => stopMutation.mutate(timer.id)}
+            onClick={() => {
+              const seconds = elapsedSeconds(timer.started_at, timer.accumulated_seconds || 0, timer.is_paused || false)
+              if (seconds >= LONG_TIMER_SECONDS) setLongStopSeconds(seconds)
+              else stopMutation.mutate({ timerId: timer.id })
+            }}
             disabled={stopMutation.isPending}
             className="bg-background text-foreground hover:bg-background/90 font-semibold min-h-9"
           >
@@ -555,6 +572,15 @@ function TimerBar() {
           </Button>
         </div>
       </div>
+
+      {longStopSeconds !== null && (
+        <LongTimerDialog
+          seconds={longStopSeconds}
+          pending={stopMutation.isPending}
+          onStop={(minutes) => stopMutation.mutate({ timerId: timer.id, minutes })}
+          onCancel={() => setLongStopSeconds(null)}
+        />
+      )}
 
       {/* Post-stop Assignment Dialog */}
       <Dialog open={showAssignDialog} onOpenChange={(open) => {

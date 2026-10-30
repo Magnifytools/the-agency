@@ -1,12 +1,12 @@
 """Client detail projections must respect their source-module permissions."""
 
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.db.models import Client, Task, TaskStatus, TimeEntry
+from backend.db.models import Client, DigestStatus, DigestTone, Task, TaskStatus, TimeEntry, WeeklyDigest
 from backend.services import client_advisor
 
 
@@ -165,3 +165,23 @@ async def test_client_advice_omits_unreadable_sources_before_ai_call(
     finally:
         await client_writer.aclose()
         await task_reader.aclose()
+
+
+async def test_client_activity_events_link_to_what_they_describe(db_session, admin_client):
+    client = Client(name="Cliente con enlaces")
+    db_session.add(client)
+    await db_session.flush()
+    task = Task(title="Tarea enlazada", client_id=client.id, status=TaskStatus.completed,
+                completed_at=datetime(2026, 10, 20, 12))
+    weekly = WeeklyDigest(client_id=client.id, period_start=date(2026, 10, 19), period_end=date(2026, 10, 25),
+                          status=DigestStatus.draft, tone=DigestTone.cercano, content={}, raw_context={},
+                          created_by=admin_client.test_user.id)
+    db_session.add_all([task, weekly])
+    await db_session.flush()
+
+    feed = (await admin_client.get(f"/api/clients/{client.id}/activity")).json()
+    by_type = {row["type"]: row for row in feed}
+    assert by_type["task_completed"]["link_url"] == f"/tasks?id={task.id}"
+    assert by_type["task_created"]["link_url"] == f"/tasks?id={task.id}"
+    assert by_type["digest"]["link_url"] == f"/digests/{weekly.id}/edit"
+    assert by_type["digest"]["title"] == "Seguimiento semanal (borrador)"

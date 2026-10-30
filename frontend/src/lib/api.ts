@@ -1,9 +1,53 @@
 import type { ProjectTasksResponse } from "@/lib/project-work"
+import { filenameFromDisposition, type PdfFile } from "@/lib/pdf-download"
 import axios, { type GenericAbortSignal, type InternalAxiosRequestConfig } from "axios"
 import { toast } from "sonner"
+import type { UploadProgressHandler } from "@/hooks/use-file-upload"
 import type {
-  ProjectEvidence,
-  ProjectEvidenceCreate,
+  ClientLeads,
+  SeoAnnotations,
+  SeoImpact,
+  SeoDecay,
+  ClientSeoSummary,
+  SeoGroupsResponse,
+  SeoMoversParams,
+  SeoMoversResponse,
+  SeoPageGroup,
+  SeoPageRow,
+  SeoQueryHistory,
+  SeoQueryRow,
+  SeoWindowDays,
+  UptimeOverview,
+  ClientUptimeTargets,
+  UptimeTarget,
+  UptimeProbeResult,
+  UptimeHistory,
+  ClientSlackSettings,
+  ClientSlackSettingsInput,
+  ClientWebWatches,
+  WebWatch,
+  WebWatchInput,
+  WebWatchUpdate,
+  WebBulkResult,
+  WebCheckAccepted,
+  WebCheckProgress,
+  WebWatchDetail,
+  WebSnapshotRow,
+  WebWatchPreview,
+  WebWatchPreviewInput,
+  WebChange,
+  WebChangeList,
+  WebChangeFilters,
+  WebChangeDetail,
+  WebTextDiff,
+  WebHtmlDiff,
+  WebSeverity,
+  WebSweepRun,
+  WebRunError,
+  WebChangeSettings,
+  WebCaptureSettingsInput,
+  WebCalendarSettingsInput,
+  TaskAgendaSection,
   SearchResults,
   PaginatedResponse,
   Client,
@@ -15,8 +59,10 @@ import type {
   ClientSummary,
   Task,
   TaskCreate,
+  TaskStatus,
   RecurrenceSummary,
   TaskCategory,
+  AgendaSubtask,
   ChecklistItem,
   TaskComment,
   TaskAttachment,
@@ -35,6 +81,7 @@ import type {
   BalanceSnapshot,
   BalanceSnapshotCreate,
   DashboardOverview,
+  DashboardOperations,
   DashboardFinancialOverview,
   ProfitabilityResponse,
   TeamMemberSummary,
@@ -55,9 +102,6 @@ import type {
   DailyBriefing,
   AlertSettings,
   AlertSettingsUpdate,
-  Report,
-  ReportRequest,
-  ReportNarrative,
   Proposal,
   ProposalCreate,
   ProposalUpdate,
@@ -70,9 +114,6 @@ import type {
   CommandContext,
   CommandReceipt,
   GrowthIdeaUpdate,
-  Invitation,
-  InvitationCreateResult,
-  InvitationCreate,
   Income,
   IncomeCreate,
   Expense,
@@ -104,6 +145,7 @@ import type {
   LeadActivity,
   PipelineSummary,
   LeadReminder,
+  LeadFunnel,
   HoldedSyncResult,
   HoldedSyncStatus,
   HoldedSyncLog,
@@ -120,13 +162,8 @@ import type {
   EmailDraftResponse,
   ClientContact,
   ClientContactCreate,
-  ClientResource,
-  ClientResourceCreate,
-  BillingEvent,
-  BillingEventCreate,
-  BillingStatus,
   ClientDashboard,
-  ClientHealthScore,
+  ClientStatusRow,
   ClientCohort,
   CapacityMember,
   CapacityMemberDetail,
@@ -134,22 +171,20 @@ import type {
   NotificationItem,
   InvestmentCalculateRequest,
   InvestmentCalculateResponse,
-  AgencyAsset,
-  AgencyAssetCreate,
-  AssetCategory,
   InboxNote,
   InboxNoteCreate,
   InboxNoteUpdate,
-  AutomationRule,
-  AutomationRuleCreate,
-  AutomationLogEntry,
-  AutomationTriggerOption,
-  AutomationActionOption,
   JobRuntimeResponse,
   OperationalUsage,
+  AppSuggestion,
+  ClientWebHealth,
+  TaskPublishCheck,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
+
+// Un adjunto de 20 MB con mala conexión pasa de los 30 s por defecto.
+const UPLOAD_TIMEOUT_MS = 300_000
 
 export const api = axios.create({
   baseURL: "/api",
@@ -279,8 +314,10 @@ export const authApi = {
 }
 
 // Clients
+export type ClientSort = "created" | "seo_change_asc" | "seo_change_desc"
+
 export const clientsApi = {
-  list: (params?: { status?: string; cohort?: ClientCohort; page?: number; page_size?: number }) =>
+  list: (params?: { status?: string; cohort?: ClientCohort; page?: number; page_size?: number; sort?: ClientSort }) =>
     api.get<PaginatedResponse<Client>>("/clients", { params }).then((r) => r.data),
   listAll: (status?: string, cohort?: ClientCohort) =>
     api.get<PaginatedResponse<Client>>("/clients", { params: { ...(status && { status }), ...(cohort && { cohort }), page_size: 1000 } }).then((r) => r.data.items),
@@ -309,11 +346,11 @@ export const clientsApi = {
   documents: {
     list: (clientId: number) =>
       api.get<ClientDocument[]>(`/clients/${clientId}/documents`).then((r) => r.data),
-    upload: (clientId: number, file: File, description?: string) => {
+    upload: (clientId: number, file: File, description?: string, onUploadProgress?: UploadProgressHandler) => {
       const form = new FormData()
       form.append("file", file)
       if (description) form.append("description", description)
-      return api.post<ClientDocument>(`/clients/${clientId}/documents`, form).then((r) => r.data)
+      return api.post<ClientDocument>(`/clients/${clientId}/documents`, form, { onUploadProgress, timeout: UPLOAD_TIMEOUT_MS }).then((r) => r.data)
     },
     downloadUrl: (clientId: number, docId: number) =>
       `/api/clients/${clientId}/documents/${docId}/download`,
@@ -324,9 +361,11 @@ export const clientsApi = {
 
 // Tasks
 export const tasksApi = {
-  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
+  list: (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; no_date?: boolean; no_estimate?: boolean; no_project?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; unscheduled?: boolean; completed_from?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created"; retirement?: "active" | "retired"; search?: string; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks", { params }).then((r) => r.data),
-  agenda: (params: { date: string; section: "planned" | "carryover" | "unplanned" | "completed"; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
+  agendaSubtasks: (date: string) =>
+    api.get<AgendaSubtask[]>("/tasks/agenda/subtasks", { params: { date } }).then((r) => r.data),
+  agenda: (params: { date: string; section: TaskAgendaSection; assigned_to?: number | "me" | "unassigned" | "all"; timezone_offset_minutes?: number; page?: number; page_size?: number }) =>
     api.get<PaginatedResponse<Task>>("/tasks/agenda", { params }).then((r) => r.data),
   listAll: async (params?: { client_id?: number; status?: string; category_id?: number; project_id?: number; assigned_to?: number | string; priority?: string; overdue?: boolean; scheduled_date?: string; due_date_from?: string; due_date_to?: string; scheduled_date_from?: string; scheduled_date_to?: string; is_recurring?: boolean; timer_eligible?: boolean; timer_scope?: "assigned" | "assigned_or_created" }) => {
     const items: Task[] = []
@@ -346,6 +385,9 @@ export const tasksApi = {
   create: (data: TaskCreate) => api.post<Task>("/tasks", data).then((r) => r.data),
   update: (id: number, data: Partial<TaskCreate>) =>
     api.put<Task>(`/tasks/${id}`, data).then((r) => r.data),
+  /** Arrastrar: la lista donde queda (en orden) y, si cambia, estado o día. */
+  move: (id: number, data: { ordered_ids: number[]; status?: TaskStatus; scheduled_date?: string | null }) =>
+    api.post<{ task: Task; ranks: Record<string, string> }>(`/tasks/${id}/move`, data).then((r) => r.data),
   carryoverDecision: (id: number, data: {
     action: "reschedule" | "wait" | "complete" | "retire"
     expected_updated_at: string
@@ -356,7 +398,7 @@ export const tasksApi = {
   }) => api.post<Task>(`/tasks/${id}/carryover-decision`, data).then((r) => r.data),
   restore: (id: number, expected_updated_at: string) =>
     api.post<Task>(`/tasks/${id}/restore`, { expected_updated_at }).then((r) => r.data),
-  recurrencePreview: (data: Pick<TaskCreate, "is_recurring" | "recurrence_pattern" | "recurrence_day" | "recurrence_anchor_date" | "recurrence_end_date" | "client_id" | "project_id" | "phase_id" | "recurrence_paused">) =>
+  recurrencePreview: (data: Pick<TaskCreate, "is_recurring" | "recurrence_pattern" | "recurrence_day" | "recurrence_weekdays" | "recurrence_anchor_date" | "recurrence_end_date" | "client_id" | "project_id" | "phase_id" | "recurrence_paused" | "assigned_to">) =>
     api.post<RecurrenceSummary>("/tasks/recurrence-preview", data).then((r) => r.data),
   delete: (id: number) => api.delete(`/tasks/${id}`).then((r) => r.data),
   bulkUpdate: (ids: number[], updates: Record<string, unknown>) =>
@@ -375,20 +417,30 @@ export const tasksApi = {
   comments: {
     list: (taskId: number) =>
       api.get<TaskComment[]>(`/tasks/${taskId}/comments`).then((r) => r.data),
-    create: (taskId: number, text: string) =>
-      api.post<TaskComment>(`/tasks/${taskId}/comments`, { text }).then((r) => r.data),
+    create: (taskId: number, text: string, mentionIds: number[] = []) =>
+      api.post<TaskComment>(`/tasks/${taskId}/comments`, { text, mention_ids: mentionIds }).then((r) => r.data),
     delete: (taskId: number, commentId: number) =>
       api.delete(`/tasks/${taskId}/comments/${commentId}`).then((r) => r.data),
+  },
+  // Claude redacta hasta ~8.000 tokens: el backend corta a 100 s.
+  draft: (taskId: number) =>
+    api.post<TaskComment>(`/tasks/${taskId}/draft`, {}, { timeout: 120_000 }).then((r) => r.data),
+  // Revisión tras publicar: la hace el job `publish_checks`; el POST sólo la pone en cola.
+  publishCheck: {
+    get: (taskId: number) =>
+      api.get<TaskPublishCheck>(`/tasks/${taskId}/publish-check`).then((r) => r.data),
+    retry: (taskId: number) =>
+      api.post<TaskPublishCheck>(`/tasks/${taskId}/publish-check`).then((r) => r.data),
   },
   attachments: {
     list: (taskId: number) =>
       api.get<TaskAttachment[]>(`/tasks/${taskId}/attachments`).then((r) => r.data),
-    upload: (taskId: number, file: File, description?: string) => {
+    upload: (taskId: number, file: File, onUploadProgress?: UploadProgressHandler) => {
       const fd = new FormData()
       fd.append("file", file)
-      if (description) fd.append("description", description)
       return api.post<TaskAttachment>(`/tasks/${taskId}/attachments`, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress,
+        timeout: UPLOAD_TIMEOUT_MS,
       }).then((r) => r.data)
     },
     download: (taskId: number, attachmentId: number) =>
@@ -422,7 +474,8 @@ export const timeEntriesApi = {
 export const timerApi = {
   start: (data: { task_id?: number | null; notes?: string }) =>
     api.post<ActiveTimer>("/timer/start", data).then((r) => r.data),
-  stop: (timerId: number, notes?: string) => api.post<TimeEntry>("/timer/stop", { timer_id: timerId, notes }).then((r) => r.data),
+  stop: (timerId: number, options: { notes?: string; minutes?: number } = {}) =>
+    api.post<TimeEntry>("/timer/stop", { timer_id: timerId, ...options }).then((r) => r.data),
   pause: () => api.post<ActiveTimer>("/timer/pause").then((r) => r.data),
   resume: () => api.post<ActiveTimer>("/timer/resume").then((r) => r.data),
   active: () =>
@@ -452,6 +505,7 @@ export const usersApi = {
 export const dashboardApi = {
   overview: (params?: { year?: number; month?: number }) =>
     api.get<DashboardOverview>("/dashboard/overview", { params }).then((r) => r.data),
+  operations: () => api.get<DashboardOperations>("/dashboard/operations").then((r) => r.data),
   financialOverview: (params?: { year?: number; month?: number }) =>
     api.get<DashboardFinancialOverview>("/dashboard/overview/financial", { params }).then((r) => r.data),
   profitability: (params?: { year?: number; month?: number }) =>
@@ -472,70 +526,6 @@ export const dashboardApi = {
   alertsSummary: () => api.get("/dashboard/alerts-summary").then((r) => r.data),
   utilization: (params?: { year?: number; month?: number }) =>
     api.get("/dashboard/utilization", { params }).then((r) => r.data),
-}
-
-// CFO — delivery margin, utilization, P&L, alerts
-export interface CfoProjectMargin {
-  project_id: number
-  project_name: string
-  client_id: number
-  client_name: string
-  monthly_fee: number
-  total_hours: number
-  labor_cost: number
-  delivery_margin: number
-  abr: number | null
-  margin_pct: number | null
-}
-export interface CfoUtilization {
-  user_id: number
-  user_name: string
-  cost_per_hour: number
-  available_hours_month: number
-  total_hours: number
-  billable_hours: number
-  internal_hours: number
-  utilization_pct: number
-}
-export interface CfoAlert {
-  severity: "critical" | "high" | "medium" | "low"
-  type: string
-  message: string
-  project_id?: number
-  client_id?: number
-  user_id?: number
-}
-export const cfoApi = {
-  deliveryMargin: (month?: string) =>
-    api.get<{ month: string; projects: CfoProjectMargin[] }>("/cfo/delivery-margin", { params: { month } }).then((r) => r.data),
-  utilization: (month?: string) =>
-    api.get<{ month: string; users: CfoUtilization[] }>("/cfo/utilization", { params: { month } }).then((r) => r.data),
-  monthlyPL: (month?: string, overhead?: number) =>
-    api.get<{ month: string; revenue: number; labor_cost: number; delivery_margin: number; overhead: number; net_before_tax: number }>(
-      "/cfo/monthly-pl",
-      { params: { month, overhead } },
-    ).then((r) => r.data),
-  alerts: (month?: string) =>
-    api.get<{ month: string; alerts: CfoAlert[] }>("/cfo/alerts", { params: { month } }).then((r) => r.data),
-}
-
-// Billing
-export const billingApi = {
-  preview: (params: { year: number; month: number }) =>
-    api.get("/billing/export", { params: { ...params, format: "json" } }).then((r) => r.data),
-  exportCsv: (params: { year: number; month: number }) =>
-    api.get("/billing/export", { params: { ...params, format: "csv" }, responseType: "blob" }).then((r) => r.data),
-  exportPdf: (params: { year: number; month: number }) =>
-    api.get("/billing/export-pdf", { params, responseType: "blob" }).then((r) => {
-      const url = window.URL.createObjectURL(new Blob([r.data], { type: "application/pdf" }))
-      const link = document.createElement("a")
-      link.href = url
-      link.setAttribute("download", `facturacion-${params.year}-${String(params.month).padStart(2, "0")}.pdf`)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-    }),
 }
 
 // Balance Snapshots
@@ -668,40 +658,6 @@ export const pmApi = {
     api.post<import("./types").DeliveryReceipt>("/pm/briefing/discord", content || date ? { content, date } : null, { params: { scope } }).then((r) => r.data),
 }
 
-// Reports
-export const reportsApi = {
-  list: (params?: { limit?: number; client_id?: number; offset?: number }) =>
-    api.get<Report[]>("/reports", { params }).then((r) => r.data),
-  get: (id: number) =>
-    api.get<Report>(`/reports/${id}`).then((r) => r.data),
-  generate: (data: ReportRequest) =>
-    api.post<Report>("/reports/generate", data, { timeout: 90_000 }).then((r) => r.data),
-  delete: (id: number) =>
-    api.delete(`/reports/${id}`).then((r) => r.data),
-  aiNarrative: (id: number) =>
-    api.post<ReportNarrative>(`/reports/${id}/ai-narrative`).then((r) => r.data),
-  pdfUrl: (id: number) => `/api/reports/${id}/pdf`,
-  narrativePdf: (id: number, body: { narrative: string; executive_summary: string; scqa_sections: { key: string; title: string; content: string }[] }) =>
-    api.post(`/reports/${id}/pdf`, body, { responseType: "blob" }).then((r) => {
-      const blob = new Blob([r.data], { type: "text/html" })
-      const url = URL.createObjectURL(blob)
-      window.open(url, "_blank")
-    }),
-  generateClientMonthly: (data: { client_id: number; year: number; month: number }) =>
-    api.post<Report>("/reports/generate-client-monthly", data).then((r) => r.data),
-  monthlyPdfUrl: (id: number) => `/api/reports/client-monthly/${id}/pdf`,
-  downloadPdf: (id: number) =>
-    api.get(`/reports/${id}/download`, { responseType: "blob" }).then((r) => {
-      const blob = new Blob([r.data], { type: "application/pdf" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `report-${id}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    }),
-}
-
 // Service Templates
 export const serviceTemplatesApi = {
   list: () => api.get<ServiceTemplate[]>("/service-templates").then((r) => r.data),
@@ -735,20 +691,6 @@ export const proposalsApi = {
 export const investmentsApi = {
   calculate: (data: InvestmentCalculateRequest) =>
     api.post<InvestmentCalculateResponse>("/investments/calculate", data).then((r) => r.data),
-}
-
-// Invitations & Permissions
-export const invitationsApi = {
-  list: () => api.get<Invitation[]>("/invitations").then((r) => r.data),
-  create: (data: InvitationCreate) =>
-    api.post<InvitationCreateResult>("/invitations", data).then((r) => r.data),
-  revoke: (id: number) => api.delete(`/invitations/${id}`).then((r) => r.data),
-  accept: (data: { token: string; full_name: string; password: string }) =>
-    api.post<User>("/invitations/accept", data).then((r) => r.data),
-  getPermissions: (userId: number) =>
-    api.get<UserPermission[]>(`/users/${userId}/permissions`).then((r) => r.data),
-  updatePermissions: (userId: number, permissions: UserPermission[]) =>
-    api.put<UserPermission[]>(`/users/${userId}/permissions`, { permissions }).then((r) => r.data),
 }
 
 // Growth Operations
@@ -896,6 +838,10 @@ export const digestsApi = {
     api.patch<Digest>(`/digests/${id}/status`, { status }).then((r) => r.data),
   render: (id: number, format: "slack" | "email" | "email_plain" | "discord") =>
     api.get<DigestRenderResponse>(`/digests/${id}/render`, { params: { format } }).then((r) => r.data),
+  /** El resumen guardado en PDF (A4), como lo recibe el cliente. */
+  pdf: (id: number): Promise<PdfFile> =>
+    api.get<Blob>(`/digests/${id}/pdf`, { responseType: "blob", timeout: 60_000 })
+      .then((r) => ({ blob: r.data, filename: filenameFromDisposition(r.headers["content-disposition"], `informe-${id}.pdf`) })),
   delete: (id: number) => api.delete(`/digests/${id}`).then((r) => r.data),
 }
 
@@ -916,6 +862,10 @@ export const leadsApi = {
     api.get<PipelineSummary>("/leads/pipeline-summary").then((r) => r.data),
   reminders: () =>
     api.get<LeadReminder[]>("/leads/reminders").then((r) => r.data),
+  /** Conversión entre etapas, días en cada una y tasa de cierre (últimos `days` días). */
+  funnel: (days: number) => api.get<LeadFunnel>("/leads/funnel", { params: { days } }).then((r) => r.data),
+  /** Seguimientos de lead hasta ese día (Mi agenda). */
+  agenda: (date: string) => api.get<LeadReminder[]>("/leads/agenda", { params: { date } }).then((r) => r.data),
 }
 
 // --- Holded Integration ---
@@ -996,44 +946,50 @@ export const contactsApi = {
     api.delete(`/clients/${clientId}/contacts/${contactId}`).then((r) => r.data),
 }
 
-// --- Client Resources ---
-export const resourcesApi = {
-  list: (clientId: number) =>
-    api.get<ClientResource[]>(`/clients/${clientId}/resources`).then((r) => r.data),
-  create: (clientId: number, data: ClientResourceCreate) =>
-    api.post<ClientResource>(`/clients/${clientId}/resources`, data).then((r) => r.data),
-  update: (clientId: number, resourceId: number, data: Partial<ClientResourceCreate>) =>
-    api.put<ClientResource>(`/clients/${clientId}/resources/${resourceId}`, data).then((r) => r.data),
-  delete: (clientId: number, resourceId: number) =>
-    api.delete(`/clients/${clientId}/resources/${resourceId}`).then((r) => r.data),
-}
-
-// --- Client Billing Events ---
-export const billingEventsApi = {
-  list: (clientId: number) =>
-    api.get<BillingEvent[]>(`/clients/${clientId}/billing`).then((r) => r.data),
-  create: (clientId: number, data: BillingEventCreate) =>
-    api.post<BillingEvent>(`/clients/${clientId}/billing`, data).then((r) => r.data),
-  status: (clientId: number) =>
-    api.get<BillingStatus>(`/clients/${clientId}/billing/status`).then((r) => r.data),
-  markInvoiced: (clientId: number) =>
-    api.post<BillingEvent>(`/clients/${clientId}/billing/mark-invoiced`).then((r) => r.data),
-  markPaid: (clientId: number, amount?: number) =>
-    api.post<BillingEvent>(`/clients/${clientId}/billing/mark-paid`, null, { params: amount ? { amount } : {} }).then((r) => r.data),
-}
-
 // --- Client Dashboard ---
 export const clientDashboardApi = {
   get: (clientId: number) =>
     api.get<ClientDashboard>(`/clients/${clientId}/dashboard`).then((r) => r.data),
 }
 
-// --- Client Health Score ---
-export const clientHealthApi = {
+// --- Estado del cliente (cartera) ---
+export const clientStatusApi = {
   get: (clientId: number) =>
-    api.get<ClientHealthScore>(`/clients/${clientId}/health`).then((r) => r.data),
-  list: (cohort: ClientCohort = "all") =>
-    api.get<ClientHealthScore[]>("/clients/health-scores", { params: { cohort } }).then((r) => r.data),
+    api.get<ClientStatusRow>(`/clients/${clientId}/status`).then((r) => r.data),
+  portfolio: (cohort: ClientCohort = "external") =>
+    api.get<ClientStatusRow[]>("/clients/portfolio", { params: { cohort } }).then((r) => r.data),
+}
+
+// --- Control SEO (Search Console por consulta y página; no va a la IA) ---
+export const clientSeoApi = {
+  get: (clientId: number, days: SeoWindowDays) =>
+    api.get<ClientSeoSummary>(`/clients/${clientId}/seo`, { params: { days } }).then((r) => r.data),
+  queries: (clientId: number, params: SeoMoversParams) =>
+    api.get<SeoMoversResponse<SeoQueryRow>>(`/clients/${clientId}/seo/queries`, { params }).then((r) => r.data),
+  pages: (clientId: number, params: SeoMoversParams) =>
+    api.get<SeoMoversResponse<SeoPageRow>>(`/clients/${clientId}/seo/pages`, { params }).then((r) => r.data),
+  queryHistory: (clientId: number, query: string) =>
+    api.get<SeoQueryHistory>(`/clients/${clientId}/seo/queries/history`, { params: { query } }).then((r) => r.data),
+  groups: (clientId: number, days: SeoWindowDays) =>
+    api.get<SeoGroupsResponse>(`/clients/${clientId}/seo/groups`, { params: { days } }).then((r) => r.data),
+  /** Prueba grupos sin guardarlos (sólo lee). */
+  previewGroups: (clientId: number, groups: SeoPageGroup[]) =>
+    api.post<SeoGroupsResponse>(`/clients/${clientId}/seo/groups/preview`, { groups }).then((r) => r.data),
+  /** Leads por landing (GA4) de los últimos 28 días frente a los 28 anteriores. */
+  leads: (clientId: number) =>
+    api.get<ClientLeads>(`/clients/${clientId}/leads`).then((r) => r.data),
+  /** Notas, actualizaciones de Google, cambios críticos de la web y tareas publicadas. */
+  annotations: (clientId: number, from: string, to: string) =>
+    api.get<SeoAnnotations>(`/clients/${clientId}/seo/annotations`, { params: { from, to } }).then((r) => r.data),
+  createAnnotation: (clientId: number, data: { date: string; text: string }) =>
+    api.post<{ id: number; date: string; text: string }>(`/clients/${clientId}/seo/annotations`, data).then((r) => r.data),
+  deleteAnnotation: (clientId: number, annotationId: number) =>
+    api.delete(`/clients/${clientId}/seo/annotations/${annotationId}`).then(() => undefined),
+  /** Antes y después de una fecha: la web, una página o un grupo de URL. */
+  impact: (clientId: number, params: { date: string; days?: number; page?: string; group?: string }) =>
+    api.get<SeoImpact>(`/clients/${clientId}/seo/impact`, { params }).then((r) => r.data),
+  decay: (clientId: number) =>
+    api.get<SeoDecay>(`/clients/${clientId}/seo/decay`).then((r) => r.data),
 }
 
 // --- Capacity Planning ---
@@ -1093,49 +1049,10 @@ export const operationalUsageApi = {
     api.get<Array<{ origin: "web" | "extension" | "unknown"; hits: number }>>("/admin/usage/origins", { params: { days } }).then((response) => response.data),
 }
 
-// --- Project Evidence ---
-export const evidenceApi = {
-  list: (projectId: number) =>
-    api.get<ProjectEvidence[]>(`/projects/${projectId}/evidence`).then((r) => r.data),
-  create: (projectId: number, data: ProjectEvidenceCreate) =>
-    api.post<ProjectEvidence>(`/projects/${projectId}/evidence`, data).then((r) => r.data),
-  upload: (projectId: number, file: File, data: ProjectEvidenceCreate) => {
-    const form = new FormData()
-    form.append("file", file)
-    form.append("title", data.title)
-    form.append("evidence_type", data.evidence_type || "other")
-    if (data.phase_id != null) form.append("phase_id", String(data.phase_id))
-    if (data.description) form.append("description", data.description)
-    return api.post<ProjectEvidence>(`/projects/${projectId}/evidence/upload`, form).then((r) => r.data)
-  },
-  update: (projectId: number, evidenceId: number, data: Partial<ProjectEvidenceCreate>) =>
-    api.put<ProjectEvidence>(`/projects/${projectId}/evidence/${evidenceId}`, data).then((r) => r.data),
-  delete: (projectId: number, evidenceId: number) =>
-    api.delete(`/projects/${projectId}/evidence/${evidenceId}`).then((r) => r.data),
-  downloadUrl: (projectId: number, evidenceId: number) =>
-    `/api/projects/${projectId}/evidence/${evidenceId}/download`,
-  previewUrl: (projectId: number, evidenceId: number) =>
-    `/api/projects/${projectId}/evidence/${evidenceId}/preview`,
-}
-
 // --- Global Search ---
 export const searchApi = {
   search: (q: string) =>
     api.get<SearchResults>("/search", { params: { q } }).then((r) => r.data),
-}
-
-// --- Agency Vault ---
-export const vaultApi = {
-  list: (category?: AssetCategory) =>
-    api.get<AgencyAsset[]>(`/vault/assets${category ? `?category=${category}` : ""}`).then((r) => r.data),
-  create: (data: AgencyAssetCreate) =>
-    api.post<AgencyAsset>("/vault/assets", data).then((r) => r.data),
-  update: (id: number, data: Partial<AgencyAssetCreate>) =>
-    api.put<AgencyAsset>(`/vault/assets/${id}`, data).then((r) => r.data),
-  delete: (id: number) =>
-    api.delete(`/vault/assets/${id}`).then((r) => r.data),
-  getPassword: (id: number) =>
-    api.get<{ password: string | null }>(`/vault/assets/${id}/password`).then((r) => r.data),
 }
 
 // --- Engine Integration ---
@@ -1171,18 +1088,29 @@ export const engineApi = {
     api.get<{ engine_frontend_url: string | null }>("/engine/config").then((r) => r.data),
   triggerSync: () =>
     api.post<{ synced: number; failed: number; detail?: string }>("/engine/sync").then((r) => r.data),
-  analyzeCoreUpdate: (projectId: number, body: {
-    period_pre_start: string
-    period_pre_end: string
-    period_post_start: string
-    period_post_end: string
-    top_n?: number
-    metric?: string
-  }) =>
-    api.post(`/engine/projects/${projectId}/core-updates/analyze`, body, { timeout: 300_000 }).then((r) => r.data),
 }
 
 // ── Inbox Quick Capture ────────────────────────────────────
+
+// Sugerencias o fallos de la app (los admins ven todas; el resto, las suyas)
+export type SuggestionStatus = "open" | "done" | "all"
+
+export const suggestionsApi = {
+  list: (status: SuggestionStatus) =>
+    api.get<AppSuggestion[]>("/suggestions", { params: { status } }).then((r) => r.data),
+  create: (data: { text: string; page_path?: string }) =>
+    api.post<AppSuggestion>("/suggestions", data).then((r) => r.data),
+  update: (id: number, data: { done: boolean }) =>
+    api.patch<AppSuggestion>(`/suggestions/${id}`, data).then((r) => r.data),
+  addImage: (id: number, file: File) => {
+    const form = new FormData()
+    form.append("file", file)
+    return api.post<AppSuggestion["images"][number]>(`/suggestions/${id}/images`, form, { timeout: 120_000 })
+      .then((r) => r.data)
+  },
+  /** Ruta de la imagen para `<img src>` (misma sesión por cookie). */
+  imageUrl: (id: number, imageId: number) => `/api/suggestions/${id}/images/${imageId}`,
+}
 
 export const inboxApi = {
   list: (params?: { status?: string; limit?: number; offset?: number }) =>
@@ -1201,11 +1129,16 @@ export const inboxApi = {
     api.post<{ ok: boolean; task_id: number; note: InboxNote }>(`/inbox/${id}/convert-to-task`, data).then((r) => r.data),
   dismiss: (id: number) =>
     api.post<InboxNote>(`/inbox/${id}/dismiss`).then((r) => r.data),
-  uploadAttachment: (noteId: number, file: File) => {
+  suggest: (id: number) =>
+    api.post<InboxNote>(`/inbox/${id}/suggest`).then((r) => r.data),
+  /** La nota pasa al Pipeline como lead "Nuevo" a nombre de quien la anotó. */
+  toLead: (id: number) => api.post<InboxNote>(`/inbox/${id}/lead`).then((r) => r.data),
+  uploadAttachment: (noteId: number, file: File, onUploadProgress?: UploadProgressHandler) => {
     const fd = new FormData()
     fd.append("file", file)
     return api.post<{ id: number; name: string; mime_type: string; size_bytes: number }>(`/inbox/${noteId}/attachments`, fd, {
-      headers: { "Content-Type": "multipart/form-data" },
+      onUploadProgress,
+      timeout: UPLOAD_TIMEOUT_MS,
     }).then((r) => r.data)
   },
   deleteAttachment: (noteId: number, attachmentId: number) =>
@@ -1225,15 +1158,55 @@ export const calendarApi = {
   getAuthUrl: () =>
     api.get<{ url: string }>("/calendar/auth-url").then((r) => r.data),
   getStatus: () =>
-    api.get<{ connected: boolean; connection_status: "connected" | "disconnected" | "reconnect_required"; calendar_id: string | null; last_synced_at: string | null; meeting_alerts: { minutes_before: number; discord_dm: boolean; extension: boolean } | null }>("/calendar/status").then((r) => r.data),
-  disconnect: () =>
-    api.post("/calendar/disconnect").then((r) => r.data),
+    api.get<{ connected: boolean; connection_status: "connected" | "disconnected" | "reconnect_required"; calendar_id: string | null; last_synced_at: string | null; meeting_alerts: { minutes_before: number; discord_dm: boolean; extension: boolean } | null; blocks_calendar: boolean }>("/calendar/status").then((r) => r.data),
+  /** Con ``deleteBlocksCalendar`` borra antes el calendario "The Agency" de su Google. */
+  disconnect: (deleteBlocksCalendar = false) =>
+    api.post<{ ok: boolean; google_revoked: boolean; events_deleted: number; blocks_calendar_deleted: boolean }>("/calendar/disconnect", { delete_blocks_calendar: deleteBlocksCalendar }).then((r) => r.data),
+  /** Permiso para publicar los bloques de trabajo en un calendario propio, "The Agency". */
+  getBlocksAuthUrl: () =>
+    api.get<{ url: string }>("/calendar/blocks/auth-url").then((r) => r.data),
+  disableBlocks: (deleteCalendar: boolean) =>
+    api.post<{ ok: boolean; calendar_deleted: boolean }>("/calendar/blocks/disable", { delete_calendar: deleteCalendar }).then((r) => r.data),
   updateAlerts: (data: { minutes_before: number; discord_dm: boolean; extension: boolean }) =>
     api.put("/calendar/alerts", data).then((r) => r.data),
   sync: () =>
     api.post<{ ok: boolean; events_synced: number }>("/calendar/sync").then((r) => r.data),
   upcoming: (minutes: number = 60) =>
     api.get<{ id: number; title: string; start_time: string; minutes_until: number }[]>(`/calendar/upcoming?minutes=${minutes}`).then((r) => r.data),
+  /** Reuniones guardadas entre dos días (hora civil de la agencia). */
+  events: (dateFrom: string, dateTo: string) =>
+    api.get<CalendarEvent[]>("/calendar/events", { params: { date_from: dateFrom, date_to: dateTo } }).then((r) => r.data),
+}
+
+export interface CalendarEvent {
+  id: number
+  title: string
+  start_time: string
+  end_time: string | null
+  is_all_day: boolean
+  source: string
+}
+
+/** Bloque de trabajo con hora (Mi agenda). Horas civiles sin zona: "2026-10-28T10:00". */
+export interface TimeBlock {
+  id: number
+  task_id: number
+  starts_at: string
+  ends_at: string
+  task_title: string
+  task_status: string
+  task_estimated_minutes: number | null
+  client_name: string | null
+}
+
+export const timeBlocksApi = {
+  list: (dateFrom: string, dateTo: string) =>
+    api.get<TimeBlock[]>("/time-blocks", { params: { date_from: dateFrom, date_to: dateTo } }).then((r) => r.data),
+  create: (data: { task_id: number; starts_at: string; ends_at: string }) =>
+    api.post<TimeBlock>("/time-blocks", data).then((r) => r.data),
+  update: (id: number, data: { starts_at: string; ends_at: string }) =>
+    api.patch<TimeBlock>(`/time-blocks/${id}`, data).then((r) => r.data),
+  delete: (id: number) => api.delete(`/time-blocks/${id}`).then((r) => r.data),
 }
 
 // ── Search Console ──────────────────────────────────────────
@@ -1245,52 +1218,160 @@ export interface GscSiteStatus {
   last_data_date: string | null
   last_synced_at: string | null
   error_code: string | null
+  /** Cuenta de Google con la que se importa (la que ve la propiedad). */
+  google_email: string | null
+  /** Detalle por consulta y página (120 días, job `gsc_detail`); null si aún no ha pasado. */
+  detail: {
+    backfilled_at: string | null
+    last_data_date: string | null
+    error_code: string | null
+    query_rows: number | null
+    page_rows: number | null
+  } | null
+}
+
+export interface GscConnectionStatus {
+  id: number
+  status: "connected" | "reconnect_required"
+  google_email: string | null
+  connected_by: string | null
+  connected_at: string
 }
 
 export interface GscStatus {
   configured: boolean
-  connection: { status: "connected" | "reconnect_required"; google_email: string | null; connected_by: string | null; connected_at: string } | null
+  connections: GscConnectionStatus[]
   sites: GscSiteStatus[]
+}
+
+// --- Webs: disponibilidad (monitor de caídas) ---
+export const webApi = {
+  overview: () => api.get<UptimeOverview>("/web/uptime").then((r) => r.data),
+  targets: (clientId: number) =>
+    api.get<ClientUptimeTargets>(`/clients/${clientId}/web/uptime-targets`).then((r) => r.data),
+  createTarget: (clientId: number, data: { url: string; label?: string | null }) =>
+    api.post<UptimeTarget>(`/clients/${clientId}/web/uptime-targets`, data).then((r) => r.data),
+  updateTarget: (clientId: number, targetId: number, data: { url?: string; label?: string | null; is_active?: boolean }) =>
+    api.patch<UptimeTarget>(`/clients/${clientId}/web/uptime-targets/${targetId}`, data).then((r) => r.data),
+  deleteTarget: (clientId: number, targetId: number) =>
+    api.delete(`/clients/${clientId}/web/uptime-targets/${targetId}`).then(() => undefined),
+  probe: (targetId: number) =>
+    api.post<UptimeProbeResult>(`/web/uptime-targets/${targetId}/probe`, undefined, { timeout: 30_000 }).then((r) => r.data),
+  history: (targetId: number, days = 30) =>
+    api.get<UptimeHistory>(`/web/uptime-targets/${targetId}/history`, { params: { days } }).then((r) => r.data),
+  slack: (clientId: number) =>
+    api.get<ClientSlackSettings>(`/clients/${clientId}/web/settings/slack`).then((r) => r.data),
+  saveSlack: (clientId: number, data: ClientSlackSettingsInput) =>
+    api.put<ClientSlackSettings>(`/clients/${clientId}/web/settings/slack`, data).then((r) => r.data),
+  removeSlack: (clientId: number) =>
+    api.delete<ClientSlackSettings>(`/clients/${clientId}/web/settings/slack`).then((r) => r.data),
+  testSlack: (clientId: number) =>
+    api.post<{ ok: boolean; revoked: boolean; error: string | null }>(`/clients/${clientId}/web/settings/slack/test`)
+      .then((r) => r.data),
+  // Dominio, certificado, robots.txt y sitemap (job diario `web_health`).
+  health: (clientId: number) =>
+    api.get<ClientWebHealth>(`/clients/${clientId}/web/health`).then((r) => r.data),
+  reviewRobots: (clientId: number, origin: string) =>
+    api.post<{ ok: boolean }>(`/clients/${clientId}/web/robots/review`, { origin }).then((r) => r.data),
+}
+
+// --- Webs: cambios (URLs vigiladas, barridos y ajustes) ---
+// "Comprobar" no corre nada en la petición: deja la marca y el job web_sweep la
+// recoge en menos de un minuto (si está encendido: `enabled` lo dice).
+export const webWatchesApi = {
+  list: (clientId: number, params: { include_archived?: boolean; q?: string } = {}) =>
+    api.get<ClientWebWatches>(`/clients/${clientId}/web/watches`, { params }).then((r) => r.data),
+  create: (clientId: number, data: WebWatchInput) =>
+    api.post<WebWatch>(`/clients/${clientId}/web/watches`, data).then((r) => r.data),
+  bulk: (clientId: number, data: { urls: string[]; source?: "bulk" | "csv" }) =>
+    api.post<WebBulkResult>(`/clients/${clientId}/web/watches/bulk`, data).then((r) => r.data),
+  // El backend se da 60 s para leer el sitemap (índices anidados incluidos).
+  importSitemap: (clientId: number, data: { sitemap_url: string; include?: string | null; exclude?: string | null; limit?: number }) =>
+    api.post<WebBulkResult>(`/clients/${clientId}/web/watches/import-sitemap`, data, { timeout: 75_000 }).then((r) => r.data),
+  get: (watchId: string) => api.get<WebWatchDetail>(`/web/watches/${watchId}`).then((r) => r.data),
+  update: (watchId: string, data: WebWatchUpdate) =>
+    api.patch<WebWatch>(`/web/watches/${watchId}`, data).then((r) => r.data),
+  archive: (watchId: string) => api.post<WebWatch>(`/web/watches/${watchId}/archive`).then((r) => r.data),
+  restore: (watchId: string) => api.post<WebWatch>(`/web/watches/${watchId}/restore`).then((r) => r.data),
+  check: (watchId: string) => api.post<WebCheckAccepted>(`/web/watches/${watchId}/check`).then((r) => r.data),
+  checkAll: (clientId: number) =>
+    api.post<WebCheckAccepted>(`/clients/${clientId}/web/watches/check-all`).then((r) => r.data),
+  progress: (clientId: number) =>
+    api.get<WebCheckProgress>(`/clients/${clientId}/web/watches/progress`).then((r) => r.data),
+  // Una petición a la web del cliente (20 s como mucho en el servidor).
+  preview: (watchId: string, data: WebWatchPreviewInput) =>
+    api.post<WebWatchPreview>(`/web/watches/${watchId}/preview`, data, { timeout: 35_000 }).then((r) => r.data),
+  history: (watchId: string, limit = 20) =>
+    api.get<{ snapshots: WebSnapshotRow[] }>(`/web/watches/${watchId}/history`, { params: { limit } }).then((r) => r.data),
+  runs: (clientId: number, limit = 10) =>
+    api.get<{ runs: WebSweepRun[] }>(`/clients/${clientId}/web/runs`, { params: { limit } }).then((r) => r.data),
+  runErrors: (runId: string) =>
+    api.get<{ run: WebSweepRun; errors: WebRunError[] }>(`/web/runs/${runId}/errors`).then((r) => r.data),
+  settings: (clientId: number) =>
+    api.get<WebChangeSettings>(`/clients/${clientId}/web/settings/changes`).then((r) => r.data),
+  setChangesEnabled: (clientId: number, enabled: boolean) =>
+    api.put<WebChangeSettings>(`/clients/${clientId}/web/settings/changes-enabled`, { enabled }).then((r) => r.data),
+  saveCapture: (clientId: number, data: WebCaptureSettingsInput) =>
+    api.put<WebChangeSettings>(`/clients/${clientId}/web/settings/capture`, data).then((r) => r.data),
+  saveCalendar: (clientId: number, data: WebCalendarSettingsInput) =>
+    api.put<WebChangeSettings>(`/clients/${clientId}/web/settings/calendar`, data).then((r) => r.data),
+  holidays: (year: number) =>
+    api.get<{ year: number; holidays: string[] }>("/web/settings/holidays", { params: { anio: year } }).then((r) => r.data),
+}
+
+export const webChangesApi = {
+  list: (filters: WebChangeFilters = {}) =>
+    api.get<WebChangeList>("/web/changes", { params: filters }).then((r) => r.data),
+  get: (changeId: string) => api.get<WebChangeDetail>(`/web/changes/${changeId}`).then((r) => r.data),
+  diff: (changeId: string) => api.get<WebTextDiff>(`/web/changes/${changeId}/diff`).then((r) => r.data),
+  htmlDiff: (changeId: string) => api.get<WebHtmlDiff>(`/web/changes/${changeId}/html-diff`).then((r) => r.data),
+  ack: (changeId: string, note: string | null = null) =>
+    api.post<WebChange>(`/web/changes/${changeId}/ack`, { note }).then((r) => r.data),
+  ackAll: (data: { client_id?: number | null; severity?: WebSeverity | null }) =>
+    api.post<{ acknowledged: number }>("/web/changes/ack-all", data).then((r) => r.data),
+}
+
+export interface Ga4PropertyStatus {
+  property_id: string
+  clients: { id: number; name: string }[]
+  last_data_date: string | null
+  last_synced_at: string | null
+  error_code: string | null
+  google_email: string | null
+}
+
+/** Versión de la extensión que se descarga ahora, cuándo salió y qué trae. */
+export interface ExtensionInfo {
+  version: string
+  filename: string
+  download_url: string
+  /** AAAA-MM-DD; null si la versión no tiene novedades apuntadas. */
+  released_on: string | null
+  /** Esta versión y las dos anteriores, la más reciente primero. */
+  releases: { version: string; date: string; changes: string[] }[]
+}
+
+export const extensionApi = {
+  info: () => api.get<ExtensionInfo>("/extension").then((r) => r.data),
+}
+
+export const ga4Api = {
+  getStatus: () => api.get<{ configured: boolean; properties: Ga4PropertyStatus[] }>("/ga4/status").then((r) => r.data),
+  sync: () => api.post<{ status: string; synced: number; failed: number }>("/ga4/sync").then((r) => r.data),
 }
 
 export const gscApi = {
   getStatus: () => api.get<GscStatus>("/gsc/status").then((r) => r.data),
   getAuthUrl: () => api.get<{ url: string }>("/gsc/auth-url").then((r) => r.data),
-  disconnect: () => api.post("/gsc/disconnect").then((r) => r.data),
-  listSites: () => api.get<{ sites: { site_url: string; permission: string | null }[] }>("/gsc/sites").then((r) => r.data),
+  disconnect: (connectionId: number, purgeData = false) =>
+    api.post<{ status: string; google_revoked: boolean; purged: { gsc_sites: number; gsc_rows: number; gsc_query_rows: number; gsc_page_rows: number; ga4_properties: number; ga4_rows: number } | null }>(
+      `/gsc/connections/${connectionId}/disconnect`, { purge_data: purgeData },
+    ).then((r) => r.data),
+  listSites: () => api.get<{ sites: { site_url: string; permission: string | null; google_email: string | null }[] }>("/gsc/sites").then((r) => r.data),
   sync: () => api.post<{ status: string; synced: number; failed: number }>("/gsc/sync").then((r) => r.data),
 }
 
-// ── My Week ──────────────────────────────────────────────────
-
-export interface MyWeekTask {
-  id: number
-  title: string
-  status: string
-  priority: string
-  scheduled_date: string | null
-  due_date: string | null
-  estimated_minutes: number | null
-  client_id: number | null
-  client_name: string | null
-  project_id: number | null
-  project_name: string | null
-  created_at: string
-  last_comment: string | null
-  last_comment_at: string | null
-  checklist_total: number
-  checklist_done: number
-  weeks_open: number
-}
-
-export interface DayStatusResponse {
-  id: number
-  user_id: number
-  date: string
-  status: string
-  label: string | null
-  note: string | null
-}
+// ── Festivos ─────────────────────────────────────────────
 
 export interface CompanyHolidayResponse {
   id: number
@@ -1301,109 +1382,15 @@ export interface CompanyHolidayResponse {
   locality: string | null
 }
 
-export interface EventResponse {
-  id: number
-  title: string
-  description: string | null
-  event_type: string
-  date: string
-  time: string | null
-  start_time: string | null
-  end_time: string | null
-  is_all_day: boolean
-  duration_minutes: number | null
-  client_id: number | null
-  client_name: string | null
-  user_id: number
-}
-
-export interface MyWeekDay {
-  date: string
-  weekday: string
-  status: DayStatusResponse | null
-  is_holiday: CompanyHolidayResponse | null
-  events: EventResponse[]
-  tasks: MyWeekTask[]
-}
-
-export interface MyWeekSummary {
-  total_tasks: number
-  estimated_minutes: number
-  available_hours: number
-  tasks_dragging: number
-  tasks_no_estimate: number
-  tasks_no_date: number
-  by_client: { client_id: number | null; client_name: string; count: number }[]
-}
-
-export interface TeamMemberDay {
-  date: string
-  status: string | null
-  label: string | null
-  holiday_name: string | null
-}
-
-export interface TeamMemberWeek {
-  user_id: number
-  full_name: string
-  short_name: string | null
-  days: TeamMemberDay[]
-}
-
-export interface MyWeekResponse {
-  week_start: string
-  week_end: string
-  days: MyWeekDay[]
-  backlog: MyWeekTask[]
-  summary: MyWeekSummary
-  team: TeamMemberWeek[]
-}
-
-export const myWeekApi = {
-  get: (weekStart?: string) =>
-    api.get<MyWeekResponse>("/my-week", { params: weekStart ? { week_start: weekStart } : {} }).then((r) => r.data),
-  updateDayStatus: (data: { date: string; status: string; label?: string | null; note?: string | null }) =>
-    api.put<DayStatusResponse>("/my-week/day-status", data).then((r) => r.data),
-  deleteDayStatus: (date: string) =>
-    api.delete(`/my-week/day-status/${date}`).then((r) => r.data),
-  createEvent: (data: { date: string; time?: string | null; title: string; client_id?: number | null; event_type?: string; duration_minutes?: number | null; description?: string | null; is_all_day?: boolean }) =>
-    api.post<EventResponse>("/my-week/events", data).then((r) => r.data),
-  updateEvent: (id: number, data: Partial<{ date: string; time: string; title: string; client_id: number; event_type: string; duration_minutes: number; description: string; is_all_day: boolean }>) =>
-    api.put<EventResponse>(`/my-week/events/${id}`, data).then((r) => r.data),
-  deleteEvent: (id: number) =>
-    api.delete(`/my-week/events/${id}`).then((r) => r.data),
-  scheduleTask: (taskId: number, scheduledDate: string | null) =>
-    api.patch(`/my-week/tasks/${taskId}/schedule`, null, { params: { scheduled_date: scheduledDate } }).then((r) => r.data),
-  listHolidays: (year?: number, region?: string) =>
-    api.get<CompanyHolidayResponse[]>("/my-week/holidays", {
+export const holidaysApi = {
+  list: (year?: number, region?: string) =>
+    api.get<CompanyHolidayResponse[]>("/holidays", {
       params: { ...(year ? { year } : {}), ...(region ? { region } : {}) },
     }).then((r) => r.data),
-  createHoliday: (data: { date: string; name: string; country?: string; region?: string | null; locality?: string | null }) =>
-    api.post<CompanyHolidayResponse>("/my-week/holidays", data).then((r) => r.data),
-  deleteHoliday: (id: number) =>
-    api.delete(`/my-week/holidays/${id}`).then((r) => r.data),
-  addTaskComment: (taskId: number, content: string) =>
-    api.post(`/tasks/${taskId}/comments`, { content }).then((r) => r.data),
-}
-
-// ── Automations ──────────────────────────────────────────
-export const automationsApi = {
-  list: () =>
-    api.get<AutomationRule[]>("/automations").then((r) => r.data),
-  get: (id: number) =>
-    api.get<AutomationRule>(`/automations/${id}`).then((r) => r.data),
-  triggers: () =>
-    api.get<{ triggers: AutomationTriggerOption[]; actions: AutomationActionOption[] }>("/automations/triggers").then((r) => r.data),
-  logs: (ruleId?: number, limit?: number) =>
-    api.get<AutomationLogEntry[]>("/automations/logs", { params: { rule_id: ruleId, limit } }).then((r) => r.data),
-  create: (data: AutomationRuleCreate) =>
-    api.post<AutomationRule>("/automations", data).then((r) => r.data),
-  update: (id: number, data: Partial<AutomationRuleCreate>) =>
-    api.put<AutomationRule>(`/automations/${id}`, data).then((r) => r.data),
+  create: (data: { date: string; name: string; country?: string; region?: string | null; locality?: string | null }) =>
+    api.post<CompanyHolidayResponse>("/holidays", data).then((r) => r.data),
   delete: (id: number) =>
-    api.delete(`/automations/${id}`).then((r) => r.data),
-  toggle: (id: number) =>
-    api.post<AutomationRule>(`/automations/${id}/toggle`).then((r) => r.data),
+    api.delete(`/holidays/${id}`).then((r) => r.data),
 }
 
 export const jobRuntimeApi = {

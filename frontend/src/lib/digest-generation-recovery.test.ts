@@ -25,5 +25,11 @@ describe("digest generation recovery storage", () => {
   it("keeps the recovery key after sources change so the exact intent can retry", () => {
     expect(isConfirmedFailure({ response: { status: 409, data: { detail: { code: "sources_changed" } } } })).toBe(false)
     expect(isConfirmedFailure({ response: { status: 409, data: { detail: { code: "generation_key_conflict" } } } })).toBe(true)
+    // El servidor deshizo todo: no queda versión que recuperar.
+    expect(isConfirmedFailure({ response: { status: 502, data: { detail: { code: "invalid_provider_response" } } } })).toBe(true)
+    expect(isConfirmedFailure({ response: { status: 502, data: { detail: { code: "provider_failed" } } } })).toBe(true)
+    // Un 502 de la red (sin código nuestro) o un 504 siguen siendo dudosos.
+    expect(isConfirmedFailure({ response: { status: 502 } })).toBe(false)
+    expect(isConfirmedFailure({ response: { status: 504, data: { detail: { code: "provider_timeout" } } } })).toBe(false)
   })
 })
