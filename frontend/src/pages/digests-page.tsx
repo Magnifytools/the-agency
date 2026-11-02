@@ -9,6 +9,7 @@ import { useAuth } from "@/context/auth-context"
 import { DigestCohort } from "@/components/digests/digest-cohort"
 import { ActionMenu } from "@/components/ui/action-menu"
 import { DigestMonthlyCycle } from "@/components/digests/digest-monthly-cycle"
+import { LocalReportHistory } from "@/components/digests/local-report-history"
 import { reportPolicyApi, reportPolicyKeys } from "@/lib/report-policy-api"
 import { digestsApi, clientsApi, discordApi } from "@/lib/api"
 import type { Digest, DigestStatus, DigestTone } from "@/lib/types"
@@ -550,6 +551,8 @@ function DigestList() {
         {isFetchNextPageError && <p role="alert" className="text-sm">No se pudieron cargar las versiones anteriores. Las que ya ves se conservan.</p>}
         {hasNextPage && <Button variant="outline" disabled={isFetchingNextPage} onClick={() => void fetchNextPage()}>{isFetchingNextPage ? <><Loader2 className="size-4 mr-2 animate-spin" />Cargando versiones…</> : isFetchNextPageError ? "Reintentar versiones anteriores" : "Cargar versiones anteriores"}</Button>}
       </div>}
+
+      <LocalReportHistory clientId={filterClient} />
 
       {/* Generate Dialog */}
       <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>

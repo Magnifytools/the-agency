@@ -761,6 +761,11 @@ admin_users, admin_settings
   no se genera resumen mensual de ese cliente; "Preparar"/"Abrir" llevan a la
   pestaña). Avisos con enlace a `?tab=informe_local`. Tests:
   `tests/integration/test_local_report_monthly_delivery.py`.
+- **En `/digests`**: sección "Informes SEO local" bajo el historial de
+  resúmenes (`components/digests/local-report-history.tsx`, `GET
+  /api/local-reports`, lectura de `digests`, sin datos ni archivos), con el
+  filtro de cliente del historial. Cada versión se abre en la pestaña con
+  `?informe=ID` (`localReportHref`), que también usa "Para entregar".
 
 ## Control SEO por cliente
 

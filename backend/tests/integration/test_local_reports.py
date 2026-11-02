@@ -231,3 +231,20 @@ async def test_una_version_abierta_por_periodo(admin_client, cigarral, db_sessio
     assert res.status_code == 422  # todavía no ha terminado
     rows = (await db_session.scalars(select(ClientLocalReport))).all()
     assert len(rows) == 1
+
+
+async def test_historial_de_digests_lista_cada_informe(make_member_client, cigarral, admin_client):
+    """/digests enseña todas las versiones (la más reciente primero) para abrir cada una."""
+    report = await _setup(admin_client, cigarral.id)
+    res = await admin_client.get("/api/local-reports")
+    assert res.status_code == 200, res.text
+    [row] = [r for r in res.json() if r["client_id"] == cigarral.id]
+    assert row["id"] == report["id"]
+    assert row["client_name"] == "Cigarral de Caravantes"
+    assert row["period_start"] == report["period_start"] and row["delivered_at"] is None
+    assert "datos" not in row
+    assert (await admin_client.get("/api/local-reports", params={"client_id": cigarral.id + 999})).json() == []
+    reader = await make_member_client([("digests", True, False)])
+    assert (await reader.get("/api/local-reports")).status_code == 200
+    outsider = await make_member_client([("clients", True, True)])
+    assert (await outsider.get("/api/local-reports")).status_code == 403
