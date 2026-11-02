@@ -6,6 +6,7 @@ import { useAuth } from "@/context/auth-context"
 import { CADENCE_LABEL, previewItemKey, reportPolicyApi, reportPolicyKeys, type GenerationPreviewItem } from "@/lib/report-policy-api"
 import { clearDigestGeneration, isConfirmedFailure, newDigestGenerationKey, persistDigestGeneration, type CohortDigestIntent } from "@/lib/digest-generation-recovery"
 import { getAgencyTimezone, parseApiInstant } from "@/lib/dates"
+import { localReportHref } from "@/lib/local-report"
 import { getErrorMessage } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -146,7 +147,7 @@ function MonthlyCycle({ userId, isAdmin, canWrite, canViewClients }: { userId: n
               </div>
               <Badge variant={LABELS[state].variant}>{LABELS[state].text}</Badge>
               <div className="flex gap-2">
-                {item.local_report && state !== "blocked" && canViewClients && <Link className="text-sm text-primary underline underline-offset-2" to={`/clients/${item.client_id}?tab=informe_local`} aria-label={`Abrir informe SEO local de ${item.client_name}`}>{state === "missing" ? "Preparar" : "Abrir"}</Link>}
+                {item.local_report && state !== "blocked" && canViewClients && <Link className="text-sm text-primary underline underline-offset-2" to={item.local_report.report_id ? localReportHref(item.client_id, item.local_report.report_id) : `/clients/${item.client_id}?tab=informe_local`} aria-label={`Abrir informe SEO local de ${item.client_name}`}>{state === "missing" ? "Preparar" : "Abrir"}</Link>}
                 {!item.local_report && (state === "prepared" || state === "delivered") && item.digest.latest_digest_id && <Link className="text-sm text-primary underline underline-offset-2" to={`/digests/${item.digest.latest_digest_id}/edit`} aria-label={`Abrir resumen de ${rowName(item)}`}>Abrir</Link>}
                 {state === "missing" && !item.local_report && canWrite && item.eligible && <Button size="sm" disabled={generate.isPending} onClick={() => prepare(item)} aria-label={`Generar resumen de ${rowName(item)}`}>
                   {generate.isPending && generate.variables?.items[0].client_id === item.client_id && generate.variables?.items[0].period_start === item.period_start ? <Loader2 className="size-4 mr-2 animate-spin" /> : <Sparkles className="size-4 mr-2" />}Generar

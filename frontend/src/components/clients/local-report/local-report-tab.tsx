@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useAuth } from "@/context/auth-context"
@@ -32,7 +33,10 @@ export function LocalReportTab({ clientId }: Props) {
   const { hasPermission } = useAuth()
   const canWrite = hasPermission("digests", true)
   const qc = useQueryClient()
-  const [selected, setSelected] = useState<number | null>(null)
+  // `?informe=ID` (enlaces de /digests y de los avisos) abre esa versión.
+  const [searchParams] = useSearchParams()
+  const linked = Number(searchParams.get("informe")) || null
+  const [selected, setSelected] = useState<number | null>(linked)
 
   const overviewQuery = useQuery({
     queryKey: localReportKeys.overview(clientId),
@@ -46,7 +50,9 @@ export function LocalReportTab({ clientId }: Props) {
   }
   if (!overview.config) return <SetupCard clientId={clientId} overview={overview} canWrite={canWrite} />
 
-  const reportId = selected ?? overview.reports[0]?.id ?? null
+  // Un enlace a una versión que no es de este cliente (o ya no existe) abre la última.
+  const stale = selected !== null && selected === linked && !overview.reports.some((r) => r.id === selected)
+  const reportId = (stale ? null : selected) ?? overview.reports[0]?.id ?? null
   return (
     <div className="space-y-6">
       <ReportsCard

@@ -197,7 +197,32 @@ export const localReportApi = {
   datos: (clientId: number, reportId: number) => file(clientId, reportId, "datos", `informe-${reportId}_datos.json`),
 }
 
+/** Una versión en el historial de /digests (todas las de todos los clientes). */
+export interface LocalReportListItem {
+  id: number
+  client_id: number
+  client_name: string
+  period_start: string
+  period_end: string
+  period_label: string
+  file_stem: string | null
+  generated_at: string | null
+  delivered_at: string | null
+  delivered_by_name: string | null
+  created_at: string | null
+}
+
+export const localReportListApi = {
+  list: (params: { client_id?: number; limit?: number; offset?: number }) =>
+    api.get<LocalReportListItem[]>("/local-reports", { params }).then((r) => r.data),
+}
+
+/** Enlace a una versión concreta en la pestaña de su cliente. */
+export const localReportHref = (clientId: number, reportId: number) =>
+  `/clients/${clientId}?tab=informe_local&informe=${reportId}`
+
 export const localReportKeys = {
+  all: ["local-report"] as const,
   overview: (clientId: number) => ["local-report", clientId] as const,
   report: (clientId: number, reportId: number) => ["local-report", clientId, reportId] as const,
 }
