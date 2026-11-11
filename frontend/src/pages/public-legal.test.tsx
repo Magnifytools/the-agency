@@ -41,7 +41,7 @@ it("la política cuenta lo que hace desconectar y la retención del calendario",
 it("la política cuenta el detalle por consulta y página de Search Console y su retención", () => {
   renderPage(<PrivacyPage />)
   const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
-  expect(text).toContain("Actualizada el 30 de octubre de 2026")
+  expect(text).toContain("Actualizada el 11 de noviembre de 2026")
   expect(text).toContain("durante 120 días, guardamos esas mismas cifras por día para cada búsqueda (consulta) y cada página")
   expect(text).toContain("agregadas y anonimizadas en Search Console: no identifican a ninguna persona")
   expect(text).toContain("No guardamos países ni dispositivos")
@@ -65,7 +65,7 @@ it("la política cuenta el detalle por consulta y página de Search Console y su
 it("la política cuenta el total mensual por búsqueda (historial de posiciones) y su retención", () => {
   renderPage(<PrivacyPage />)
   const text = (document.body.textContent ?? "").replace(/\s+/g, " ")
-  expect(text).toContain("Actualizada el 30 de octubre de 2026")
+  expect(text).toContain("Actualizada el 11 de noviembre de 2026")
   expect(text).toContain("Pasados esos 120 días, de cada búsqueda sólo conservamos un total por mes (clics, impresiones y posición media), durante un máximo de 16 meses y mientras la web esté asociada a un cliente activo")
   expect(text).toContain("El total mensual por búsqueda se conserva como mucho 16 meses y se borra antes si la web deja de estar asociada a un cliente activo")
   expect(text).toContain("el borrado incluye el detalle por búsqueda y página, el total mensual por búsqueda")
@@ -134,4 +134,12 @@ it("la página de inicio ya no dice que la app nunca escribe en Google", () => {
   expect(text).toContain("sólo escribe en Google en ese calendario «The Agency», y sólo si la persona lo activa")
   expect(text).not.toContain("nunca escribe, modifica ni borra nada en las cuentas de Google")
   expect(text).not.toContain("The app never writes to")
+})
+
+it("la política cuenta Bing: clave por web, cifras en vivo y sin IA", () => {
+  render(<MemoryRouter><PrivacyPage /></MemoryRouter>)
+  const text = document.body.textContent ?? ""
+  expect(text).toContain("Bing Webmaster Tools")
+  expect(text).toContain("Guardamos sólo esa clave (cifrada)")
+  expect(text).toContain("no se guardan ni se envían a ningún servicio de IA")
 })

@@ -1,0 +1,71 @@
+{
+  "version": "20261111_client_bing_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS client_bing_connections (\n client_id INTEGER PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,\n api_key TEXT NOT NULL,\n site_url VARCHAR(500) NOT NULL,\n status VARCHAR(16) NOT NULL DEFAULT 'ok',\n last_error VARCHAR(500),\n connected_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n connected_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT ck_client_bing_connections_api_key CHECK (api_key LIKE 'v1:%'),\n CONSTRAINT ck_client_bing_connections_status CHECK (status IN ('ok','invalid')),\n CONSTRAINT ck_client_bing_connections_site_url CHECK (site_url ~ '^https?://')\n)"
+  ],
+  "columns": {
+    "client_bing_connections": {
+      "client_id": [
+        "int4",
+        false,
+        null
+      ],
+      "api_key": [
+        "text",
+        false,
+        null
+      ],
+      "site_url": [
+        "varchar",
+        false,
+        500
+      ],
+      "status": [
+        "varchar",
+        false,
+        16
+      ],
+      "last_error": [
+        "varchar",
+        true,
+        500
+      ],
+      "connected_by": [
+        "int4",
+        true,
+        null
+      ],
+      "connected_at": [
+        "timestamptz",
+        false,
+        null
+      ]
+    }
+  },
+  "primary_keys": {
+    "client_bing_connections": [
+      "client_id"
+    ]
+  },
+  "foreign_keys": [
+    {
+      "table": "client_bing_connections",
+      "column": "client_id",
+      "references": "clients",
+      "on_delete": "c"
+    },
+    {
+      "table": "client_bing_connections",
+      "column": "connected_by",
+      "references": "users",
+      "on_delete": "n"
+    }
+  ],
+  "check_constraints": {
+    "client_bing_connections": [
+      "ck_client_bing_connections_api_key",
+      "ck_client_bing_connections_site_url",
+      "ck_client_bing_connections_status"
+    ]
+  }
+}

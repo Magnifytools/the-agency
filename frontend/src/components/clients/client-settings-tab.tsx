@@ -13,6 +13,7 @@ import { BarChart3, Search, Save, Globe, Target } from "lucide-react"
 import { getErrorMessage } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
 import { invalidateClientChange } from "@/lib/query-keys"
+import { ClientBingCard } from "@/components/clients/client-bing-card"
 import { ClientShareLinkCard } from "@/components/clients/client-share-link-card"
 import { ClientSlackCard } from "@/components/web/client-slack-card"
 import { BrandTermsEditor } from "@/components/clients/seo-control/brand-terms-editor"
@@ -20,14 +21,17 @@ import { SeoPageGroupsEditor } from "@/components/clients/seo-control/seo-page-g
 
 interface Props {
   client: Client
-  /** "marca": llega desde el aviso de la ficha y baja a los términos de marca. */
+  /** "marca": baja a los términos de marca; "bing": a la conexión de Bing (desde Control SEO). */
   focus?: string | null
 }
+
+const FOCUS_TARGETS: Record<string, string> = { marca: "terminos-de-marca", bing: "bing-webmaster" }
 
 export function ClientSettingsTab({ client, focus = null }: Props) {
   // Desde el aviso de la ficha: lleva directo a los términos de marca.
   useEffect(() => {
-    if (focus === "marca") document.getElementById("terminos-de-marca")?.scrollIntoView({ behavior: "smooth" })
+    const target = focus ? FOCUS_TARGETS[focus] : undefined
+    if (target) document.getElementById(target)?.scrollIntoView?.({ behavior: "smooth" })
   }, [focus])
   const { isAdmin, hasPermission } = useAuth()
   const canWriteClients = hasPermission("clients", true)
@@ -247,6 +251,9 @@ export function ClientSettingsTab({ client, focus = null }: Props) {
 
       {/* Control SEO: grupos de URL propios (se guardan aparte del formulario). */}
       <SeoPageGroupsEditor client={client} canWrite={canWriteClients} />
+
+      {/* Cuenta de Bing de su web: la usa la tarjeta Bing de Control SEO. */}
+      <ClientBingCard clientId={client.id} />
 
       <ClientShareLinkCard clientId={client.id} />
 

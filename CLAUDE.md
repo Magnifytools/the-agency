@@ -767,6 +767,39 @@ admin_users, admin_settings
   filtro de cliente del historial. Cada versión se abre en la pestaña con
   `?informe=ID` (`localReportHref`), que también usa "Para entregar".
 
+## Bing (indexación y posición de las URLs clave)
+- **Qué es**: tarjeta "Bing" en Control SEO. Para las URLs vigiladas activas del
+  cliente (`web_watches`, máx. 25; sin ninguna, `Client.website`) dice si Bing
+  las ha rastreado (`GetUrlInfo`: rastreada / redirige / error / descubierta /
+  no la conoce, y hace cuántos días) y su rendimiento (`GetPageStats`, UNA
+  llamada: impresiones, clics y posición ponderada por impresiones en los 28
+  días que acaban en el último dato de Bing). Desplegar una fila trae sus
+  búsquedas (`GetPageQueryStats`). Para qué: ChatGPT y Copilot parten de los
+  resultados de Bing; es un requisito, no una medida de citas en IA (eso es
+  AI Performance de Bing y no está en su API).
+- **Una cuenta de Bing por web** (decisión de David, 11 nov 2026): tabla
+  `client_bing_connections` (PK `client_id`, migración `client_bing_v1`): API key
+  cifrada (CHECK `v1:%`), `site_url` elegido de `GetUserSites`, `status`
+  `ok|invalid` + `last_error` (una comprobación con clave rechazada la marca y una
+  buena la limpia). Se conecta en Ajustes del cliente (`client-bing-card.tsx`,
+  `?tab=ajustes&foco=bing`); sólo admin conecta, cambia o quita; el resto ve el
+  estado. Desconectar no revoca nada en Bing (se dice).
+- **En vivo, sin guardar cifras**: `services/bing_live.py` → `api/routes/client_bing.py`.
+  `POST /api/clients/{id}/bing/check` y `/bing/page-queries` (lectura de `clients`,
+  mismo 404, `bing_live_limiter` 10/min). POST a propósito: gasta cuota de Bing y
+  no debe repetirse sola. Errores `{"code","message"}`: `not_connected`,
+  `invalid_key`, `site_lost` (409), `rate_limited` (429), `bing_error` (502);
+  el fallo de una URL no tumba la comprobación (`state: "error"`).
+- **La clave va en la URL de Bing**: `_ApiKeyLogRedaction` la quita del log de
+  httpx y nunca sale en mensajes. En tests, el fixture autouse `_no_real_bing`
+  sustituye `bing_live._transport` (nada sale a la red).
+- Sin rendimiento de una URL en Bing → `null`, no un cero. Fuera del Deshacer,
+  de la IA y del MCP. Lo cuenta `/privacidad`. Tests: `tests/test_bing_live.py`,
+  `tests/integration/test_client_bing_schema.py`, `seo-bing-card.test.tsx`,
+  `client-bing-card.test.tsx`.
+- Fase 2 sin aprobar (job diario con avisos, pedir indexación, MCP): ver
+  `tasks/current/2026-11-11-bing-indexacion/task_plan.md`.
+
 ## Control SEO por cliente
 
 - **Qué es**: pestaña "Control SEO" de la ficha (área Resultados, sólo si el

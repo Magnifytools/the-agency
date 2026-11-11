@@ -2034,6 +2034,31 @@ class ClientScopeRequest(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class ClientBingConnection(Base):
+    """Cuenta de Bing Webmaster Tools de la web de un cliente (una por cliente).
+
+    ``api_key`` va cifrada con ``encrypt_vault_secret`` y nunca vuelve en una
+    respuesta; ``site_url`` es el sitio de esa cuenta que es la web del cliente.
+    ``status`` pasa a ``invalid`` (con ``last_error``) cuando Bing rechaza la
+    clave. Las cifras no se guardan (``services/bing_live.py``). Migración
+    ``client_bing_v1``. Fuera del Deshacer: guarda un secreto.
+    """
+    __tablename__ = "client_bing_connections"
+    __table_args__ = (
+        CheckConstraint("api_key LIKE 'v1:%'", name="ck_client_bing_connections_api_key"),
+        CheckConstraint("status IN ('ok','invalid')", name="ck_client_bing_connections_status"),
+        CheckConstraint("site_url ~ '^https?://'", name="ck_client_bing_connections_site_url"),
+    )
+
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), primary_key=True)
+    api_key = Column(Text, nullable=False)
+    site_url = Column(String(500), nullable=False)
+    status = Column(String(16), nullable=False, default="ok", server_default="ok")
+    last_error = Column(String(500), nullable=True)
+    connected_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    connected_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class ClientShareLink(Base):
     """Enlace de sólo lectura para el cliente: sus resúmenes entregados y su tráfico.
 
