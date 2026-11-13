@@ -1,14 +1,64 @@
 name: Tests
 
+# Todo cambio llega a main por PR, así que el CI corre en el PR y no se repite
+# al fusionar. Cada job solo corre si su parte cambió; el lunes hay una pasada
+# completa (incluida la auditoría de dependencias) y se puede lanzar a mano.
 on:
   pull_request:
     branches: [main, master]
-  push:
-    branches: [main, master]
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  backend-test:
+  changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.f.outputs.backend }}
+      frontend: ${{ steps.f.outputs.frontend }}
+      extension: ${{ steps.f.outputs.extension }}
+      mcp: ${{ steps.f.outputs.mcp }}
+      container: ${{ steps.f.outputs.container }}
+      deps: ${{ steps.f.outputs.deps }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: f
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          parts="backend frontend extension mcp container deps"
+          if [ "$EVENT" != "pull_request" ]; then
+            for p in $parts; do echo "$p=true" >> "$GITHUB_OUTPUT"; done
+            exit 0
+          fi
+          files=$(git diff --name-only "origin/$BASE...HEAD")
+          echo "$files"
+          has() { echo "$files" | grep -qE "$1" && echo true || echo false; }
+          # Un cambio en el propio CI vuelve a probarlo todo.
+          ci=$(has '^\.github/')
+          or() { [ "$ci" = true ] && echo true || echo "$1"; }
+          {
+            echo "backend=$(or "$(has '^(backend/|pytest\.ini$|test_agency\.py$)')")"
+            echo "frontend=$(or "$(has '^frontend/')")"
+            echo "extension=$(or "$(has '^chrome-extension/')")"
+            echo "mcp=$(or "$(has '^mcp-server/')")"
+            echo "container=$(or "$(has '^(Dockerfile|\.dockerignore|Procfile|railway\.json|backend/requirements[^/]*\.txt|frontend/package(-lock)?\.json)$')")"
+            echo "deps=$(or "$(has '^(backend/requirements[^/]*\.txt|frontend/package(-lock)?\.json)$')")"
+          } >> "$GITHUB_OUTPUT"
+
+  backend-test:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17
@@ -43,7 +93,10 @@ jobs:
         run: pytest backend/tests/ -v --tb=short
 
   frontend-build:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
@@ -69,7 +122,10 @@ jobs:
         run: npx vitest run --reporter=verbose
 
   lint:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -84,7 +140,10 @@ jobs:
         run: ruff check backend/ --select E9,F63,F7,F82 --no-fix
 
   security-audit:
+    needs: changes
+    if: needs.changes.outputs.deps == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -108,14 +167,20 @@ jobs:
           .venv-audit/bin/python -m pip_audit
 
   container-build:
+    needs: changes
+    if: needs.changes.outputs.container == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Build production image without publishing
         run: docker build --tag agency-ci .
 
   extension-test:
+    needs: changes
+    if: needs.changes.outputs.extension == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -130,7 +195,10 @@ jobs:
           npm --prefix chrome-extension audit --audit-level=high
 
   mcp-server-test:
+    needs: changes
+    if: needs.changes.outputs.mcp == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
