@@ -199,7 +199,7 @@ contrato `schema_versions/vigil_retirement_v1.json` con
 4. Archivar el repo de Vigil en GitHub.
 5. `/Código/CLAUDE.md`: quitar Vigil de puertos y de la tabla de proyectos.
 
-Estado a 13 nov 2026: 1 hecho el 23 oct; 2 copia de `vigil.db` sacada, borrar
-el proyecto `vigil` de Railway (servicio + volumen) lo hace David a mano; 3 hecho
+Estado a 13 nov 2026: 1 hecho el 23 oct; 2 copia de `vigil.db` sacada y proyecto
+`vigil` de Railway (servicio + volumen) borrado; 3 hecho
 con una regla de enrutado del CDN de Vercel (proyecto `vigil`): cualquier ruta →
 `https://agency.magnifytools.com/web/cambios` (302); 4 archivado; 5 no aparecía.

@@ -967,7 +967,7 @@ admin_users, admin_settings
   `--dry-run`. Nunca pisan datos de Google.
 
 ## Vigil (retirado)
-- Historia: Vigil vigilaba las webs de los clientes hasta que The Agency lo sustituyó (ver "Webs: cambios"); se apagó el 23 oct 2026 y se limpió el 13 nov 2026 (repo archivado, `vigil.magnifytools.com` redirige a `/web/cambios`, importador borrado). Su historial no se importó: copia en `/Código/data/vigil-final/vigil.db`. Quedan la migración `vigil_retirement_v1` (con `test_vigil_schema.py`/`test_vigil_retirement_schema.py`) y el lock **13**, que no se reutiliza. Detalle en `docs/vigil-migration.md`.
+- Historia: Vigil vigilaba las webs de los clientes hasta que The Agency lo sustituyó (ver "Webs: cambios"); se apagó el 23 oct 2026 y se borró el 13 nov 2026 (proyecto de Railway borrado, repo archivado, `vigil.magnifytools.com` redirige a `/web/cambios`, importador borrado). Su historial no se importó: copia en `/Código/data/vigil-final/vigil.db`. Quedan la migración `vigil_retirement_v1` (con `test_vigil_schema.py`/`test_vigil_retirement_schema.py`) y el lock **13**, que no se reutiliza. Detalle en `docs/vigil-migration.md`.
 
 ## Webs: disponibilidad (monitor de caídas, fase 1)
 
