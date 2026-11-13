@@ -239,3 +239,22 @@ class Ga4LiveLimiter:
 
 # Cada consulta en vivo son dos llamadas a Google (informe con totales y último día).
 ga4_live_limiter = Ga4LiveLimiter()
+
+
+class BingLiveLimiter:
+    """Sliding-window limiter for live Bing Webmaster checks, per user."""
+
+    def __init__(self) -> None:
+        self._limiter = _SlidingWindowLimiter(
+            prefix="rate:bing-live",
+            detail_fn=lambda _max_requests, _window_seconds: (
+                "Demasiadas comprobaciones en Bing seguidas. Espera un minuto."
+            ),
+        )
+
+    def check(self, key: str | int, max_requests: int, window_seconds: int) -> None:
+        self._limiter.check(key, max_requests, window_seconds)
+
+
+# Cada comprobación son hasta 26 llamadas a Bing y gastan la cuota de la web.
+bing_live_limiter = BingLiveLimiter()

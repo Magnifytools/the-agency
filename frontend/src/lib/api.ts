@@ -179,6 +179,10 @@ import type {
   AppSuggestion,
   ClientWebHealth,
   TaskPublishCheck,
+  BingAccountSites,
+  BingCheckResult,
+  BingPageQueries,
+  ClientBingConnection,
 } from "./types"
 
 export const CSRF_COOKIE_NAME = "agency_csrf_token"
@@ -990,6 +994,25 @@ export const clientSeoApi = {
     api.get<SeoImpact>(`/clients/${clientId}/seo/impact`, { params }).then((r) => r.data),
   decay: (clientId: number) =>
     api.get<SeoDecay>(`/clients/${clientId}/seo/decay`).then((r) => r.data),
+}
+
+// Bing Webmaster Tools del cliente: conexión (admin) y comprobación en vivo.
+export const clientBingApi = {
+  connection: (clientId: number) =>
+    api.get<ClientBingConnection>(`/clients/${clientId}/bing/connection`).then((r) => r.data),
+  /** Sitios verificados de la cuenta de esa clave, sin guardar nada. */
+  sites: (clientId: number, apiKey: string) =>
+    api.post<BingAccountSites>(`/clients/${clientId}/bing/connection/sites`, { api_key: apiKey }).then((r) => r.data),
+  connect: (clientId: number, apiKey: string, siteUrl: string) =>
+    api.put<ClientBingConnection>(`/clients/${clientId}/bing/connection`, { api_key: apiKey, site_url: siteUrl })
+      .then((r) => r.data),
+  disconnect: (clientId: number) =>
+    api.delete<ClientBingConnection>(`/clients/${clientId}/bing/connection`).then((r) => r.data),
+  /** Hasta 26 llamadas a Bing (4 a la vez): más margen que el resto. */
+  check: (clientId: number) =>
+    api.post<BingCheckResult>(`/clients/${clientId}/bing/check`, undefined, { timeout: 120_000 }).then((r) => r.data),
+  pageQueries: (clientId: number, url: string) =>
+    api.post<BingPageQueries>(`/clients/${clientId}/bing/page-queries`, { url }).then((r) => r.data),
 }
 
 // --- Capacity Planning ---

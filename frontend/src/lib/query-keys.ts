@@ -187,6 +187,11 @@ export const clientKeys = {
 
 // Control SEO: todo lo de un cliente cuelga de ["client-seo", id] (los términos
 // de marca cambian el reparto, así que guardar la ficha lo invalida entero).
+export const clientBingKeys = {
+  connection: (clientId: number) => ["client-bing", clientId, "connection"] as const,
+  queries: (clientId: number, url: string) => ["client-bing", clientId, "queries", url] as const,
+}
+
 export const clientSeoKeys = {
   all: (clientId: number) => ["client-seo", clientId] as const,
   summary: (clientId: number, days: number) => ["client-seo", clientId, "summary", days] as const,

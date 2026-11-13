@@ -22,6 +22,8 @@ vi.mock("@/lib/api", () => ({
   ga4Api: { getStatus: vi.fn().mockResolvedValue({ configured: true, properties: [] }), sync: vi.fn() },
 }))
 vi.mock("@/lib/query-keys", () => ({ invalidateClientChange: vi.fn() }))
+// Tiene sus propios tests (client-bing-card.test.tsx).
+vi.mock("@/components/clients/client-bing-card", () => ({ ClientBingCard: () => <div>Bing Webmaster Tools</div> }))
 
 const client = {
   id: 5,
