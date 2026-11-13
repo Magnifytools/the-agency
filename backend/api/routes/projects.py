@@ -60,7 +60,7 @@ EXTRACT_PROMPT = """Extrae la información de esta propuesta comercial y respond
 {
   "name": "nombre del proyecto/servicio (breve, máx 60 chars)",
   "description": "resumen del alcance en 2-3 frases",
-  "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | custom",
+  "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | local_seo | custom",
   "is_recurring": true si es retención/servicio mensual, false si es proyecto puntual,
   "budget_amount": presupuesto total del proyecto, numérico sin símbolo, o null si no aparece explícito,
   "start_date": "YYYY-MM-DD" o null,
@@ -80,7 +80,7 @@ Responde SOLO con un JSON válido:
 {
   "name": "nombre del proyecto/servicio (breve, máx 60 chars)",
   "description": "resumen del alcance en 2-3 frases",
-  "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | custom",
+  "project_type": "uno de: seo_audit | content_strategy | linkbuilding | technical_seo | local_seo | custom",
   "is_recurring": true si es retención/servicio mensual, false si es proyecto puntual,
   "budget_amount": importe total numérico sin símbolo o null,
   "start_date": "YYYY-MM-DD" o null,
