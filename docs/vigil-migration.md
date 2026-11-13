@@ -5,10 +5,17 @@ fase 2 trajo la vigilancia de cambios (`web_watches`, `web_changes`… y el job
 `web_sweep`); esta guía mueve los datos y apaga Vigil sin perder el histórico
 ni mandar avisos falsos al Slack de los clientes.
 
+> **Historia.** Esta guía queda como registro. El histórico de Vigil NO se
+> importó (las URLs de Fit se dieron de alta a mano); la única copia es
+> `/Código/data/vigil-final/vigil.db` (108 cambios, 24 jul – 15 oct 2026,
+> sacada el 13 nov 2026). El importador (`backend/scripts/`), sus tests y
+> `tests/fixtures/vigil/` se borraron el 13 nov 2026: si algún día hiciera falta,
+> se recuperan del historial de git (última versión en el commit `7e6961e`).
+
 Piezas:
 
-- `python -m backend.scripts.import_vigil` (fase 3a): copia `vigil.db` a las
-  tablas `web_*` conservando los ids de Vigil. Detalle en su docstring.
+- El importador de Vigil (fase 3a, **ya borrado**): copiaba
+  `vigil.db` a las tablas `web_*` conservando los ids de Vigil.
 - `python -m backend.scripts.web_calibrate` (fase 3a): un barrido por cliente
   que compara y guarda, pero no avisa a Slack.
 
@@ -76,7 +83,7 @@ export DATABASE_URL='postgresql+asyncpg://…'   # DATABASE_PUBLIC_URL de Railwa
 export VAULT_KEY='…'                            # el de The Agency en Railway (o SECRET_KEY si no hay VAULT_KEY)
 # VIGIL_SECRET_KEY: mejor que la pida el script (no se muestra al teclearla)
 
-backend/venv/bin/python -m backend.scripts.import_vigil --sqlite ~/vigil-corte.db --dry-run
+# (importador ya borrado; ver la nota de historia al principio)
 ```
 
 - El simulacro hace la importación entera dentro de una transacción y la
@@ -167,10 +174,8 @@ Cuando lleve unos días barriendo bien desde The Agency:
   el ORM deja de usarlas, pero P12 las sigue exigiendo hasta la 3c. Borrar ORM y
   datos en el mismo despliegue rompería el arranque de la versión anterior si
   hubiera que volver atrás.
-- `scripts/import_vigil.py` se queda (por si hay que repetir la importación) y
-  lee `clients.vigil_slug` con SQL, no con el ORM; si la columna ya no existe
-  (tras la 3c), sólo vale `--map`. Se puede borrar, con sus tests y
-  `tests/fixtures/vigil/`, cuando Vigil esté apagado.
+- El importador se quedó hasta apagar Vigil; se borró, con sus
+  tests y `tests/fixtures/vigil/`, el 13 nov 2026.
 - El lock 13 (job `vigil`) no se reutiliza.
 
 ### 3c — Migración de retirada (otro PR, después de la 3b en producción)
@@ -193,3 +198,8 @@ contrato `schema_versions/vigil_retirement_v1.json` con
    su id, pero la ruta es otra, así que basta con llevar a Webs).
 4. Archivar el repo de Vigil en GitHub.
 5. `/Código/CLAUDE.md`: quitar Vigil de puertos y de la tabla de proyectos.
+
+Estado a 13 nov 2026: 1 hecho el 23 oct; 2 copia de `vigil.db` sacada y proyecto
+`vigil` de Railway (servicio + volumen) borrado; 3 hecho
+con una regla de enrutado del CDN de Vercel (proyecto `vigil`): cualquier ruta →
+`https://agency.magnifytools.com/web/cambios` (302); 4 archivado; 5 no aparecía.

@@ -408,9 +408,6 @@ class Client(UTCTimestampMixin, Base):
     next_invoice_date = Column(Date, nullable=True)
     last_invoiced_date = Column(Date, nullable=True)
     engine_project_id = Column(Integer, nullable=True)
-    # ``vigil_slug`` (y la tabla ``vigil_summary``) siguen en la BD pero fuera del
-    # ORM desde la fase 3b de Vigil; se borran en la 3c (docs/vigil-migration.md).
-    # ``scripts/import_vigil.py`` la lee con SQL.
     # Internal flag
     is_internal = Column(Boolean, nullable=False, default=False)
     # Narrative context / dossier

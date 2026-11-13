@@ -966,39 +966,8 @@ admin_users, admin_settings
   sólo meses/días anteriores a los propios de The Agency, idempotentes,
   `--dry-run`. Nunca pisan datos de Google.
 
-## Vigil (cambios en las webs de los clientes)
-
-- **Integración retirada del código (3b) y de la BD (3c).** Vigil
-  (`/Código/Vigil`) vigilaba cambios en las webs; The Agency lo hace ahora por su
-  cuenta (ver "Webs: cambios"). Ya no hay job `vigil`, `vigil_service`,
-  `/api/vigil`, `VIGIL_API_URL`/`VIGIL_SERVICE_KEY`, campo "Cliente en Vigil" ni
-  bloque de Vigil en la ficha. Un cliente sin URLs propias en `web_watches` no
-  tiene señal de cambios en su estado.
-- **Vigil apagado el 23 oct 2026**: despliegue quitado en Railway (servicio
-  offline; el volumen con `vigil.db` sigue, se vuelve con Redeploy). Fit
-  Generation, su único cliente, se vigila ya desde The Agency (6 URLs, Slack
-  `#seo-equipo`). No se importó su historial: sigue en ese volumen. La limpieza
-  final (volumen, servicio, dominio, repo) está programada para finales de
-  noviembre (tarea `vigil-limpieza-final`).
-- **Lock 13** era el del job `vigil`: no se reutiliza (lo guarda
-  `test_job_vigil_retirado_y_su_lock_no_se_reutiliza`).
-- **Retirada de la BD (3c)**: `vigil_retirement_v1` borra `vigil_summary` y
-  `clients.vigil_slug` (con `uq_clients_vigil_slug`). Como `vigil_v1` no es de
-  P12, su `verify` comprueba si la retirada ya consta en `agency_schema_versions`
-  y entonces acepta que no estén (`RETIREMENT_VERSION`). `scripts/import_vigil.py`
-  lee el slug con SQL sólo si la columna existe; tras la 3c, sólo `--map`.
-- **Corte** (fase 3a): runbook en `docs/vigil-migration.md` (congelar Vigil,
-  importar, calibrar sin Slack, encender `WEB_SWEEP_ENABLED`, y la retirada 3b/3c).
-  `python -m backend.scripts.import_vigil --sqlite vigil.db --dry-run` copia
-  `vigil.db` (sólo lectura) a las tablas `web_*` conservando los ids, en UNA
-  transacción idempotente (`ON CONFLICT (id) DO NOTHING`); slug → columna
-  `clients.vigil_slug` leída con SQL si aún existe (o `--map slug=id` /
-  `--skip slug`; un slug sin pareja aborta todo), usuarios
-  por email (si no, `acknowledged_by_label`), webhook re-cifrado con
-  `encrypt_vault_secret` (`VIGIL_SECRET_KEY` por entorno o teclado, nunca por
-  argumento) y lo que en Vigil era default entra como NULL. Lo de The Agency
-  manda en `client_web_settings`. `python -m backend.scripts.web_calibrate`
-  barre sin avisar a Slack (`notify=False`): se corre en Railway tras importar.
+## Vigil (retirado)
+- Historia: Vigil vigilaba las webs de los clientes hasta que The Agency lo sustituyó (ver "Webs: cambios"); se apagó el 23 oct 2026 y se borró el 13 nov 2026 (proyecto de Railway borrado, repo archivado, `vigil.magnifytools.com` redirige a `/web/cambios`, importador borrado). Su historial no se importó: copia en `/Código/data/vigil-final/vigil.db`. Quedan la migración `vigil_retirement_v1` (con `test_vigil_schema.py`/`test_vigil_retirement_schema.py`) y el lock **13**, que no se reutiliza. Detalle en `docs/vigil-migration.md`.
 
 ## Webs: disponibilidad (monitor de caídas, fase 1)
 
@@ -1177,9 +1146,6 @@ admin_users, admin_settings
     estado de Slack se lee de `slack` de la configuración, no del último barrido.
   - Query keys en `webKeys` (`lib/query-keys.ts`); revisar invalida listas y
     fichas (`invalidateWebReview`), nunca los diffs (inmutables).
-- **Datos de Vigil**: se importan con `scripts/import_vigil.py` (ver sección
-  Vigil y `docs/vigil-migration.md`). El `watch_state` importado es la "versión
-  anterior" del primer barrido: sin él, todo saldría como primera captura.
 - **Fuera del Deshacer** (`test_cambios_web_quedan_fuera_del_journal` y
   `test_nada_de_la_vigilancia_de_cambios_entra_en_el_deshacer`). Dependencias:
   `lxml` y `cssselect` (ruedas cp312 manylinux, sin compilar).
