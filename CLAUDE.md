@@ -157,7 +157,12 @@ admin_users, admin_settings
   con un cliente filtrado, un periodo de aviso o una selección pendiente.
 - **Historial**: columna "Entrega al cliente" con `delivered_at` /
   `delivered_by_name` de `GET /api/digests` (`_confirmed_deliveries`: la última
-  acción de entrega manda; revocar anula, como `delivery_is_confirmed`).
+  acción de entrega manda; revocar anula, como `delivery_is_confirmed`). Sin
+  entrega, la fila ofrece "Marcar como entregado" (con confirmación; el mismo
+  `POST /external-delivery-events` que el editor). El select de estado interno
+  ya no enseña "Marcado como enviado (histórico)" salvo en las versiones que lo
+  tienen: Nacho lo veía deshabilitado y no encontraba cómo entregar (sugerencia
+  #6, 16 nov 2026).
 
 ## Buffer de Ideas (Growth)
 - **Concepto**: Backlog de ideas **por proyecto**, priorizadas con ICE (Impact/Confidence/Ease)
