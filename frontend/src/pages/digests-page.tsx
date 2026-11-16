@@ -103,6 +103,7 @@ function DigestList() {
   const [discordPreviewContent, setDiscordPreviewContent] = useState("")
   const [discordIsEditing, setDiscordIsEditing] = useState(false)
   const [digestToDelete, setDigestToDelete] = useState<Digest | null>(null)
+  const [digestToDeliver, setDigestToDeliver] = useState<Digest | null>(null)
   const [discardPending, setDiscardPending] = useState(false)
   const initialRecovery = useRef(readDigestGenerations(userId))
   const hasPendingCohort = initialRecovery.current.intents.some((intent) => intent.kind === "cohort")
@@ -264,6 +265,25 @@ function DigestList() {
     setPreviewContent("")
     setPreviewReady(false)
   }
+
+  // La misma confirmación de entrega que el editor (`DigestExternalDelivery`),
+  // a mano desde la lista: antes sólo estaba dentro del editor y en la lista
+  // sólo se veía la opción histórica "enviado", deshabilitada.
+  const deliverMutation = useMutation({
+    mutationFn: (digest: Digest) => reportPolicyApi.recordExternalEvent(digest.id, "confirmed", crypto.randomUUID()),
+    onSuccess: (_result, digest) => {
+      if (!active.current) return
+      toast.success(`Resumen de ${digest.client_name || "este cliente"} marcado como entregado`)
+    },
+    onError: (err) => toast.error(getErrorMessage(err, "No se pudo marcar como entregado")),
+    onSettled: () => {
+      if (!active.current) return
+      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.preview })
+      queryClient.invalidateQueries({ queryKey: reportPolicyKeys.external })
+      queryClient.invalidateQueries({ queryKey: ["digests"] })
+      queryClient.invalidateQueries({ queryKey: ["incidents"] })
+    },
+  })
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => digestsApi.delete(id),
@@ -491,7 +511,16 @@ function DigestList() {
                     <TableCell>
                       {digest.delivered_at
                         ? <span className="text-sm"><Badge variant="success">Entregado</Badge> <span className="text-xs text-muted-foreground">{format(new Date(digest.delivered_at), "d MMM", { locale: es })}{digest.delivered_by_name ? ` · ${digest.delivered_by_name}` : ""}</span></span>
-                        : <span className="text-sm text-muted-foreground">Sin entregar</span>}
+                        : <span className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                            <span>Sin entregar</span>
+                            {canWrite && (
+                              <Button size="sm" variant="outline" className="h-7 text-xs" disabled={deliverMutation.isPending}
+                                aria-label={`Marcar como entregado el resumen de ${digest.client_name || "este cliente"} (versión #${digest.id})`}
+                                onClick={() => setDigestToDeliver(digest)}>
+                                Marcar como entregado
+                              </Button>
+                            )}
+                          </span>}
                     </TableCell>
                     <TableCell>
                       {canWrite ? <Select
@@ -503,7 +532,8 @@ function DigestList() {
                       >
                         <option value="draft">Borrador</option>
                         <option value="reviewed">Revisado</option>
-                        <option value="sent" disabled>Marcado como enviado (histórico)</option>
+                        {/* Sólo para las versiones antiguas que ya lo tienen: lo que cuenta es la entrega. */}
+                        {digest.status === "sent" && <option value="sent" disabled>Marcado como enviado (histórico)</option>}
                       </Select> : <span className="text-sm">{statusLabels[digest.status]}</span>}
                     </TableCell>
                     <TableCell>
@@ -734,6 +764,18 @@ function DigestList() {
           </div>
         </div>
       </Dialog>
+
+      <ConfirmDialog
+        open={digestToDeliver !== null}
+        onOpenChange={(open) => !open && setDigestToDeliver(null)}
+        title={`Confirmar entrega de la versión #${digestToDeliver?.id ?? ""}`}
+        description={`Confirma solo si tú u otra persona entregaste este resumen de ${digestToDeliver?.client_name || "este cliente"} fuera de The Agency. Se puede corregir desde el editor.`}
+        confirmLabel="Confirmar entrega"
+        onConfirm={() => {
+          if (digestToDeliver) deliverMutation.mutate(digestToDeliver)
+          setDigestToDeliver(null)
+        }}
+      />
 
       <ConfirmDialog
         open={digestToDelete !== null}

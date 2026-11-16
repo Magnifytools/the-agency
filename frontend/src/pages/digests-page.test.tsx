@@ -3,9 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { Link, MemoryRouter } from "react-router-dom"
 import { beforeEach, expect, it, vi } from "vitest"
 import DigestsPage from "./digests-page"
-const mocks = vi.hoisted(() => ({ api: {list: vi.fn(), render: vi.fn(), generate: vi.fn(), recoverGeneration: vi.fn(), updateStatus: vi.fn(), delete: vi.fn()}, clients: vi.fn(), policy: vi.fn(), send: vi.fn(), auth: { id: 1, write: true, admin: true } }))
+const mocks = vi.hoisted(() => ({ api: {list: vi.fn(), render: vi.fn(), generate: vi.fn(), recoverGeneration: vi.fn(), updateStatus: vi.fn(), delete: vi.fn()}, clients: vi.fn(), policy: vi.fn(), deliver: vi.fn(), send: vi.fn(), auth: { id: 1, write: true, admin: true } }))
 vi.mock("@/lib/api", () => ({digestsApi: mocks.api, clientsApi: {listAll: mocks.clients}, discordApi: {sendDigest: mocks.send}}))
-vi.mock("@/lib/report-policy-api", () => ({reportPolicyApi: {getPolicy: mocks.policy}, reportPolicyKeys: {all: ["report-policy"], preview: ["digest-generation-preview"], external: ["digest-external-delivery"]}}))
+vi.mock("@/lib/report-policy-api", () => ({reportPolicyApi: {getPolicy: mocks.policy, recordExternalEvent: mocks.deliver}, reportPolicyKeys: {all: ["report-policy"], preview: ["digest-generation-preview"], external: ["digest-external-delivery"]}}))
 vi.mock("@/context/auth-context", () => ({useAuth: () => ({user: {id: mocks.auth.id}, isAdmin: mocks.auth.admin, hasPermission: (_module: string, write?: boolean) => !write || mocks.auth.write})}))
 vi.mock("@/components/digests/digest-cohort", () => ({DigestCohort: ({clientId, expectedPeriod}: {clientId?: number; expectedPeriod?: {start: string; end: string}}) => expectedPeriod ? <div>Período esperado {expectedPeriod.start} — {expectedPeriod.end} <Link to={`/digests?client_id=${clientId}`}>Ver períodos actuales</Link></div> : <div>Selección de clientes</div>}))
 vi.mock("@/components/delivery-receipts", () => ({DeliveryReceipts: ({sourceId}: {sourceId: number}) => <p>Recibos #{sourceId}</p>, deliveryToast: vi.fn()}))
@@ -193,6 +193,7 @@ it("read-only history allows consultation and copying without dead write control
   expect(screen.getAllByTitle("Consultar versión")[0]).not.toBeDisabled()
   expect(screen.queryByTitle("Discord (interno)")).not.toBeInTheDocument()
   expect(screen.queryByLabelText("Estado histórico de versión #10")).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", {name: /Marcar como entregado/})).not.toBeInTheDocument()
   expect(within(screen.getAllByRole("cell", {name: "Acme"})[0].closest("tr")!).getByText("Borrador")).toBeInTheDocument()
   expect(screen.getByText("Abre una versión para consultar su texto y sus fuentes.")).toBeInTheDocument()
   rowAction(0, "Vista previa")
@@ -265,4 +266,27 @@ it("el historial dice qué versión se entregó al cliente y quién la marcó", 
   expect(within(delivered).getByText(/2 oct · Nacho/)).toBeInTheDocument()
   const pending = screen.getByRole("link", {name: "Other"}).closest("tr") as HTMLElement
   expect(within(pending).getByText("Sin entregar")).toBeInTheDocument()
+})
+it("marca como entregado desde la lista, con confirmación (antes sólo se veía 'enviado' deshabilitado)", async () => {
+  mocks.api.list.mockResolvedValue([
+    {...source, delivered_at: "2026-10-02T09:00:00Z", delivered_by_name: "Nacho"},
+    {...source, id: 20, client_id: 2, client_name: "Other", delivered_at: null, delivered_by_name: null},
+  ])
+  mocks.deliver.mockResolvedValue({})
+  setup()
+  const delivered = (await screen.findByRole("link", {name: "Acme"})).closest("tr") as HTMLElement
+  expect(within(delivered).queryByRole("button", {name: /Marcar como entregado/})).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", {name: "Marcar como entregado el resumen de Other (versión #20)"}))
+  expect(mocks.deliver).not.toHaveBeenCalled()
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", {name: "Confirmar entrega"}))
+  await waitFor(() => expect(mocks.deliver).toHaveBeenCalledWith(20, "confirmed", expect.any(String)))
+  await waitFor(() => expect(mocks.api.list.mock.calls.length).toBeGreaterThan(1))
+})
+it("la opción histórica 'enviado' sólo aparece en las versiones que ya la tienen", async () => {
+  mocks.api.list.mockResolvedValue([source, {...source, id: 20, client_id: 2, client_name: "Other", status: "sent"}])
+  setup()
+  const draft = await screen.findByLabelText("Estado histórico de versión #10")
+  expect(within(draft).queryByRole("option", {name: /enviado/})).not.toBeInTheDocument()
+  const old = screen.getByLabelText("Estado histórico de versión #20")
+  expect(within(old).getByRole("option", {name: "Marcado como enviado (histórico)"})).toBeDisabled()
 })
