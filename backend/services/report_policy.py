@@ -22,9 +22,11 @@ from backend.schemas.digest import (
     GenerationPreviewItem,
     InternalDistributionSummary,
     LocalReportSummary,
+    PeriodSkipSummary,
     ReportPolicyResponse,
 )
 from backend.services.digest_access import permission_exists, user_has_digest_permission
+from backend.services.digest_period_skips import skips_for
 from backend.services.digest_periods import enabled_cadences, policy_digest_period
 
 
@@ -198,6 +200,9 @@ async def preview_items(db, rows) -> list[GenerationPreviewItem]:
     local_by_client = await _local_reports(
         db, [client.id for client, _, cadence in entries if cadence == "monthly"], periods.get("monthly"),
     )
+    skips = await skips_for(db, [
+        (client.id, *periods[cadence]) for client, _, cadence in entries if cadence is not None
+    ])
     items = []
     for client, policy, cadence in entries:
         period = periods.get(cadence) if cadence else None
@@ -207,6 +212,7 @@ async def preview_items(db, rows) -> list[GenerationPreviewItem]:
             responsible_by_id.get(policy.responsible_user_id) if policy else None,
             latest_by_period.get(key), internal_by_digest, external_by_period.get(key),
             local_by_client.get(client.id) if cadence == "monthly" else None,
+            skips.get(key) if key else None,
         ))
     return items
 
@@ -240,11 +246,13 @@ async def _local_reports(db, client_ids: list[int], month) -> dict[int, LocalRep
     ) for row in rows}
 
 
-def _preview_item(client, policy, cadence, period, responsible, latest, internal_by_digest, external, local=None):
+def _preview_item(client, policy, cadence, period, responsible, latest, internal_by_digest, external, local=None, skip=None):
     period_start, period_end = period or (None, None)
     responsible_ok = bool(responsible and responsible.can_prepare)
     internal = internal_by_digest.get(latest.id, InternalDistributionSummary()) if latest else InternalDistributionSummary()
     external = external or ExternalDeliverySummary()
+    # Saltado a propósito y sin entrega (si alguien lo entregó después, manda la entrega).
+    skipped = skip is not None and external.state != "confirmed" and not (local and local.delivered_at)
 
     if client.status != ClientStatus.active:
         reason = "client_inactive"
@@ -256,6 +264,9 @@ def _preview_item(client, policy, cadence, period, responsible, latest, internal
         reason = "policy_disabled"
     elif not responsible_ok:
         reason = "responsible_unavailable"
+    elif skipped:
+        # No se genera ni se espera nada de ese periodo.
+        reason = "skipped"
     elif local is not None:
         # El mes lo cubre el informe SEO local (su pestaña), no un resumen.
         reason = "local_report"
@@ -270,6 +281,8 @@ def _preview_item(client, policy, cadence, period, responsible, latest, internal
         state = "disabled"
     elif not responsible_ok:
         state = "blocked_responsible"
+    elif skipped:
+        state = "skipped"
     elif local is not None:
         state = ("local_delivered" if local.delivered_at else
                  "local_prepared" if local.report_id else "local_missing")
@@ -306,4 +319,7 @@ def _preview_item(client, policy, cadence, period, responsible, latest, internal
         internal_distribution=internal,
         external_delivery=external,
         local_report=local,
+        skip=PeriodSkipSummary(
+            id=skip[0].id, reason=skip[0].reason, skipped_by_name=skip[1], skipped_at=skip[0].skipped_at,
+        ) if skipped else None,
     )

@@ -32,6 +32,8 @@ from backend.schemas.digest import (
     ExternalDeliveryEventResponse,
     ExternalDeliveryEventsResponse,
     ExternalDeliveryMutationResponse,
+    PeriodSkipCreate,
+    PeriodSkipSummary,
     PolicyResponsibleResponse,
     ReportPolicyResponse,
     ReportPolicyUpdate,
@@ -40,6 +42,7 @@ from backend.core.rate_limiter import ai_limiter
 from backend.services.digest_access import authorize_digest, user_has_digest_permission, validate_responsible
 from backend.services.digest_generation import DigestGenerationRejected, generate_locked_digest
 from backend.services.digest_collector import collect_digest_data
+from backend.services.digest_period_skips import skip_period, unskip_period
 from backend.services.digest_generator import generate_digest_content
 from backend.services.report_policy import external_delivery_state, policy_response, preview_items
 from backend.services.temporal import business_today
@@ -164,6 +167,31 @@ async def generation_preview(
         items=items,
         counts={"eligible": sum(item.eligible for item in items), "excluded": sum(not item.eligible for item in items)},
     )
+
+
+@router.post("/period-skips", response_model=PeriodSkipSummary)
+async def create_period_skip(
+    request: PeriodSkipCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("digests", write=True)),
+):
+    """Salta el periodo de un cliente (vacaciones, ya no se hace): deja de estar
+    pendiente en avisos, "Para entregar" y estado. Idempotente."""
+    row = await skip_period(db, current_user, client_id=request.client_id, period_start=request.period_start,
+                            period_end=request.period_end, reason=request.reason)
+    by = await db.get(User, row.skipped_by) if row.skipped_by else None
+    return PeriodSkipSummary(id=row.id, reason=row.reason, skipped_by_name=by.full_name if by else None,
+                             skipped_at=row.skipped_at)
+
+
+@router.delete("/period-skips/{skip_id}", status_code=204)
+async def delete_period_skip(
+    skip_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module("digests", write=True)),
+):
+    """Vuelve a pendiente un periodo saltado."""
+    await unskip_period(db, current_user, skip_id)
 
 
 @router.post("/generate-cohort", response_model=CohortGenerateResponse)

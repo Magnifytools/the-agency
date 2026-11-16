@@ -54,7 +54,8 @@ async def test_cohort_batches_queries_and_keeps_latest_receipts_per_exact_covera
         event.remove(engine.sync_engine, "before_cursor_execute", capture)
     assert len(single) == 1
     assert len(items) == 30
-    assert len(statements) == single_count == 4
+    # Responsables, últimas versiones, recibos, eventos de entrega y periodos saltados.
+    assert len(statements) == single_count == 5
     assert all("weekly_digests.content" not in statement for statement in statements)
     for item in items:
         latest_id, confirmed_id, delivery_id = expected[item.client_id]

@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 
-from sqlalchemy import and_, case, exists, false, func, or_, select
+from sqlalchemy import and_, case, exists, false, func, or_, select, union_all
 from sqlalchemy.orm import aliased
 
 from backend.core.modules import is_enabled
@@ -20,12 +20,14 @@ from backend.db.models import (
     DailyUpdate,
     Delivery,
     DigestExternalDeliveryEvent,
+    DigestPeriodSkip,
     ExternalDeliveryAction,
     Notification,
     User,
     UserRole,
     WeeklyDigest,
 )
+from backend.services.digest_period_skips import skipped_clause
 from backend.services.digest_periods import CADENCES, enabled_cadences, format_month, policy_digest_period
 from backend.services.incident_conditions import Condition, module_permission
 from backend.services.manual_communications import KINDS as MANUAL_KINDS
@@ -145,6 +147,15 @@ def delivery_confirmed_clause(client_id, period_start, period_end):
     )
 
 
+def period_settled_clause(client_id, period_start, period_end):
+    """Nada pendiente en ese periodo: entregado o saltado a propósito
+    (``digest_period_skips``: vacaciones, ya no se hace...)."""
+    return or_(
+        delivery_confirmed_clause(client_id, period_start, period_end),
+        skipped_clause(client_id, period_start, period_end),
+    )
+
+
 def _unsent_key(client_id: int, period_start, period_end) -> str:
     return f"{REPORT_UNSENT}:client:{client_id}:monthly:{period_start.isoformat()}:{period_end.isoformat()}"
 
@@ -259,7 +270,7 @@ def report_visibility_clause(user_id: int, *, current_only: bool = False, now: d
                 WeeklyDigest.client_id == ClientReportPolicy.client_id,
                 WeeklyDigest.period_start == start,
                 WeeklyDigest.period_end == end,
-            )]
+            ), ~skipped_clause(ClientReportPolicy.client_id, start, end)]
             if cadence == "monthly":
                 prepared.append(~local_report_clause(ClientReportPolicy.client_id, start, end, delivered=False))
             return exists().where(
@@ -284,7 +295,7 @@ def report_visibility_clause(user_id: int, *, current_only: bool = False, now: d
         month_start, month_end = policy_digest_period("monthly", today=business_today(now=now))
         unsent_filters.extend((
             _monthly_cycle_clause(),
-            ~delivery_confirmed_clause(ClientReportPolicy.client_id, month_start, month_end),
+            ~period_settled_clause(ClientReportPolicy.client_id, month_start, month_end),
             Notification.dedupe_key == func.concat(
                 f"{REPORT_UNSENT}:client:", ClientReportPolicy.client_id,
                 f":monthly:{month_start.isoformat()}:{month_end.isoformat()}",
@@ -328,9 +339,20 @@ async def collect_report_conditions(db, user_id: int, now: datetime) -> dict[str
             and_(WeeklyDigest.client_id == client_id, WeeklyDigest.period_start == periods[cadence][0], WeeklyDigest.period_end == periods[cadence][1])
             for client_id, _, cadence in pairs
         ])
+        # Un periodo saltado (vacaciones, ya no se hace) tampoco está pendiente:
+        # misma lectura, para no gastar otra del presupuesto de la reconciliación.
+        skip_coverage = or_(*[
+            and_(DigestPeriodSkip.client_id == client_id, DigestPeriodSkip.period_start == periods[cadence][0],
+                 DigestPeriodSkip.period_end == periods[cadence][1])
+            for client_id, _, cadence in pairs
+        ])
+        covered = union_all(
+            select(WeeklyDigest.client_id, WeeklyDigest.period_start, WeeklyDigest.period_end).where(coverage),
+            select(DigestPeriodSkip.client_id, DigestPeriodSkip.period_start, DigestPeriodSkip.period_end).where(skip_coverage),
+        )
         matching_digests = {
             (row.client_id, row.period_start, row.period_end)
-            for row in (await db.execute(select(WeeklyDigest.client_id, WeeklyDigest.period_start, WeeklyDigest.period_end).where(coverage))).all()
+            for row in (await db.execute(covered)).all()
         }
         monthly_ids = [client_id for client_id, _, cadence in pairs if cadence == "monthly"]
         if monthly_ids:
@@ -398,7 +420,7 @@ async def unsent_monthly_clients(db, user_id: int, today):
         .where(
             _monthly_cycle_clause(),
             _unsent_recipient_clause(user_id),
-            ~delivery_confirmed_clause(Client.id, start, end),
+            ~period_settled_clause(Client.id, start, end),
         )
         .order_by(Client.id)
     )).all()

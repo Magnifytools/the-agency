@@ -1286,6 +1286,30 @@ class DigestExternalDeliveryEvent(Base):
     created_at = Column(DateTime, default=func.timezone("UTC", func.clock_timestamp()), nullable=False)
 
 
+class DigestPeriodSkip(Base):
+    """Periodo de resumen de un cliente que no se va a entregar (vacaciones, ya no
+    se hace...). Cuenta como resuelto: ni ``report_pending`` ni ``report_unsent``,
+    fuera de "sin entregar" y del estado del cliente; "Para entregar" lo enseña
+    como saltado. No entrega trabajo (``_ready_to_deliver`` no lo mira).
+    "Volver a pendiente" borra la fila. Migración ``digest_period_skips_v1``.
+    Fuera del Deshacer: tiene su propio botón.
+    """
+    __tablename__ = "digest_period_skips"
+    __table_args__ = (
+        UniqueConstraint("client_id", "period_start", "period_end", name="uq_digest_period_skips_period"),
+        CheckConstraint("period_end >= period_start", name="ck_digest_period_skips_period"),
+        CheckConstraint("char_length(btrim(reason)) BETWEEN 1 AND 300", name="ck_digest_period_skips_reason"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    reason = Column(String(300), nullable=False)
+    skipped_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    skipped_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class Lead(TimestampMixin, Base):
     __tablename__ = "leads"
 

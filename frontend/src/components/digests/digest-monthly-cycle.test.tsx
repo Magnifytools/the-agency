@@ -5,10 +5,10 @@ import { beforeEach, expect, it, vi } from "vitest"
 import { DigestMonthlyCycle } from "./digest-monthly-cycle"
 import type { GenerationPreviewItem } from "@/lib/report-policy-api"
 
-const mocks = vi.hoisted(() => ({ preview: vi.fn(), generate: vi.fn(), auth: { id: 2, admin: true, write: true } }))
+const mocks = vi.hoisted(() => ({ preview: vi.fn(), generate: vi.fn(), skip: vi.fn(), unskip: vi.fn(), auth: { id: 2, admin: true, write: true } }))
 vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ user: { id: mocks.auth.id }, isAdmin: mocks.auth.admin, hasPermission: (_module: string, write?: boolean) => !write || mocks.auth.write }) }))
 vi.mock("@/lib/api", () => ({ api: {} }))
-vi.mock("@/lib/report-policy-api", async () => { const actual = await vi.importActual<typeof import("@/lib/report-policy-api")>("@/lib/report-policy-api"); return { ...actual, reportPolicyApi: { generationPreview: mocks.preview, generateCohort: mocks.generate } } })
+vi.mock("@/lib/report-policy-api", async () => { const actual = await vi.importActual<typeof import("@/lib/report-policy-api")>("@/lib/report-policy-api"); return { ...actual, reportPolicyApi: { generationPreview: mocks.preview, generateCohort: mocks.generate, skipPeriod: mocks.skip, unskipPeriod: mocks.unskip } } })
 
 const none = { digest: { latest_digest_id: null, latest_status: null, version_count: 0 } }
 function item(id: number, name: string, overrides: Partial<GenerationPreviewItem> = {}): GenerationPreviewItem {
@@ -100,4 +100,37 @@ it("members see only their clients and cannot generate without write access", as
   expect(await screen.findByText(/a tu cargo/)).toBeInTheDocument()
   expect(mocks.preview).toHaveBeenCalledWith("mine")
   expect(screen.queryByRole("button", { name: /Generar/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: /^Saltar/ })).not.toBeInTheDocument()
+})
+
+it("salta un periodo pendiente con su motivo (sugerencia de Nacho: vacaciones)", async () => {
+  mocks.skip.mockResolvedValue({ id: 70, reason: "Vacaciones", skipped_by_name: "Nacho", skipped_at: "2026-10-03T08:00:00Z" })
+  setup()
+  // Lo entregado no se salta.
+  expect(within(await row("Sage")).queryByRole("button", { name: /^Saltar/ })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole("button", { name: "Saltar septiembre de 2026 de Acme" }))
+  const dialog = screen.getByRole("dialog")
+  expect(within(dialog).getByRole("button", { name: "Saltar periodo" })).toBeDisabled()
+  fireEvent.click(within(dialog).getByRole("button", { name: "Vacaciones" }))
+  fireEvent.click(within(dialog).getByRole("button", { name: "Saltar periodo" }))
+  await waitFor(() => expect(mocks.skip).toHaveBeenCalledWith({
+    client_id: 3, period_start: "2026-09-01", period_end: "2026-09-30", reason: "Vacaciones",
+  }))
+  await waitFor(() => expect(mocks.preview.mock.calls.length).toBeGreaterThan(1))
+})
+
+it("un periodo saltado dice quién y por qué, no cuenta como pendiente y vuelve a pendiente", async () => {
+  mocks.unskip.mockResolvedValue(undefined)
+  mocks.preview.mockResolvedValue({ as_of: "2026-10-19", scope: "team", counts: { eligible: 0, excluded: 1 }, items: [
+    item(3, "Acme", { eligible: false, reason: "skipped", state: "skipped",
+      skip: { id: 70, reason: "Vacaciones", skipped_by_name: "Nacho", skipped_at: "2026-10-03T08:00:00Z" } }),
+  ] })
+  setup()
+  const acme = await row("Acme")
+  expect(within(acme).getByText("Saltado")).toBeInTheDocument()
+  expect(within(acme).getByText(/Saltado por Nacho el 3 oct: Vacaciones/)).toBeInTheDocument()
+  expect(screen.getByLabelText("Recuento de lo que hay que entregar")).toHaveTextContent("0 sin preparar · 0 sin entregar · 1 saltados")
+  expect(within(acme).queryByRole("button", { name: /Generar/ })).not.toBeInTheDocument()
+  fireEvent.click(within(acme).getByRole("button", { name: "Volver a pendiente septiembre de 2026 de Acme" }))
+  await waitFor(() => expect(mocks.unskip).toHaveBeenCalledWith(70))
 })
