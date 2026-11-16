@@ -14,7 +14,7 @@ import { Link } from "react-router-dom"
  */
 
 const CONTACT = "david@magnify.ing"
-const UPDATED = "30 de octubre de 2026"
+const UPDATED = "11 de noviembre de 2026"
 
 function LegalLayout({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -193,6 +193,17 @@ export function PrivacyPage() {
         Google. Borrar un evento en Google borra el bloque, nunca la tarea.
       </p>
 
+      <h2>Bing Webmaster Tools</h2>
+      <p>
+        No es un servicio de Google, pero lo contamos igual. Cada web tiene su propia cuenta de Bing: un
+        administrador pega en la ficha del cliente la clave de la API de esa cuenta y elige cuál de sus sitios es
+        la web del cliente. Guardamos sólo esa clave (cifrada), el sitio elegido y quién lo conectó. Cuando
+        alguien del equipo pulsa «Comprobar en Bing», la app pregunta a Bing, para las URLs que vigilamos de esa
+        web, si las ha rastreado y cuándo, y las impresiones, clics, posición media y búsquedas que trae de cada
+        una. Esas cifras se enseñan en ese momento y no se guardan ni se envían a ningún servicio de IA.
+        Desconectar borra la clave de la app; la clave sigue activa en Bing hasta que se borre allí.
+      </p>
+
       <h2>Para qué los usamos</h2>
       <ul>
         <li>Seguir el tráfico de las webs de nuestros clientes en su ficha.</li>
@@ -340,6 +351,15 @@ export function PrivacyPage() {
           share it with in Google. When they stop publishing or disconnect Google Calendar they can choose to
           also delete that calendar from Google (checked by default); otherwise it stays as it was and is no
           longer updated.
+        </p>
+        <p>
+          <strong>Bing Webmaster Tools</strong> (not Google): each website has its own Bing account. An admin
+          pastes that account's API key in the client's settings and picks which of its sites is the client's
+          website. We store only that key (encrypted), the chosen site and who connected it. When a team member
+          clicks "Check in Bing", the app asks Bing, for the URLs we monitor on that website, whether and when
+          it crawled them, plus their impressions, clicks, average position and search queries. Those figures
+          are shown at that moment; they are not stored and not sent to any AI service. Disconnecting deletes
+          the key from the app; it stays active in Bing until it is deleted there.
         </p>
         <p>
           Search Console and Analytics figures are shown to app users with read access to clients or reports,

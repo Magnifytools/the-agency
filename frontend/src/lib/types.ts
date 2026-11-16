@@ -115,3 +115,59 @@ export interface AppSuggestion {
   /** Pantallazos adjuntos (se ven en `suggestionsApi.imageUrl`). */
   images: { id: number; name: string; size_bytes: number }[]
 }
+
+// ── Bing Webmaster Tools (una cuenta por web; `api/routes/client_bing.py`) ──
+
+export interface ClientBingConnection {
+  connected: boolean
+  site_url: string | null
+  /** `invalid`: Bing rechazó la clave en la última llamada (motivo en `last_error`). */
+  status: "ok" | "invalid" | null
+  last_error: string | null
+  connected_at: string | null
+  connected_by_name: string | null
+}
+
+export interface BingAccountSites {
+  sites: string[]
+  /** El sitio de la cuenta que coincide con la web del cliente, si alguno. */
+  suggested: string | null
+}
+
+export type BingUrlState = "crawled" | "redirect" | "crawl_error" | "discovered" | "unknown" | "error"
+
+export interface BingWindow {
+  start: string
+  end: string
+}
+
+export interface BingUrlRow {
+  url: string
+  label: string | null
+  state: BingUrlState
+  http_status: number | null
+  last_crawled_at: string | null
+  discovered_at: string | null
+  days_since_crawl: number | null
+  /** null = Bing no trae rendimiento de esa URL en la ventana (no es un cero). */
+  impressions: number | null
+  clicks: number | null
+  position: number | null
+  error?: string
+}
+
+export interface BingCheckResult {
+  site_url: string
+  checked_at: string
+  window: BingWindow | null
+  /** URLs vigiladas activas del cliente; si pasa de `max_urls`, se miran las primeras. */
+  watched_total: number
+  max_urls: number
+  urls: BingUrlRow[]
+}
+
+export interface BingPageQueries {
+  url: string
+  window: BingWindow | null
+  queries: { query: string; impressions: number; clicks: number; position: number | null }[]
+}

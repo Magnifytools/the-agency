@@ -21,7 +21,7 @@ from backend.api.routes import (
     income, expenses, expense_categories, taxes, forecasts, advisor, sync, export,
     service_templates, dailys, contacts, activity, notifications, incidents, deliveries, communication_schedules,
     changes, commands,
-    client_dashboard, client_ga4, client_gsc, local_reports, local_report_list, client_seo, client_share_links, engine_integration, investments,
+    client_bing, client_dashboard, client_ga4, client_gsc, local_reports, local_report_list, client_seo, client_share_links, engine_integration, investments,
     search, balance,
     inbox,
     suggestions,
@@ -231,6 +231,8 @@ _CORE_ROUTERS = [
     client_gsc,
     # client_ga4: GA4 en vivo de un cliente (herramientas ga4_* del MCP).
     client_ga4,
+    # client_bing: rastreo y rendimiento en Bing de las URLs clave (Control SEO).
+    client_bing,
     # local_reports: informe mensual SEO local (pestaña de la ficha del cliente).
     # local_report_list: todos los informes SEO locales, para el historial de /digests.
     local_reports, local_report_list,

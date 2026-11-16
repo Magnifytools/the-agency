@@ -54,6 +54,7 @@ from backend.startup.task_recurrence_rules_schema import MIGRATION as TASK_RECUR
 from backend.startup.credentials_notes_schema import MIGRATION as CREDENTIALS_NOTES_MIGRATION
 from backend.startup.lead_status_history_schema import MIGRATION as LEAD_STATUS_HISTORY_MIGRATION
 from backend.startup.local_reports_schema import MIGRATION as LOCAL_REPORTS_MIGRATION
+from backend.startup.client_bing_schema import MIGRATION as CLIENT_BING_MIGRATION
 from backend.startup.alert_settings_notify_retirement_schema import (
     MIGRATION as ALERT_SETTINGS_NOTIFY_RETIREMENT_MIGRATION,
 )
@@ -81,6 +82,7 @@ MIGRATIONS = (
     CREDENTIALS_NOTES_MIGRATION,
     LEAD_STATUS_HISTORY_MIGRATION,
     LOCAL_REPORTS_MIGRATION,
+    CLIENT_BING_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 

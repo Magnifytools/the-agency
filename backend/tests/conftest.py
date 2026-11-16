@@ -239,3 +239,20 @@ def _no_real_web_health_network(monkeypatch):
     monkeypatch.setattr(health, "fetch", no_network)
     monkeypatch.setattr(health, "fetch_tls_certificate", no_cert)
     monkeypatch.setattr(publish_check, "fetch", no_network)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_bing(monkeypatch):
+    """Bing Webmaster nunca sale a la red en los tests.
+
+    Un test que quiera respuestas de Bing sustituye `bing_live._transport` por
+    un `httpx.MockTransport` propio.
+    """
+    import httpx
+
+    from backend.services import bing_live
+
+    def _refuse(request):
+        raise AssertionError(f"Petición real a Bing en un test: {request.url.path}")
+
+    monkeypatch.setattr(bing_live, "_transport", lambda: httpx.MockTransport(_refuse))

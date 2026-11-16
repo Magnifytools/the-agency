@@ -24,6 +24,12 @@ vi.mock("@/lib/api", () => ({
   clientSeoApi: { get: mocks.get, queries: mocks.queries, pages: mocks.pages, queryHistory: mocks.queryHistory, groups: mocks.groups,
                   annotations: mocks.annotations, decay: mocks.decay, impact: mocks.impact },
   tasksApi: { create: vi.fn() },
+  // La tarjeta de Bing tiene sus propios tests (seo-bing-card.test.tsx).
+  clientBingApi: {
+    connection: vi.fn().mockResolvedValue({ connected: false, site_url: null, status: null, last_error: null,
+                                            connected_at: null, connected_by_name: null }),
+    check: vi.fn(), pageQueries: vi.fn(),
+  },
 }))
 vi.mock("@/context/auth-context", () => ({
   useAuth: () => ({ isAdmin: mocks.admin, hasPermission: (_m: string, write = false) => (write ? mocks.canWrite : true) }),

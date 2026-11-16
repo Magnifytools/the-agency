@@ -20,6 +20,7 @@ import { SeoMoversTable } from "./seo-movers-table"
 import { SeoAnnotationsCard } from "./seo-annotations-card"
 import { SeoImpactCard, type ImpactQuery } from "./seo-impact-card"
 import { SeoDecayCard } from "./seo-decay-card"
+import { SeoBingCard } from "./seo-bing-card"
 
 interface Props {
   client: Client
@@ -122,6 +123,7 @@ export function SeoControlTab({ client, onOpenSettings }: Props) {
       <div className="space-y-4">
         {header}
         <SeoControlEmpty data={data} isAdmin={isAdmin} canWriteClient={canWriteClient} onOpenSettings={onOpenSettings} />
+        <SeoBingCard clientId={client.id} isAdmin={isAdmin} />
       </div>
     )
   }
@@ -187,6 +189,7 @@ export function SeoControlTab({ client, onOpenSettings }: Props) {
           )}
         </>
       )}
+      <SeoBingCard clientId={client.id} isAdmin={isAdmin} />
     </div>
   )
 }
