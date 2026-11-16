@@ -195,8 +195,8 @@ export function PrivacyPage() {
 
       <h2>Bing Webmaster Tools</h2>
       <p>
-        No es un servicio de Google, pero lo contamos igual. Cada web tiene su propia cuenta de Bing: un
-        administrador pega en la ficha del cliente la clave de la API de esa cuenta y elige cuál de sus sitios es
+        No es un servicio de Google, pero lo contamos igual. Cada web tiene su propia cuenta de Bing: alguien
+        del equipo con permiso para editar el cliente pega en su ficha la clave de la API de esa cuenta y elige cuál de sus sitios es
         la web del cliente. Guardamos sólo esa clave (cifrada), el sitio elegido y quién lo conectó. Cuando
         alguien del equipo pulsa «Comprobar en Bing», la app pregunta a Bing, para las URLs que vigilamos de esa
         web, si las ha rastreado y cuándo, y las impresiones, clics, posición media y búsquedas que trae de cada
@@ -353,8 +353,8 @@ export function PrivacyPage() {
           longer updated.
         </p>
         <p>
-          <strong>Bing Webmaster Tools</strong> (not Google): each website has its own Bing account. An admin
-          pastes that account's API key in the client's settings and picks which of its sites is the client's
+          <strong>Bing Webmaster Tools</strong> (not Google): each website has its own Bing account. A team
+          member allowed to edit the client pastes that account's API key in the client's settings and picks which of its sites is the client's
           website. We store only that key (encrypted), the chosen site and who connected it. When a team member
           clicks "Check in Bing", the app asks Bing, for the URLs we monitor on that website, whether and when
           it crawled them, plus their impressions, clicks, average position and search queries. Those figures

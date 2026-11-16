@@ -39,11 +39,11 @@ function result(overrides: Partial<BingCheckResult> = {}): BingCheckResult {
   }
 }
 
-function show(isAdmin = false) {
+function show(canConnect = false) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <MemoryRouter>
-      <QueryClientProvider client={qc}><SeoBingCard clientId={5} isAdmin={isAdmin} /></QueryClientProvider>
+      <QueryClientProvider client={qc}><SeoBingCard clientId={5} canConnect={canConnect} /></QueryClientProvider>
     </MemoryRouter>,
   )
 }
@@ -55,7 +55,7 @@ describe("SeoBingCard", () => {
     mocks.check.mockResolvedValue(result())
   })
 
-  it("sin conexión, un admin va a los ajustes del cliente y no se comprueba nada", async () => {
+  it("sin conexión, quien edita el cliente va a los ajustes del cliente y no se comprueba nada", async () => {
     mocks.connection.mockResolvedValue(connection({ connected: false, site_url: null, status: null }))
     show(true)
     const link = await screen.findByRole("link", { name: "Conectar en los ajustes del cliente" })
@@ -64,10 +64,10 @@ describe("SeoBingCard", () => {
     expect(mocks.check).not.toHaveBeenCalled()
   })
 
-  it("sin conexión, quien no es admin sabe a quién pedírselo", async () => {
+  it("sin conexión, quien sólo lee sabe a quién pedírselo", async () => {
     mocks.connection.mockResolvedValue(connection({ connected: false, site_url: null, status: null }))
     show()
-    expect(await screen.findByText(/Pide a un admin/)).toBeInTheDocument()
+    expect(await screen.findByText(/Pide a quien lleva este cliente/)).toBeInTheDocument()
     expect(screen.queryByRole("link")).not.toBeInTheDocument()
   })
 

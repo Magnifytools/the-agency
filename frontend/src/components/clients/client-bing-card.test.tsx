@@ -7,14 +7,14 @@ import type { ClientBingConnection } from "@/lib/types"
 import { ClientBingCard } from "./client-bing-card"
 
 const mocks = vi.hoisted(() => ({
-  admin: true,
+  canWrite: true,
   connection: vi.fn(),
   sites: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
 }))
 
-vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ isAdmin: mocks.admin }) }))
+vi.mock("@/context/auth-context", () => ({ useAuth: () => ({ hasPermission: (_m: string, write = false) => (write ? mocks.canWrite : true) }) }))
 vi.mock("@/lib/api", () => ({
   clientBingApi: { connection: mocks.connection, sites: mocks.sites, connect: mocks.connect, disconnect: mocks.disconnect },
 }))
@@ -34,7 +34,7 @@ function show() {
 describe("ClientBingCard", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.admin = true
+    mocks.canWrite = true
     mocks.connection.mockResolvedValue(OFF)
   })
 
@@ -71,7 +71,7 @@ describe("ClientBingCard", () => {
     expect(await screen.findByText("Esa cuenta no tiene ningún sitio verificado en Bing.")).toBeInTheDocument()
   })
 
-  it("conectada: el admin puede cambiar la clave o desconectar avisando de que sigue viva en Bing", async () => {
+  it("conectada: quien edita el cliente (un SEO, no sólo un admin) puede cambiar la clave o desconectar avisando de que sigue viva en Bing", async () => {
     mocks.connection.mockResolvedValue(ON)
     mocks.disconnect.mockResolvedValue(OFF)
     show()
@@ -86,11 +86,11 @@ describe("ClientBingCard", () => {
     expect(mocks.disconnect).toHaveBeenCalledWith(5)
   })
 
-  it("quien no es admin sólo ve el estado", async () => {
-    mocks.admin = false
+  it("quien sólo lee el cliente ve el estado", async () => {
+    mocks.canWrite = false
     mocks.connection.mockResolvedValue({ ...ON, status: "invalid", last_error: "InvalidApiKey" })
     show()
-    expect(await screen.findByText(/Bing ya no acepta la clave \(InvalidApiKey\)\. Avisa a un admin\./)).toBeInTheDocument()
+    expect(await screen.findByText(/Bing ya no acepta la clave \(InvalidApiKey\)\. Avisa a quien lleva este cliente\./)).toBeInTheDocument()
     expect(screen.queryByRole("button")).not.toBeInTheDocument()
     expect(screen.queryByLabelText("API key de Bing")).not.toBeInTheDocument()
   })

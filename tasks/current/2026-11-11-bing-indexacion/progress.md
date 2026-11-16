@@ -19,3 +19,8 @@
 - La BD local de desarrollo (`the_agency`) no arranca con el backend actual: no
   tiene `agency_schema_versions` (historia de Alembic antigua, "explicit adoption
   is required"). No es de este cambio.
+
+## 16 nov 2026
+- PR #225 mergeado (squash `56fb15e`) y desplegado en Railway: `/api/ready`
+  da `schema_revision` `20261111_client_bing_v1`. Sin variables de entorno nuevas.
+- Sigue faltando la prueba con la clave real de una web (ver arriba).

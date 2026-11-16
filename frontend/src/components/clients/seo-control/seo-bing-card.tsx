@@ -41,7 +41,7 @@ function crawlAge(days: number | null) {
  * cómo posicionan allí. Se comprueba a mano (gasta cuota de Bing) y no se
  * guarda nada: el resultado vive en esta pantalla.
  */
-export function SeoBingCard({ clientId, isAdmin }: { clientId: number; isAdmin: boolean }) {
+export function SeoBingCard({ clientId, canConnect }: { clientId: number; canConnect: boolean }) {
   const connection = useQuery({
     queryKey: clientBingKeys.connection(clientId),
     queryFn: () => clientBingApi.connection(clientId),
@@ -70,15 +70,15 @@ export function SeoBingCard({ clientId, isAdmin }: { clientId: number; isAdmin: 
         ) : !data?.connected ? (
           <p className="text-sm text-muted-foreground">
             Esta web no tiene Bing conectado.{" "}
-            {isAdmin ? <Link to={settings} className="text-brand underline underline-offset-2">Conectar en los ajustes del cliente</Link>
-              : "Pide a un admin que lo conecte con la cuenta de Bing de la web."}
+            {canConnect ? <Link to={settings} className="text-brand underline underline-offset-2">Conectar en los ajustes del cliente</Link>
+              : "Pide a quien lleva este cliente que lo conecte con la cuenta de Bing de la web."}
           </p>
         ) : (
           <>
             {data.status === "invalid" && (
               <p role="alert" className="text-sm text-red-400">
                 Bing ya no acepta la clave de esta web.{" "}
-                {isAdmin ? <Link to={settings} className="underline underline-offset-2">Cambiarla</Link> : "Avisa a un admin."}
+                {canConnect ? <Link to={settings} className="underline underline-offset-2">Cambiarla</Link> : "Avisa a quien lleva este cliente."}
               </p>
             )}
             <div className="flex flex-wrap items-center gap-2">
