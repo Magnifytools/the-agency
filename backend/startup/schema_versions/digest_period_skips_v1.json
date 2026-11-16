@@ -1,0 +1,79 @@
+{
+  "version": "20261116_digest_period_skips_v1",
+  "statements": [
+    "CREATE TABLE IF NOT EXISTS digest_period_skips (\n id SERIAL PRIMARY KEY,\n client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,\n period_start DATE NOT NULL,\n period_end DATE NOT NULL,\n reason VARCHAR(300) NOT NULL,\n skipped_by INTEGER REFERENCES users(id) ON DELETE SET NULL,\n skipped_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n CONSTRAINT uq_digest_period_skips_period UNIQUE (client_id, period_start, period_end),\n CONSTRAINT ck_digest_period_skips_period CHECK (period_end >= period_start),\n CONSTRAINT ck_digest_period_skips_reason CHECK (char_length(btrim(reason)) BETWEEN 1 AND 300)\n)"
+  ],
+  "columns": {
+    "digest_period_skips": {
+      "id": [
+        "int4",
+        false,
+        null
+      ],
+      "client_id": [
+        "int4",
+        false,
+        null
+      ],
+      "period_start": [
+        "date",
+        false,
+        null
+      ],
+      "period_end": [
+        "date",
+        false,
+        null
+      ],
+      "reason": [
+        "varchar",
+        false,
+        300
+      ],
+      "skipped_by": [
+        "int4",
+        true,
+        null
+      ],
+      "skipped_at": [
+        "timestamptz",
+        false,
+        null
+      ]
+    }
+  },
+  "primary_keys": {
+    "digest_period_skips": [
+      "id"
+    ]
+  },
+  "foreign_keys": [
+    {
+      "table": "digest_period_skips",
+      "column": "client_id",
+      "references": "clients",
+      "on_delete": "c"
+    },
+    {
+      "table": "digest_period_skips",
+      "column": "skipped_by",
+      "references": "users",
+      "on_delete": "n"
+    }
+  ],
+  "check_constraints": {
+    "digest_period_skips": [
+      "ck_digest_period_skips_period",
+      "ck_digest_period_skips_reason"
+    ]
+  },
+  "unique_constraints": {
+    "digest_period_skips": {
+      "uq_digest_period_skips_period": [
+        "client_id",
+        "period_start",
+        "period_end"
+      ]
+    }
+  }
+}

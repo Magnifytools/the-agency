@@ -49,7 +49,7 @@ export interface ExternalDeliveryResult {
   external_delivery: ExternalDeliverySummary
   has_newer_version: boolean
 }
-export type GenerationReason = "client_inactive" | "internal_client" | "policy_missing" | "policy_disabled" | "responsible_unavailable" | "local_report" | "already_exists" | "eligible"
+export type GenerationReason = "client_inactive" | "internal_client" | "policy_missing" | "policy_disabled" | "responsible_unavailable" | "local_report" | "skipped" | "already_exists" | "eligible"
 export interface GenerationPreviewItem {
   client_id: number
   client_name: string
@@ -69,6 +69,14 @@ export interface GenerationPreviewItem {
   external_delivery: ExternalDeliverySummary
   // Sólo en la fila mensual de un cliente con informe SEO local: ese informe hace de mensual.
   local_report?: { report_id: number | null; delivered_at: string | null; delivered_by_name: string | null } | null
+  // Sólo si el periodo está saltado (vacaciones, ya no se hace): no se espera nada de él.
+  skip?: PeriodSkip | null
+}
+export interface PeriodSkip {
+  id: number
+  reason: string
+  skipped_by_name: string | null
+  skipped_at: string | null
 }
 export interface GenerationPreview {
   as_of: string
@@ -112,6 +120,9 @@ export const reportPolicyApi = {
   responsibles: () => api.get<{ id: number; full_name: string }[]>("/digests/policy-responsibles").then(r => r.data),
   generationPreview: (scope: ReportScope) => api.get<GenerationPreview>("/digests/generation-preview", { params: { scope } }).then(r => r.data),
   generateCohort: (body: { items: CohortGenerateItem[]; tone: DigestTone }) => api.post<{ results: CohortGenerateResult[] }>("/digests/generate-cohort", body, { timeout: 300_000 }).then(r => r.data),
+  skipPeriod: (body: { client_id: number; period_start: string; period_end: string; reason: string }) =>
+    api.post<PeriodSkip>("/digests/period-skips", body).then(r => r.data),
+  unskipPeriod: (skipId: number) => api.delete(`/digests/period-skips/${skipId}`).then(() => undefined),
   externalEvents: (digestId: number) => api.get<ExternalDeliveryHistory>(`/digests/${digestId}/external-delivery-events`).then(r => r.data),
   recordExternalEvent: (digestId: number, action: ExternalDeliveryAction, requestKey: string) =>
     api.post<ExternalDeliveryResult>(`/digests/${digestId}/external-delivery-events`, { action }, { headers: { "X-Agency-Request-Key": requestKey } }).then(r => r.data),

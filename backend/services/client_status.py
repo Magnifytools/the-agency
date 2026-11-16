@@ -35,6 +35,7 @@ from backend.db.models import (
     Client,
     ClientLocalReport,
     ClientReportPolicy,
+    DigestPeriodSkip,
     Task,
     TaskStatus,
     TimeEntry,
@@ -152,7 +153,8 @@ async def _digests(db, client_ids: list[int]) -> tuple[dict[int, ClientReportPol
     """Políticas con alguna cadencia encendida y último periodo ENTREGADO por cadencia.
 
     Entregado = entrega externa confirmada o, para el mensual, el informe SEO
-    local entregado (la regla de ``report_unsent``);
+    local entregado (la regla de ``report_unsent``); un periodo saltado
+    (``digest_period_skips``) también cuenta como cubierto;
     ``DigestStatus.sent`` es una etiqueta sin evidencia y no cuenta.
     """
     policies = {p.client_id: p for p in (await db.scalars(select(ClientReportPolicy).where(
@@ -179,6 +181,17 @@ async def _digests(db, client_ids: list[int]) -> tuple[dict[int, ClientReportPol
         month_end = (start.replace(day=1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
         if month_end > last_sent.get((client_id, "monthly"), date.min):
             last_sent[(client_id, "monthly")] = month_end
+    # Un periodo saltado a propósito (vacaciones, ya no se hace) cuenta como cubierto.
+    skipped = select(
+        DigestPeriodSkip.client_id,
+        period_cadence_sql(DigestPeriodSkip.period_start, DigestPeriodSkip.period_end).label("cadence"),
+        DigestPeriodSkip.period_end,
+    ).where(DigestPeriodSkip.client_id.in_(list(policies))).subquery()
+    for client_id, value, last in (await db.execute(select(
+        skipped.c.client_id, skipped.c.cadence, func.max(skipped.c.period_end),
+    ).where(skipped.c.cadence.isnot(None)).group_by(skipped.c.client_id, skipped.c.cadence))).all():
+        if last > last_sent.get((client_id, value), date.min):
+            last_sent[(client_id, value)] = last
     return policies, last_sent
 
 

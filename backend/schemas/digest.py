@@ -177,6 +177,25 @@ class LocalReportSummary(BaseModel):
         return _serialize_utc(dt)
 
 
+class PeriodSkipSummary(BaseModel):
+    """Periodo saltado a propósito (vacaciones, ya no se hace...): quién, cuándo y por qué."""
+    id: int
+    reason: str
+    skipped_by_name: Optional[str] = None
+    skipped_at: Optional[datetime] = None
+
+    @field_serializer("skipped_at")
+    def _ser_skipped_at(self, dt: Optional[datetime]) -> Optional[str]:
+        return _serialize_utc(dt)
+
+
+class PeriodSkipCreate(BaseModel):
+    client_id: int
+    period_start: date
+    period_end: date
+    reason: str = Field(min_length=1, max_length=300)
+
+
 class GenerationPreviewItem(BaseModel):
     client_id: int
     client_name: str
@@ -196,6 +215,8 @@ class GenerationPreviewItem(BaseModel):
     external_delivery: ExternalDeliverySummary
     # Sólo en la fila mensual de un cliente con informe SEO local configurado.
     local_report: Optional[LocalReportSummary] = None
+    # Sólo si el periodo está saltado (``state == "skipped"``).
+    skip: Optional[PeriodSkipSummary] = None
 
 
 class GenerationPreviewResponse(BaseModel):

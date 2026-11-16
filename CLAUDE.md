@@ -311,6 +311,19 @@ admin_users, admin_settings
   vivo: es la cadencia de un periodo en la API de resúmenes.
 - **`report_pending`**: uno por cada (cliente, cadencia) encendida sin versión
   de su periodo. Sólo un pendiente MENSUAL tapa el `report_unsent` del cliente.
+- **Saltar un periodo** (sugerencia #5 de Nacho, 16 nov 2026: vacaciones, ya no
+  se hace): tabla `digest_period_skips` (migración `digest_period_skips_v1`;
+  cliente + periodo válido de una cadencia, motivo 1–300, quién y cuándo; único
+  por cliente y periodo). Un periodo saltado está resuelto: ni `report_pending`
+  ni `report_unsent` (`period_settled_clause` = entregado o saltado, también en
+  su visibilidad y en la fila Operación), cuenta como cubierto en el estado del
+  cliente y "Para entregar" lo enseña como "Saltado" con su motivo. NO entrega
+  trabajo (`_ready_to_deliver` no lo mira); si alguien lo entrega después, manda
+  la entrega. API `POST /api/digests/period-skips` (idempotente; sólo periodos
+  cerrados; 409 si ya está entregado) y `DELETE /api/digests/period-skips/{id}`
+  ("Volver a pendiente"); reglas de `authorize_digest` (escritura de `digests` y
+  admin o responsable actual). Servicio `services/digest_period_skips.py`.
+  Fuera del Deshacer: tiene su propio botón y el aviso ofrece deshacer.
 - **"Entregado" = evento de entrega externa** (`digest_external_delivery_events`,
   botón "Marcar como entregado al cliente" del editor): guarda quién y cuándo.
   `DigestStatus.sent` es una etiqueta histórica sin evidencia: no cuenta.

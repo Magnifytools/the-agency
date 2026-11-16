@@ -55,6 +55,7 @@ from backend.startup.credentials_notes_schema import MIGRATION as CREDENTIALS_NO
 from backend.startup.lead_status_history_schema import MIGRATION as LEAD_STATUS_HISTORY_MIGRATION
 from backend.startup.local_reports_schema import MIGRATION as LOCAL_REPORTS_MIGRATION
 from backend.startup.client_bing_schema import MIGRATION as CLIENT_BING_MIGRATION
+from backend.startup.digest_period_skips_schema import MIGRATION as DIGEST_PERIOD_SKIPS_MIGRATION
 from backend.startup.alert_settings_notify_retirement_schema import (
     MIGRATION as ALERT_SETTINGS_NOTIFY_RETIREMENT_MIGRATION,
 )
@@ -83,6 +84,7 @@ MIGRATIONS = (
     LEAD_STATUS_HISTORY_MIGRATION,
     LOCAL_REPORTS_MIGRATION,
     CLIENT_BING_MIGRATION,
+    DIGEST_PERIOD_SKIPS_MIGRATION,
 )
 EXPECTED_SCHEMA_VERSION = MIGRATIONS[-1].version
 
