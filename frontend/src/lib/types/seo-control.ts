@@ -118,9 +118,17 @@ export interface ClientSeoSummary extends SeoSourceInfo {
     trend: SeoBrandWeek[]
   } | null
   sections: SeoSection[]
-  queries: { gainers: SeoQueryRow[]; losers: SeoQueryRow[]; trend_months?: string[] } | null
-  pages: { gainers: SeoPageRow[]; losers: SeoPageRow[] } | null
+  /** Primera página (10) de lo que más sube y baja por clics; `*_total`, cuántas hay. */
+  queries: SeoMoversSummary<SeoQueryRow> & { trend_months?: string[] } | null
+  pages: SeoMoversSummary<SeoPageRow> | null
   coverage: { query_clicks_share: number | null } | null
+}
+
+export interface SeoMoversSummary<Row> {
+  gainers: Row[]
+  losers: Row[]
+  gainers_total: number
+  losers_total: number
 }
 
 export type SeoMoverSort = "clicks_gain" | "clicks_loss" | "position_gain" | "position_loss"
@@ -135,6 +143,7 @@ export interface SeoMoversParams {
   q?: string
   min_impressions: number
   limit: number
+  offset?: number
 }
 
 export interface SeoMoversResponse<Row> extends SeoSourceInfo {

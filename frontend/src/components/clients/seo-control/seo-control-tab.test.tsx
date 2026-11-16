@@ -69,8 +69,9 @@ function summary(overrides: Partial<ClientSeoSummary> = {}): ClientSeoSummary {
         impressions: 400, position: 5.75, position_delta: 1, pages: 2 },
     ],
     queries: { gainers: [query("acme tienda", { is_brand: true }), query("botas", { state: "new", previous_clicks: 0 })],
-               losers: [query("zapatos azules", { state: "lost", clicks: 0, clicks_delta: -10 })] },
-    pages: { gainers: [], losers: [] },
+               losers: [query("zapatos azules", { state: "lost", clicks: 0, clicks_delta: -10 })],
+               gainers_total: 2, losers_total: 1 },
+    pages: { gainers: [], losers: [], gainers_total: 0, losers_total: 0 },
     coverage: { query_clicks_share: 0.65 },
     ...overrides,
   }
@@ -124,17 +125,50 @@ describe("SeoControlTab", () => {
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(5, 7))
   })
 
-  it("requests the list with the chosen sort, brand filter and more rows", async () => {
+  it("requests the list with the chosen sort and brand filter", async () => {
     show()
     await screen.findByText("acme tienda")
     const group = screen.getByRole("group", { name: "Consultas: qué enseñar" })
     await userEvent.click(within(group).getByRole("button", { name: "Posición" }))
     await waitFor(() => expect(mocks.queries).toHaveBeenLastCalledWith(5, expect.objectContaining({
-      days: 28, sort: "position_gain", min_impressions: 30, limit: 5,
+      days: 28, sort: "position_gain", min_impressions: 30, limit: 10,
     })))
     await userEvent.selectOptions(screen.getByLabelText("Filtrar por marca"), "non_brand")
     await waitFor(() => expect(mocks.queries).toHaveBeenLastCalledWith(5, expect.objectContaining({ brand: "non_brand" })))
     expect(await screen.findByText("posicion sube")).toBeInTheDocument()
+  })
+
+  it("pages 10 at a time: the first page comes from the summary, the next one asks for offset 10", async () => {
+    const tenGainers = Array.from({ length: 10 }, (_, i) => query(`consulta ${i + 1}`))
+    mocks.get.mockResolvedValue(summary({
+      queries: { gainers: tenGainers, losers: [], gainers_total: 23, losers_total: 0 },
+    }))
+    mocks.queries.mockResolvedValue({ ...blocked("ok"), rows: [query("consulta 11")], total: 23 })
+    show()
+    await screen.findByText("consulta 10")
+    expect(mocks.queries).not.toHaveBeenCalled()
+    expect(screen.getByText("23 resultados — Página 1 de 3")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "2" }))
+    await waitFor(() => expect(mocks.queries).toHaveBeenLastCalledWith(5, expect.objectContaining({
+      sort: "clicks_gain", limit: 10, offset: 10,
+    })))
+    expect(await screen.findByText("consulta 11")).toBeInTheDocument()
+    expect(screen.getByText("23 resultados — Página 2 de 3")).toBeInTheDocument()
+  })
+
+  it("shows sections 10 at a time", async () => {
+    const sections = Array.from({ length: 12 }, (_, i) => ({
+      key: `/s${i + 1}`, label: `/s${i + 1}`, clicks: 10, previous_clicks: 5, clicks_pct: 100, clicks_share: 0.05,
+      impressions: 100, position: 5, position_delta: 0, pages: 1,
+    }))
+    mocks.get.mockResolvedValue(summary({ sections }))
+    show()
+    expect(await screen.findByRole("button", { name: "/s10" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "/s11" })).not.toBeInTheDocument()
+    expect(screen.getByText("12 resultados — Página 1 de 2")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "2" }))
+    expect(screen.getByRole("button", { name: "/s12" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "/s1" })).not.toBeInTheDocument()
   })
 
   it("filters pages by the clicked section", async () => {

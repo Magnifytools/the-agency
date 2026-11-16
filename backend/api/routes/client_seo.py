@@ -53,13 +53,14 @@ async def client_seo_queries(
     q: Optional[str] = Query(None, max_length=200),
     min_impressions: int = Query(seo_control.DEFAULT_MIN_IMPRESSIONS, ge=0, le=1_000_000),
     limit: int = Query(25, ge=1, le=seo_control.MAX_LIMIT),
+    offset: int = Query(0, ge=0, le=1_000_000),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
     client = await _client_or_404(db, client_id, days)
     return await seo_control.movers(
         db, client, "query", days=days, sort=sort, brand=brand, q=q,
-        min_impressions=min_impressions, limit=limit,
+        min_impressions=min_impressions, limit=limit, offset=offset,
     )
 
 
@@ -73,6 +74,7 @@ async def client_seo_pages(
     q: Optional[str] = Query(None, max_length=200),
     min_impressions: int = Query(seo_control.DEFAULT_MIN_IMPRESSIONS, ge=0, le=1_000_000),
     limit: int = Query(25, ge=1, le=seo_control.MAX_LIMIT),
+    offset: int = Query(0, ge=0, le=1_000_000),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_module("clients")),
 ):
@@ -80,7 +82,7 @@ async def client_seo_pages(
     try:
         return await seo_control.movers(
             db, client, "page", days=days, sort=sort, section=section, group=group, q=q,
-            min_impressions=min_impressions, limit=limit,
+            min_impressions=min_impressions, limit=limit, offset=offset,
         )
     except seo_control.PageGroupTimeout:
         raise HTTPException(status_code=422, detail=_GROUPS_TOO_SLOW)

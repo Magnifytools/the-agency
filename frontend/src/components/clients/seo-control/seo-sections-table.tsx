@@ -2,6 +2,8 @@ import type { ReactNode } from "react"
 import { FolderTree } from "lucide-react"
 import type { SeoSection } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Pagination } from "@/components/ui/pagination"
+import { useLocalPage } from "@/hooks/use-local-page"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DeltaBadge } from "@/components/clients/delta-badge"
 import { formatInt, formatPosition, formatShare } from "@/lib/seo-control"
@@ -28,6 +30,7 @@ export function SeoSectionsTable({
   sections, selected, onSelect, title = "Secciones", hint = "Pulsa una sección para ver sus páginas abajo.",
   emptyText = "Sin páginas con impresiones en la ventana.", columnLabel = "Sección", actions,
 }: Props) {
+  const paged = useLocalPage(sections)
   return (
     <Card>
       <CardHeader>
@@ -54,7 +57,7 @@ export function SeoSectionsTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sections.map((s) => {
+                {paged.rows.map((s) => {
                   const active = selected === s.key
                   return (
                     <TableRow key={s.key} className={active ? "bg-brand/10" : undefined}>
@@ -91,6 +94,7 @@ export function SeoSectionsTable({
                 })}
               </TableBody>
             </Table>
+            <Pagination page={paged.page} pageSize={paged.pageSize} total={paged.total} onPageChange={paged.setPage} />
           </div>
         )}
       </CardContent>
