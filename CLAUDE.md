@@ -782,8 +782,9 @@ admin_users, admin_settings
   cifrada (CHECK `v1:%`), `site_url` elegido de `GetUserSites`, `status`
   `ok|invalid` + `last_error` (una comprobación con clave rechazada la marca y una
   buena la limpia). Se conecta en Ajustes del cliente (`client-bing-card.tsx`,
-  `?tab=ajustes&foco=bing`); sólo admin conecta, cambia o quita; el resto ve el
-  estado. Desconectar no revoca nada en Bing (se dice).
+  `?tab=ajustes&foco=bing`); conecta, cambia o quita quien tiene escritura de
+  `clients` (los SEO, no sólo admin; antes era sólo admin, cambiado el 16 nov
+  2026); el resto ve el estado. Desconectar no revoca nada en Bing (se dice).
 - **En vivo, sin guardar cifras**: `services/bing_live.py` → `api/routes/client_bing.py`.
   `POST /api/clients/{id}/bing/check` y `/bing/page-queries` (lectura de `clients`,
   mismo 404, `bing_live_limiter` 10/min). POST a propósito: gasta cuota de Bing y

@@ -277,11 +277,11 @@ async def test_consultas_solo_de_las_urls_que_se_comprueban():
 # ── Rutas ────────────────────────────────────────────────────────────
 
 
-def _user(role=UserRole.member, module="clients"):
+def _user(role=UserRole.member, module="clients", write=False):
     user = MagicMock(spec=User)
     user.id = 9
     user.role = role
-    user.permissions = [SimpleNamespace(module=module, can_read=True, can_write=False)] if module else []
+    user.permissions = [SimpleNamespace(module=module, can_read=True, can_write=write)] if module else []
     return user
 
 
@@ -324,7 +324,7 @@ async def test_ruta_conexion_nunca_devuelve_la_clave(client_found):
     ("PUT", "/bing/connection", {"api_key": KEY, "site_url": SITE}),
     ("DELETE", "/bing/connection", None),
 ])
-async def test_gestionar_la_conexion_es_de_admin(client_found, method, path, body):
+async def test_gestionar_la_conexion_pide_escritura_de_clientes(client_found, method, path, body):
     response = await _request(_user(), _db(), method, path, json=body)
     assert response.status_code == 403
 
@@ -333,7 +333,8 @@ async def test_conectar_guarda_la_clave_cifrada(client_found, monkeypatch):
     monkeypatch.setattr(bing_live, "_transport", _bing({"GetUserSites": [{"Url": SITE, "IsVerified": True}]}))
     db = _db()
 
-    response = await _request(_user(role=UserRole.admin), db, "PUT", "/bing/connection",
+    # Un SEO sin rol de admin, con escritura de clientes.
+    response = await _request(_user(write=True), db, "PUT", "/bing/connection",
                               json={"api_key": f"  {KEY} ", "site_url": SITE})
 
     assert response.status_code == 200, response.text
@@ -356,7 +357,7 @@ async def test_conectar_un_sitio_que_la_cuenta_no_ve(client_found, monkeypatch):
 async def test_sitios_de_una_clave_con_el_sugerido(client_found, monkeypatch):
     monkeypatch.setattr(bing_live, "_transport", _bing({"GetUserSites": [
         {"Url": "https://otra.com/", "IsVerified": True}, {"Url": SITE, "IsVerified": True}]}))
-    response = await _request(_user(role=UserRole.admin), _db(), "POST", "/bing/connection/sites",
+    response = await _request(_user(write=True), _db(), "POST", "/bing/connection/sites",
                               json={"api_key": KEY})
     assert response.status_code == 200
     assert response.json() == {"sites": ["https://otra.com/", SITE], "suggested": SITE}
@@ -365,7 +366,7 @@ async def test_sitios_de_una_clave_con_el_sugerido(client_found, monkeypatch):
 async def test_desconectar_borra_la_fila(client_found):
     connection = _connection()
     db = _db(connection=connection)
-    response = await _request(_user(role=UserRole.admin), db, "DELETE", "/bing/connection")
+    response = await _request(_user(write=True), db, "DELETE", "/bing/connection")
     assert response.status_code == 200 and response.json()["connected"] is False
     db.delete.assert_awaited_once_with(connection)
 

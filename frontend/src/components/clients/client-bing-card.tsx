@@ -24,11 +24,12 @@ interface Props {
 
 /**
  * Cuenta de Bing Webmaster Tools de la web del cliente (cada web tiene la suya).
- * Sólo un admin conecta, cambia o quita la clave; el resto ve el estado. La
+ * Quien puede editar el cliente conecta, cambia o quita la clave; el resto ve el estado. La
  * clave se guarda cifrada y nunca vuelve del servidor.
  */
 export function ClientBingCard({ clientId }: Props) {
-  const { isAdmin } = useAuth()
+  const { hasPermission } = useAuth()
+  const canConnect = hasPermission("clients", true)
   const qc = useQueryClient()
   const queryKey = clientBingKeys.connection(clientId)
   const { data, isLoading } = useQuery({ queryKey, queryFn: () => clientBingApi.connection(clientId) })
@@ -69,7 +70,7 @@ export function ClientBingCard({ clientId }: Props) {
     onError: (e) => toast.error(getErrorMessage(e)),
   })
   const busy = sitesMut.isPending || connectMut.isPending || removeMut.isPending
-  const showForm = isAdmin && data && (!data.connected || editing)
+  const showForm = canConnect && data && (!data.connected || editing)
 
   return (
     <Card id="bing-webmaster" className="scroll-mt-8">
@@ -83,8 +84,8 @@ export function ClientBingCard({ clientId }: Props) {
           <p className="text-sm text-muted-foreground">Cargando…</p>
         ) : (
           <>
-            <ConnectionState data={data} isAdmin={isAdmin} />
-            {data.connected && isAdmin && !editing && (
+            <ConnectionState data={data} canConnect={canConnect} />
+            {data.connected && canConnect && !editing && (
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => setEditing(true)}>Cambiar clave</Button>
                 <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmRemove(true)}>Desconectar</Button>
@@ -157,11 +158,11 @@ export function ClientBingCard({ clientId }: Props) {
   )
 }
 
-function ConnectionState({ data, isAdmin }: { data: ClientBingConnection; isAdmin: boolean }) {
+function ConnectionState({ data, canConnect }: { data: ClientBingConnection; canConnect: boolean }) {
   if (!data.connected) {
     return (
       <p role="status" className="text-sm text-muted-foreground">
-        Sin conectar.{isAdmin ? "" : " Lo conecta un admin con la clave de la cuenta de Bing de esta web."}
+        Sin conectar.{canConnect ? "" : " Lo conecta quien puede editar este cliente, con la clave de la cuenta de Bing de esta web."}
       </p>
     )
   }
@@ -170,7 +171,7 @@ function ConnectionState({ data, isAdmin }: { data: ClientBingConnection; isAdmi
     <div role="status" className="space-y-1 text-sm">
       {data.status === "invalid" ? (
         <p className="text-red-400">
-          Bing ya no acepta la clave{data.last_error ? ` (${data.last_error})` : ""}. {isAdmin ? "Pega una nueva." : "Avisa a un admin."}
+          Bing ya no acepta la clave{data.last_error ? ` (${data.last_error})` : ""}. {canConnect ? "Pega una nueva." : "Avisa a quien lleva este cliente."}
         </p>
       ) : (
         <p className="text-green-500">Conectado: se puede comprobar en Control SEO.</p>

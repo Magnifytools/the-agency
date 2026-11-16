@@ -1,8 +1,8 @@
 """Bing Webmaster Tools de un cliente (`services/bing_live.py`).
 
 Conexión (una cuenta de Bing por web): verla pide lectura de `clients`;
-comprobar una clave, guardarla o quitarla, ser admin (guarda un secreto, como el
-Slack del cliente). La clave entra como `SecretStr` y no vuelve nunca.
+comprobar una clave, guardarla o quitarla, escritura de `clients` (la conectan
+los SEO, no sólo los admins). La clave entra como `SecretStr` y no vuelve nunca.
 
 Comprobación: lectura de `clients`, mismo 404 que `/{id}/status`. POST a
 propósito: gasta cuota de Bing y no debe repetirse sola al volver a la pestaña.
@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.api.deps import get_client_or_404, require_admin, require_module
+from backend.api.deps import get_client_or_404, require_module
 from backend.core.rate_limiter import bing_live_limiter
 from backend.core.security import encrypt_vault_secret
 from backend.db.database import get_db
@@ -84,11 +84,11 @@ async def bing_connection_sites(
     body: ApiKeyBody,
     response: Response,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    user: User = Depends(require_module("clients", write=True)),
 ):
     """Sitios verificados de la cuenta de esa clave, sin guardar nada, y cuál es el del cliente."""
     client = await get_client_or_404(client_id, db)
-    bing_live_limiter.check(admin.id, LIMIT_PER_MINUTE, 60)
+    bing_live_limiter.check(user.id, LIMIT_PER_MINUTE, 60)
     response.headers.update(_NO_STORE)
     try:
         sites = await bing_live.user_sites(_key(body))
@@ -103,11 +103,11 @@ async def put_bing_connection(
     body: ConnectBody,
     response: Response,
     db: AsyncSession = Depends(get_db),
-    admin: User = Depends(require_admin),
+    user: User = Depends(require_module("clients", write=True)),
 ):
     """Guarda la clave (cifrada) y el sitio. Sustituye la conexión anterior."""
     await get_client_or_404(client_id, db)
-    bing_live_limiter.check(admin.id, LIMIT_PER_MINUTE, 60)
+    bing_live_limiter.check(user.id, LIMIT_PER_MINUTE, 60)
     response.headers.update(_NO_STORE)
     api_key = _key(body)
     site_url = body.site_url.strip()
@@ -128,7 +128,7 @@ async def put_bing_connection(
     row.site_url = site_url
     row.status = "ok"
     row.last_error = None
-    row.connected_by = admin.id
+    row.connected_by = user.id
     row.connected_at = datetime.now(UTC)
     await db.commit()
     return await _view(db, row)
@@ -139,7 +139,7 @@ async def delete_bing_connection(
     client_id: int,
     response: Response,
     db: AsyncSession = Depends(get_db),
-    _admin: User = Depends(require_admin),
+    _user: User = Depends(require_module("clients", write=True)),
 ):
     """Olvida la clave. En Bing sigue viva: se borra allí si se quiere cortar el acceso."""
     await get_client_or_404(client_id, db)

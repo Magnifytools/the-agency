@@ -123,7 +123,7 @@ export function SeoControlTab({ client, onOpenSettings }: Props) {
       <div className="space-y-4">
         {header}
         <SeoControlEmpty data={data} isAdmin={isAdmin} canWriteClient={canWriteClient} onOpenSettings={onOpenSettings} />
-        <SeoBingCard clientId={client.id} isAdmin={isAdmin} />
+        <SeoBingCard clientId={client.id} canConnect={canWriteClient} />
       </div>
     )
   }
@@ -189,7 +189,7 @@ export function SeoControlTab({ client, onOpenSettings }: Props) {
           )}
         </>
       )}
-      <SeoBingCard clientId={client.id} isAdmin={isAdmin} />
+      <SeoBingCard clientId={client.id} canConnect={canWriteClient} />
     </div>
   )
 }
