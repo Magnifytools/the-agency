@@ -10,6 +10,8 @@ import { formatInt, formatPosition } from "@/lib/seo-control"
 import { getErrorMessage } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Pagination } from "@/components/ui/pagination"
+import { useLocalPage } from "@/hooks/use-local-page"
 
 const CAUSES: Record<SeoDecayRow["cause"], string> = {
   position: "Pierde posiciones",
@@ -54,6 +56,7 @@ export function SeoDecayCard({ clientId, canCreateTask, onCompare }: {
   })
 
   const data = query.data
+  const paged = useLocalPage(data?.rows ?? [])
   return (
     <Card>
       <CardHeader>
@@ -82,7 +85,7 @@ export function SeoDecayCard({ clientId, canCreateTask, onCompare }: {
                           </tr>
                         </thead>
                         <tbody>
-                          {data.rows.map((row) => (
+                          {paged.rows.map((row) => (
                             <tr key={row.page} className="border-t border-border align-top">
                               <td className="py-1.5 pr-3 max-w-[18rem]">
                                 <a href={row.page} target="_blank" rel="noreferrer" className="break-all hover:underline">{pathOf(row.page)}</a>
@@ -100,6 +103,7 @@ export function SeoDecayCard({ clientId, canCreateTask, onCompare }: {
                           ))}
                         </tbody>
                       </table>
+                      <Pagination page={paged.page} pageSize={paged.pageSize} total={paged.total} onPageChange={paged.setPage} />
                       {data.total != null && data.total > data.rows.length && <p className="mt-2 text-xs text-muted-foreground">Mostramos las {data.rows.length} que más clics han perdido de {data.total}.</p>}
                       {!canCreateTask && <p className="mt-2 text-xs text-muted-foreground">Para crear tareas de refresco hace falta permiso de escritura en Tareas. <Link to="/tasks" className="underline">Ver tareas</Link></p>}
                     </div>

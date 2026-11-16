@@ -20,7 +20,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
   ).filter((p) => p <= totalPages)
 
   return (
-    <div className="flex items-center justify-between py-4">
+    <div className="flex flex-wrap items-center justify-between gap-2 py-4">
       <span className="text-sm text-muted-foreground">
         {total} resultados — Página {page} de {totalPages}
       </span>

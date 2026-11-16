@@ -7,6 +7,7 @@ import type {
   SeoBrandFilter,
   SeoMoversParams,
   SeoMoversResponse,
+  SeoMoversSummary,
   SeoPageRow,
   SeoQueryRow,
   SeoWindowDays,
@@ -15,6 +16,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Pagination } from "@/components/ui/pagination"
 import { Select } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DeltaBadge } from "@/components/clients/delta-badge"
@@ -26,17 +28,17 @@ type Row = SeoQueryRow | SeoPageRow
 type Direction = "gain" | "loss"
 type Metric = "clicks" | "position"
 
-// Lo mismo que trae el resumen: con estos filtros no hace falta otra petición.
-const SUMMARY_LIMIT = 5
+// 10 por página. La primera, con los filtros por defecto, viene en el resumen
+// (`MOVERS_IN_SUMMARY`): no hace falta otra petición.
+const PAGE_SIZE = 10
 const DEFAULT_MIN_IMPRESSIONS = 30
-const LIMIT_STEPS = [SUMMARY_LIMIT, 25, 50, 100]
 const MIN_IMPRESSION_OPTIONS = [0, 10, 30, 100, 500]
 
 interface Props {
   clientId: number
   kind: Kind
   days: SeoWindowDays
-  summaryRows: { gainers: Row[]; losers: Row[]; trend_months?: string[] } | null
+  summaryRows: (SeoMoversSummary<Row> & { trend_months?: string[] }) | null
   section?: string | null
   sectionLabel?: string | null
   onClearSection?: () => void
@@ -68,21 +70,29 @@ export function SeoMoversTable({
   const [search, setSearch] = useState("")
   const [q, setQ] = useState("")
   const [minImpressions, setMinImpressions] = useState(DEFAULT_MIN_IMPRESSIONS)
-  const [limit, setLimit] = useState(SUMMARY_LIMIT)
+  const [page, setPage] = useState(1)
+  // La sección o el grupo los elige la tarjeta de arriba: al cambiar, a la página 1.
+  const scope = `${section ?? ""}|${group ?? ""}`
+  const [pagedScope, setPagedScope] = useState(scope)
+  if (pagedScope !== scope) {
+    setPagedScope(scope)
+    setPage(1)
+  }
   const [historyQuery, setHistoryQuery] = useState<string | null>(null)
 
   const params: SeoMoversParams = {
     days,
     sort: `${metric}_${direction}`,
     min_impressions: minImpressions,
-    limit,
+    limit: PAGE_SIZE,
+    ...(page > 1 ? { offset: (page - 1) * PAGE_SIZE } : {}),
     ...(kind === "queries" && brand !== "all" ? { brand } : {}),
     ...(kind === "pages" && section ? { section } : {}),
     ...(kind === "pages" && group ? { group } : {}),
     ...(q ? { q } : {}),
   }
   const fromSummary =
-    summaryRows != null && metric === "clicks" && limit === SUMMARY_LIMIT && minImpressions === DEFAULT_MIN_IMPRESSIONS
+    summaryRows != null && metric === "clicks" && page === 1 && minImpressions === DEFAULT_MIN_IMPRESSIONS
     && brand === "all" && !q && !section && !group
 
   const listQuery = useQuery<SeoMoversResponse<Row>>({
@@ -97,13 +107,13 @@ export function SeoMoversTable({
   const rows: Row[] = fromSummary
     ? (direction === "gain" ? summaryRows.gainers : summaryRows.losers)
     : listQuery.data?.rows ?? []
-  const total = fromSummary ? null : listQuery.data?.total ?? null
+  const total = fromSummary
+    ? (direction === "gain" ? summaryRows.gainers_total : summaryRows.losers_total)
+    : listQuery.data?.total ?? 0
   const trendMonths = (fromSummary ? summaryRows.trend_months : listQuery.data?.trend_months) ?? []
   const showTrend = kind === "queries" && trendMonths.length > 0
-  const nextLimit = LIMIT_STEPS.find((step) => step > limit)
-  const canShowMore = nextLimit != null && (total == null ? rows.length >= limit : total > rows.length)
 
-  const resetPaging = () => setLimit(SUMMARY_LIMIT)
+  const resetPaging = () => setPage(1)
   const submitSearch = (event: FormEvent) => {
     event.preventDefault()
     setQ(search.trim())
@@ -243,12 +253,8 @@ export function SeoMoversTable({
             </Table>
           </div>
         )}
-        {canShowMore && rows.length > 0 && (
-          <div className="mt-3 flex justify-center">
-            <Button size="sm" variant="ghost" onClick={() => setLimit(nextLimit)} disabled={listQuery.isFetching}>
-              Ver más
-            </Button>
-          </div>
+        {rows.length > 0 && (
+          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         )}
       </CardContent>
       {kind === "queries" && (

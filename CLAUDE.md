@@ -813,7 +813,13 @@ admin_users, admin_settings
   clasificar + 16 semanas, secciones, 5 que más suben/bajan),
   `/seo/queries` y `/seo/pages` (`sort=clicks_gain|clicks_loss|position_gain|position_loss`,
   `brand` sólo en consultas, `section` sólo en páginas, `q`, `min_impressions`
-  (30; por posición vale en las dos ventanas, por clics en la mayor), `limit` ≤ 100).
+  (30; por posición vale en las dos ventanas, por clics en la mayor), `limit` ≤ 100,
+  `offset`; `total` = todas las que pasan los filtros).
+  **Listados de 10 en 10** (sugerencia de Nacho, 16 nov 2026: la pestaña no
+  acababa y Bing quedaba al fondo): Consultas y Páginas paginan en el servidor
+  (`offset`; la primera página con los filtros por defecto sale del resumen, que
+  trae 10 por lado y `gainers_total`/`losers_total`); Secciones, Grupos y
+  Páginas que pierden tráfico, en el navegador (`hooks/use-local-page.ts`).
   `status`: `no_property | not_connected | reconnect_required | not_synced | backfilling | error | ok`.
 - **Ventana**: `seo_window(end, days)` es el MISMO helper que usa
   `client_status._gsc_windows` (28 días; la anterior, los 28 de antes). Aquí

@@ -147,6 +147,8 @@ async def test_resumen_suma_la_ventana_y_pondera_la_posicion(admin_client, acme)
     losers = body["queries"]["losers"]
     assert [r["query"] for r in losers] == ["zapatos azules", "zapatos rojos"]
     assert losers[0]["state"] == "lost" and losers[1]["position_delta"] == 2.0
+    # Cuántas hay en total: la tabla pagina a partir de la primera página del resumen.
+    assert (body["queries"]["gainers_total"], body["queries"]["losers_total"]) == (3, 2)
 
 
 async def test_la_ventana_es_la_del_estado_del_cliente(admin_client, db_session, acme):
@@ -186,6 +188,11 @@ async def test_consultas_por_marca_busqueda_y_limite(admin_client, acme):
 
     body = (await admin_client.get(url, params={"brand": "brand", "limit": 1})).json()
     assert body["total"] == 2 and [r["query"] for r in body["rows"]] == ["acme tienda"]
+    body = (await admin_client.get(url, params={"brand": "brand", "limit": 1, "offset": 1})).json()
+    assert body["total"] == 2 and [r["query"] for r in body["rows"]] == ["Acme Tienda"]
+    body = (await admin_client.get(url, params={"brand": "brand", "limit": 1, "offset": 5})).json()
+    assert body["total"] == 2 and body["rows"] == []
+    assert (await admin_client.get(url, params={"offset": -1})).status_code == 422
 
     body = (await admin_client.get(url, params={"sort": "clicks_loss", "q": "ZAPATOS"})).json()
     assert [r["query"] for r in body["rows"]] == ["zapatos azules", "zapatos rojos"]

@@ -57,7 +57,7 @@ WINDOW_CHOICES = (7, 28)
 TREND_WEEKS = 16
 # Mínimo de impresiones para que una consulta/página cuente como "se mueve".
 DEFAULT_MIN_IMPRESSIONS = 30
-MOVERS_IN_SUMMARY = 5
+MOVERS_IN_SUMMARY = 10  # la primera página de Consultas y Páginas (10 por página)
 MAX_LIMIT = 100
 
 # Términos de marca.
@@ -992,8 +992,12 @@ async def summary(db, client: Client, *, days: int = SEO_WINDOW_DAYS) -> dict:
     query_rows = _query_rows(queries, matcher)
     page_rows = _page_rows(pages, source.site_url)
     query_clicks = sum(a.clicks for a in queries.values())
-    query_gainers = _public(select_movers(query_rows, "clicks_gain")[:MOVERS_IN_SUMMARY])
-    query_losers = _public(select_movers(query_rows, "clicks_loss")[:MOVERS_IN_SUMMARY])
+    query_gain = select_movers(query_rows, "clicks_gain")
+    query_loss = select_movers(query_rows, "clicks_loss")
+    page_gain = select_movers(page_rows, "clicks_gain")
+    page_loss = select_movers(page_rows, "clicks_loss")
+    query_gainers = _public(query_gain[:MOVERS_IN_SUMMARY])
+    query_losers = _public(query_loss[:MOVERS_IN_SUMMARY])
     trend_months = await _attach_trends(db, source, query_gainers + query_losers)
     return {
         **_blocked_payload(source),
@@ -1006,10 +1010,13 @@ async def summary(db, client: Client, *, days: int = SEO_WINDOW_DAYS) -> dict:
             "trend": _trend(source.end, trend_queries, trend_totals, matcher),
         },
         "sections": _sections(pages, source.site_url),
-        "queries": {"gainers": query_gainers, "losers": query_losers, "trend_months": trend_months},
+        "queries": {"gainers": query_gainers, "losers": query_losers, "trend_months": trend_months,
+                    "gainers_total": len(query_gain), "losers_total": len(query_loss)},
         "pages": {
-            "gainers": _public(select_movers(page_rows, "clicks_gain")[:MOVERS_IN_SUMMARY]),
-            "losers": _public(select_movers(page_rows, "clicks_loss")[:MOVERS_IN_SUMMARY]),
+            "gainers": _public(page_gain[:MOVERS_IN_SUMMARY]),
+            "losers": _public(page_loss[:MOVERS_IN_SUMMARY]),
+            "gainers_total": len(page_gain),
+            "losers_total": len(page_loss),
         },
         "coverage": {
             "query_clicks_share": round(min(query_clicks / totals.clicks, 1.0), 4) if totals.clicks else None,
@@ -1021,9 +1028,10 @@ async def movers(
     db, client: Client, dimension: Literal["query", "page"], *,
     days: int = SEO_WINDOW_DAYS, sort: MoverSort = "clicks_gain", brand: BrandFilter = "all",
     q: str | None = None, min_impressions: int = DEFAULT_MIN_IMPRESSIONS,
-    limit: int = 25, section: str | None = None, group: str | None = None,
+    limit: int = 25, offset: int = 0, section: str | None = None, group: str | None = None,
 ) -> dict:
-    """Lista completa (paginada por `limit`) de consultas o páginas que se mueven.
+    """Una página (`offset`, `limit`) de las consultas o páginas que se mueven;
+    `total` cuenta todas las que pasan los filtros.
 
     Las consultas llevan `trend` (posición de los últimos 6 meses guardados,
     `trend_months`); las páginas, su grupo de URL (`group`).
@@ -1050,7 +1058,8 @@ async def movers(
     if needle:
         rows = [r for r in rows if needle in normalize(r["key"])]
     picked = select_movers(rows, sort, min_impressions=min_impressions)
-    page = _public(picked[:min(limit, MAX_LIMIT)])
+    start = max(offset, 0)
+    page = _public(picked[start:start + min(limit, MAX_LIMIT)])
     out = {
         **_blocked_payload(source),
         "window": window.as_dict(),
