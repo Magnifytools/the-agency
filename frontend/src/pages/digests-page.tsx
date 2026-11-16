@@ -771,6 +771,7 @@ function DigestList() {
         title={`Confirmar entrega de la versión #${digestToDeliver?.id ?? ""}`}
         description={`Confirma solo si tú u otra persona entregaste este resumen de ${digestToDeliver?.client_name || "este cliente"} fuera de The Agency. Se puede corregir desde el editor.`}
         confirmLabel="Confirmar entrega"
+        tone="default"
         onConfirm={() => {
           if (digestToDeliver) deliverMutation.mutate(digestToDeliver)
           setDigestToDeliver(null)

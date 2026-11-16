@@ -12,6 +12,8 @@ interface ConfirmDialogProps {
   cancelLabel?: string
   /** Contenido extra entre la descripción y los botones (p. ej. una casilla). */
   children?: ReactNode
+  /** Rojo por defecto (borrar, descartar). "default" para confirmar algo positivo. */
+  tone?: "destructive" | "default"
 }
 
 export function ConfirmDialog({
@@ -23,6 +25,7 @@ export function ConfirmDialog({
   confirmLabel = "Confirmar",
   cancelLabel = "Cancelar",
   children,
+  tone = "destructive",
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -36,7 +39,7 @@ export function ConfirmDialog({
           {cancelLabel}
         </Button>
         <Button
-          variant="destructive"
+          variant={tone}
           onClick={() => {
             onConfirm()
             onOpenChange(false)
