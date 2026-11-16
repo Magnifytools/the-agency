@@ -278,7 +278,11 @@ it("marca como entregado desde la lista, con confirmación (antes sólo se veía
   expect(within(delivered).queryByRole("button", {name: /Marcar como entregado/})).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole("button", {name: "Marcar como entregado el resumen de Other (versión #20)"}))
   expect(mocks.deliver).not.toHaveBeenCalled()
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", {name: "Confirmar entrega"}))
+  const confirm = within(screen.getByRole("dialog")).getByRole("button", {name: "Confirmar entrega"})
+  // Es una acción positiva: el botón no va en rojo de borrar.
+  expect(confirm).toHaveClass("bg-brand")
+  expect(confirm).not.toHaveClass("bg-destructive")
+  fireEvent.click(confirm)
   await waitFor(() => expect(mocks.deliver).toHaveBeenCalledWith(20, "confirmed", expect.any(String)))
   await waitFor(() => expect(mocks.api.list.mock.calls.length).toBeGreaterThan(1))
 })
