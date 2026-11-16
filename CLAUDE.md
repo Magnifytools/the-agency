@@ -372,8 +372,9 @@ admin_users, admin_settings
   proyecto la exige (mismas reglas que el select de estado).
 - **Edición en línea**: en la Lista se cambian sin abrir la tarea prioridad,
   responsable (sólo personas activas), estimación, planificada, fecha límite y
-  título (lápiz al lado; Enter guarda, Escape no). En Mi agenda, prioridad y
-  "Mover a…" (Hoy, Mañana, El lunes, otro día, quitar). Sin escritura en `tasks`
+  título (lápiz al lado; Enter guarda, Escape no). En Mi agenda, prioridad,
+  "Mover a…" (Hoy, Mañana, El lunes, otro día, quitar) y eliminar (papelera de la
+  tarjeta, el mismo diálogo que la Lista; se deshace con ⌘Z). Sin escritura en `tasks`
   se ven los valores, sin botón. Piezas: `components/ui/popover.tsx`
   (`@floating-ui/react`: posición, Escape/clic fuera, foco) e `inline-edit.tsx`
   (`InlineSelect`, `InlineDate`, `InlineMinutes`, `InlineTextInput`); las de

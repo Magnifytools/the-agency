@@ -913,6 +913,7 @@ export default function TasksPage() {
             }}
             onUpdate={updateTask}
             onMove={(task, orderedIds, scheduledDate) => dragTask(task, orderedIds, scheduledDate === undefined ? {} : { scheduledDate })}
+            onDelete={(task) => setDeleteId(task.id)}
             onOpenEdit={openEdit}
             canCompleteReviewedTask={(task) => !!(isAdmin || task.project_review_owner_id === user?.id)}
             onReviewCarryover={setCarryoverTask}

@@ -24,6 +24,20 @@ const task = (id: number, title: string, overrides: Partial<Task> = {}): Task =>
 const page = (items: Task[], total = items.length): PaginatedResponse<Task> => ({ items, total, page: 1, page_size: 25 })
 
 describe("MyDayView", () => {
+  it("elimina una tarea sin salir de Mi agenda (sugerencia de Nacho)", async () => {
+    const onDelete = vi.fn()
+    const onOpenEdit = vi.fn()
+    render(<MyDayView planned={page([task(1, "Sobra")])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={onOpenEdit} onReviewCarryover={vi.fn()} onDelete={onDelete} canWrite />)
+    await userEvent.click(screen.getByRole("button", { name: "Eliminar Sobra" }))
+    expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }))
+    expect(onOpenEdit).not.toHaveBeenCalled()
+  })
+
+  it("sin escritura no ofrece eliminar", () => {
+    render(<MyDayView planned={page([task(1, "Ajena")])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} onDelete={vi.fn()} canWrite={false} />)
+    expect(screen.queryByRole("button", { name: "Eliminar Ajena" })).not.toBeInTheDocument()
+  })
+
   it("distinguishes task statuses with labeled, tinted controls", () => {
     render(<MyDayView planned={page([task(1, "Por empezar"), task(2, "En marcha", { status: "in_progress" })])} carryover={page([])} unplanned={page([])} completed={page([])} retired={page([])} onLoadMore={vi.fn()} onStatusChange={vi.fn()} onOpenEdit={vi.fn()} onReviewCarryover={vi.fn()} canWrite />)
 

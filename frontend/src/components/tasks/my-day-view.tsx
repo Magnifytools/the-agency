@@ -9,7 +9,7 @@ import type { PaginatedResponse, Task, TaskStatus } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { TimerButton } from "@/components/timer/timer-button"
 import { Button } from "@/components/ui/button"
-import { Pencil, Eye, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat, CalendarClock } from "lucide-react"
+import { Pencil, Eye, CheckCircle2, Clock, AlertTriangle, CalendarX, RotateCcw, Repeat, CalendarClock, Trash2 } from "lucide-react"
 import { InlineDate } from "@/components/ui/inline-edit"
 import { TaskPriorityField, type TaskFieldUpdate } from "@/components/tasks/task-inline-fields"
 import { formatMinutes } from "@/lib/inline-edit"
@@ -43,9 +43,11 @@ interface Props {
   onUpdate?: (task: Task, update: Parameters<TaskFieldUpdate>[0]) => void
   /** Arrastrar: la sección donde queda (en orden) y, si entra en hoy, el día. */
   onMove?: (task: Task, orderedIds: number[], scheduledDate?: string) => void
+  /** Eliminar sin salir de Mi agenda (confirma y se deshace con ⌘Z). */
+  onDelete?: (task: Task) => void
 }
 
-export function MyDayView({ planned, carryover, unplanned, followups = { items: [], total: 0, page: 1, page_size: 25 }, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false, canCompleteReviewedTask = () => true, onUpdate, onMove }: Props) {
+export function MyDayView({ planned, carryover, unplanned, followups = { items: [], total: 0, page: 1, page_size: 25 }, completed, retired, isLoadingMore, onLoadMore, onStatusChange, onOpenEdit, onReviewCarryover, retiredLoading = false, retiredError = false, onRetryRetired, canWrite = false, canCompleteReviewedTask = () => true, onUpdate, onMove, onDelete }: Props) {
   const today = businessDateString()
   const [showRetired, setShowRetired] = useState(false)
 
@@ -236,6 +238,17 @@ export function MyDayView({ planned, carryover, unplanned, followups = { items: 
             >
               {canWrite ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
             </Button>
+            {canWrite && onDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Eliminar ${task.title}`}
+                className="h-9 w-9 sm:h-7 sm:w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                onClick={() => onDelete(task)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
           {carryover && canWrite && (
             <Button variant="outline" size="sm" className="col-span-2 sm:col-span-1" onClick={(event) => { event.stopPropagation(); onReviewCarryover(task) }}>
