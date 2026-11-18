@@ -112,6 +112,56 @@ async def _reset_advanced_tasks():
             )
 
 
+async def _start_planned_tasks():
+    """Pasar a "En curso" las tareas pendientes cuya fecha planificada ya llegó.
+
+    Pendiente es el backlog sin fecha (criterio de Nacho, 18 nov 2026): el día
+    de su Planificada la tarea arranca y sigue En curso hasta que cambie de
+    situación. Las escrituras ya lo aplican al poner la fecha
+    (``task_lifecycle.apply_planned_start``); esto cubre el paso del día. UPDATE
+    masivo sin actor: no entra en el Deshacer de nadie, como las avanzadas.
+    """
+    from sqlalchemy import select, update
+    from backend.db.database import async_session
+    from backend.db.models import Task, TaskStatus
+
+    today = business_today()
+
+    async with async_session() as session:
+        eligible = (
+            Task.retired_at.is_(None),
+            Task.status.in_((TaskStatus.pending, TaskStatus.backlog)),
+            Task.is_recurring.is_(False),
+            Task.scheduled_date <= today,
+        )
+        # Mismo orden de bloqueo que la barrida de avanzadas y el cambio en bloque.
+        ids = list(
+            (
+                await session.execute(
+                    select(Task.id).where(*eligible).order_by(Task.id).with_for_update()
+                )
+            ).scalars()
+        )
+        if not ids:
+            return
+        result = await session.execute(
+            update(Task)
+            .where(Task.id.in_(ids), *eligible)
+            .values(status=TaskStatus.in_progress)
+        )
+        if result.rowcount:
+            await session.commit()
+            logging.info(
+                "Started %d planned task(s): 'Pendiente' -> 'En curso'.", result.rowcount
+            )
+
+
+async def _daily_task_status_rollover():
+    """La pasada de las 00:01: primero las avanzadas, después las del día."""
+    await _reset_advanced_tasks()
+    await _start_planned_tasks()
+
+
 def _is_qa_user(user) -> bool:
     """Return True for test/QA users that should never get notifications."""
     _name_lower = (user.full_name or "").lower()
@@ -400,7 +450,7 @@ def start_background_tasks() -> list[asyncio.Task]:
         "incidents": ("operational-incidents", _incident_once),
         "engine": ("engine-sync", _engine_sync_once),
         "holded": ("holded-sync", _holded_sync_once),
-        "advanced_reset": ("advanced-reset", _reset_advanced_tasks),
+        "advanced_reset": ("advanced-reset", _daily_task_status_rollover),
         "recurrence": ("recurring-reconcile", _generate_recurring_instances),
         "scheduled_communications": (
             "scheduled-communications", _scheduled_communications_once,

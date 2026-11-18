@@ -22,7 +22,9 @@ from backend.services.project_lifecycle import (
 )
 from backend.services.project_owner import validate_project_owner
 from backend.services.recurrence import validate_recurrence_rule
-from backend.services.task_lifecycle import stamp_task_status, validate_task_waiting
+from backend.services.task_lifecycle import (
+    apply_planned_start, stamp_task_status, validate_task_waiting,
+)
 from backend.services.task_notifications import notify_task_status_change
 from backend.services.task_review import validate_project_review, validate_task_review
 from backend.services.task_scope import validate_client_exists, validate_task_scope
@@ -173,6 +175,7 @@ async def create_task(
     data = dict(data)
     _prepare_recurrence(data)
     _validate_procedure(data)
+    apply_planned_start(data)
     await validate_task_scope(db, data)
     actual = data.get("actual_minutes")
     await require_current_write(db, actor, {"tasks", "timesheet"} if actual else {"tasks"})
@@ -275,6 +278,8 @@ async def update_task(
             changed_fields.add("recurrence_paused")
     if task.retired_at is not None and changed_fields - RETIRED_TASK_EDITABLE_FIELDS:
         raise HTTPException(409, "Restaura la tarea antes de cambiar su trabajo operativo")
+    if task.retired_at is None:
+        apply_planned_start(data, task)
     await validate_task_waiting(db, data, existing=task)
     _validate_procedure(data, existing=task)
     _prepare_recurrence(data, existing=task)

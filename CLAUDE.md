@@ -365,6 +365,23 @@ admin_users, admin_settings
   las horas reales. `POST /api/timer/stop` acepta `minutes` (1-720); sin él,
   lo contado. Se resuelve solo al parar.
 
+## Estados de tarea (criterio de Nacho, 18 nov 2026)
+- **Pendiente** (`pending` y su gemelo interno `backlog`) = backlog SIN fecha.
+  **En curso** = se trabaja en ella; **En espera** = depende de otra persona;
+  **En revisión** = falta aprobación (nuestra o del cliente); **Hecho**.
+- "Fecha de inicio" es la **Planificada** (`scheduled_date`; `start_date` no se
+  edita en la interfaz). Con la Planificada de hoy o pasada, una pendiente pasa a
+  En curso: `task_lifecycle.apply_planned_start` en `create_task`/`update_task`
+  (panel, tablero, Mi agenda, en bloque, MCP) y, al cambiar el día, la pasada de
+  las 00:01 (job `advanced_reset`, lock 5, `_start_planned_tasks`; sin actor, fuera
+  del Deshacer). Gana lo que se acaba de cambiar: poner la fecha → En curso;
+  elegir Pendiente con esa fecha → se quita la fecha. Nunca en plantillas
+  recurrentes; sus repeticiones nacen ya En curso. El panel avisa antes de guardar
+  (`plannedStartNotice`, gemelo en `lib/task-status.ts`).
+- **Cierre del día** (`daily_facts._next_step`): Pendiente nunca sale; En curso
+  sale siempre (sin fecha, "En curso"); En espera, como su propio hecho; En
+  revisión, sólo con fecha hasta mañana. Los textos no dicen "Pendiente".
+
 ## Visión general, Tareas y navegación
 - **Visión general** no repite Mi agenda: quien no es admin ve sus horas de la
   semana, deberes y un enlace a Mi agenda. "Hoy" por persona, sólo admins.

@@ -42,7 +42,7 @@ import { useBusinessDate } from "@/hooks/use-business-date";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import { UploadProgress } from "@/components/ui/upload-progress";
 import { businessDateString, formatCivilDate, parseApiInstant } from "@/lib/dates";
-import { taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status";
+import { plannedStartNotice, taskStatusPresentation, taskStatusSelectClass } from "@/lib/task-status";
 import { PublishCheckBlock } from "@/components/tasks/publish-check-block";
 import { CommentInput } from "@/components/tasks/comment-input";
 import { mentionCandidates, mentionName, splitMentions } from "@/lib/mentions";
@@ -498,6 +498,10 @@ export function TaskPanel({
   };
 
   const loadedTask = taskQuery.data;
+  // Mientras carga una tarea existente no hay con qué comparar el borrador.
+  const plannedStart = loadedTask?.retired_at || (taskId && !loadedTask)
+    ? null
+    : plannedStartNotice({ ...draft, status: draft.status ?? "pending" }, loadedTask, businessToday);
   const isRetired = !!loadedTask?.retired_at;
   const canOperate = canWrite && !isRetired;
   const savedProcedureText = loadedTask?.procedure_text ?? null;
@@ -695,6 +699,7 @@ export function TaskPanel({
                   <option value="completed">{requiresReview && !mayCompleteReviewedTask ? "Enviar a revisión" : "Hecho"}</option>
                 </Select>
                 {statusPresentation.detail && <p className="mt-1 text-xs text-muted-foreground">{statusPresentation.detail}</p>}
+                {plannedStart && <p role="status" className="mt-1 text-xs text-muted-foreground">{plannedStart}</p>}
                 {requiresReview && !mayCompleteReviewedTask && (
                   <p role="status" className="mt-1 text-xs text-muted-foreground">
                     El responsable del proyecto revisa y completa esta tarea.

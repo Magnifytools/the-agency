@@ -8,6 +8,7 @@ from sqlalchemy import Date, and_, cast, or_, select
 
 from backend.core.modules import is_enabled
 from backend.db.models import (
+    IN_PROGRESS_TASK_STATUSES,
     Client,
     Project,
     Task,
@@ -97,6 +98,33 @@ def _fact(kind, row, *, key, minutes=None, detail=None, allow_task_link=True):
     )
 
 
+#: Trabajo abierto que puede salir como "próximo paso" en el cierre del día.
+#: Pendiente (y su gemelo interno backlog) es el backlog sin fecha y no sale
+#: (criterio de Nacho, 18 nov 2026); En espera sale como su propio hecho.
+_OPEN_WORK = (*IN_PROGRESS_TASK_STATUSES, TaskStatus.in_review)
+
+
+def _next_step(row, day: date, tomorrow: date) -> tuple[str, str] | None:
+    """Clave estable y texto del próximo paso, o None si hoy no toca contarlo.
+
+    Una tarea En curso sale siempre ("En curso" si no hay nada más que decir);
+    una en revisión, sólo con la fecha planificada o límite hasta mañana. Los
+    textos no dicen "Pendiente": ese es otro estado.
+    """
+    if row.scheduled_date is not None and row.scheduled_date < day:
+        return row.scheduled_date.isoformat(), f"Planificada el {row.scheduled_date.isoformat()}"
+    if row.scheduled_date == tomorrow:
+        return tomorrow.isoformat(), f"Planificada para {tomorrow.isoformat()}"
+    due = row.due_date.date() if row.due_date else None
+    if row.scheduled_date is None and due is not None and due <= tomorrow:
+        return due.isoformat(), (
+            f"Vence {tomorrow.isoformat()}" if due == tomorrow else f"Vencida el {due.isoformat()}"
+        )
+    if row.status == TaskStatus.in_progress:
+        return "in_progress", "En curso"
+    return None
+
+
 async def collect_daily_facts(db, actor, day: date) -> dict:
     """Collect every canonical fact with a constant number of SQL statements."""
     access = await _access(db, actor)
@@ -156,15 +184,10 @@ async def collect_daily_facts(db, actor, day: date) -> dict:
                         ),
                         and_(
                             Task.retired_at.is_(None),
-                            Task.status.notin_(
-                                (
-                                    TaskStatus.completed,
-                                    TaskStatus.waiting,
-                                    TaskStatus.backlog,
-                                )
-                            ),
+                            Task.status.in_(_OPEN_WORK),
                             Task.is_recurring.is_(False),
                             or_(
+                                Task.status.in_(IN_PROGRESS_TASK_STATUSES),
                                 Task.scheduled_date <= tomorrow,
                                 cast(Task.due_date, Date) <= tomorrow,
                             ),
@@ -211,50 +234,18 @@ async def collect_daily_facts(db, actor, day: date) -> dict:
                         detail=f"En espera de {row.waiting_for}{suffix}",
                     )
                 )
-            if (
-                row.status
-                not in (TaskStatus.completed, TaskStatus.waiting, TaskStatus.backlog)
-                and not row.is_recurring
-                and not row.scheduled_date is None
-            ):
-                if row.scheduled_date < day:
+            if row.status in _OPEN_WORK and not row.is_recurring:
+                step = _next_step(row, day, tomorrow)
+                if step is not None:
+                    step_key, detail = step
                     facts.append(
                         _fact(
                             "next_step",
                             row,
-                            key=f"next_step:{row.task_id}:{row.scheduled_date.isoformat()}",
-                            detail=f"Pendiente desde {row.scheduled_date.isoformat()}",
+                            key=f"next_step:{row.task_id}:{step_key}",
+                            detail=detail,
                         )
                     )
-                elif row.scheduled_date == tomorrow:
-                    facts.append(
-                        _fact(
-                            "next_step",
-                            row,
-                            key=f"next_step:{row.task_id}:{tomorrow.isoformat()}",
-                            detail=f"Planificada para {tomorrow.isoformat()}",
-                        )
-                    )
-            elif (
-                row.status
-                not in (TaskStatus.completed, TaskStatus.waiting, TaskStatus.backlog)
-                and not row.is_recurring
-                and row.due_date
-                and row.due_date.date() <= tomorrow
-            ):
-                due = row.due_date.date()
-                facts.append(
-                    _fact(
-                        "next_step",
-                        row,
-                        key=f"next_step:{row.task_id}:{due.isoformat()}",
-                        detail=(
-                            f"Vence {tomorrow.isoformat()}"
-                            if due == tomorrow
-                            else f"Pendiente desde vencimiento {due.isoformat()}"
-                        ),
-                    )
-                )
 
     if timesheet_read:
         time_rows = (

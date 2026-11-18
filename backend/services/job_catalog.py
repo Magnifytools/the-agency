@@ -34,8 +34,9 @@ def job_definitions() -> tuple[JobDefinition, ...]:
         JobDefinition(JobSpec("holded", 4, 86400, 900, retry_seconds=1800), "Actualizar datos de Holded",
                       "Sincroniza contactos, facturas y gastos de la integración configurada.",
                       None if settings.HOLDED_API_KEY else "Holded no está conectado."),
-        JobDefinition(JobSpec("advanced_reset", 5, 86400, daily=True), "Continuar tareas avanzadas",
-                      "Devuelve a En curso las tareas avanzadas en días anteriores."),
+        JobDefinition(JobSpec("advanced_reset", 5, 86400, daily=True), "Poner en curso las tareas del día",
+                      "Devuelve a En curso las tareas avanzadas en días anteriores y pasa a En curso "
+                      "las pendientes cuya fecha planificada ha llegado."),
         JobDefinition(JobSpec("recurrence", 6, 300), "Generar tareas recurrentes",
                       "Revisa las reglas elegibles de hoy. Las pausas y reglas pendientes se consultan en sus plantillas."),
         JobDefinition(JobSpec("scheduled_communications", 8, 60), "Preparar avisos programados",
