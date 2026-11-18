@@ -92,11 +92,14 @@ async def test_assignee_schedule_exception_does_not_grant_other_task_writes(db_s
     await update_task(db_session, task, {"scheduled_date": business_today()}, actor=member_user,
                       allow_assignee_schedule=True)
     assert task.scheduled_date == business_today()
+    # Planificarla para hoy la arranca (Pendiente = sin fecha): es la regla, no
+    # un permiso de estado; el mismo cambio lo haría la pasada de las 00:01.
+    assert task.status == TaskStatus.in_progress
     with pytest.raises(HTTPException) as denied:
         await update_task(db_session, task, {"scheduled_date": business_today(), "status": TaskStatus.completed},
                           actor=member_user, allow_assignee_schedule=True)
     assert denied.value.status_code == 403
-    assert task.status == TaskStatus.pending
+    assert task.status == TaskStatus.in_progress
 
 
 @pytest.mark.asyncio

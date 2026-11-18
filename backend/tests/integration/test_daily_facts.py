@@ -53,7 +53,7 @@ async def test_daily_facts_keep_real_sources_and_exact_minutes(
     )
     tomorrow = Task(
         title="Siguiente",
-        status=TaskStatus.pending,
+        status=TaskStatus.in_progress,
         assigned_to=admin_user.id,
         scheduled_date=day + timedelta(days=1),
     )
