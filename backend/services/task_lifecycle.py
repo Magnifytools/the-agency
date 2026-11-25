@@ -1,4 +1,6 @@
 """State invariants shared by interactive and automated task mutations."""
+from datetime import date
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError
@@ -102,6 +104,42 @@ async def validate_task_waiting(
         raise
     if active_user is None:
         raise HTTPException(422, "La persona responsable no existe o está inactiva")
+
+
+_NOT_STARTED = (TaskStatus.pending.value, TaskStatus.backlog.value)
+
+
+def apply_planned_start(data: dict, existing: Task | None = None) -> None:
+    """Pendiente es el backlog sin fecha: con la Planificada ya llegada, la tarea
+    está En curso (criterio de Nacho, 18 nov 2026).
+
+    Gana lo que la persona acaba de cambiar. Si pone (o la tarea nace con) una
+    Planificada de hoy o pasada, pasa a En curso. Si lo que elige es Pendiente
+    en una tarea con esa fecha, se quita la fecha: vuelve al backlog. Si no toca
+    ninguna de las dos, no se corrige aquí (lo hace la pasada de madrugada).
+    Nunca en plantillas recurrentes. El panel manda el borrador entero, así que
+    "cambiar" es tener un valor distinto del guardado, no venir en ``data``.
+    """
+    def current(field, default=None):
+        if field in data:
+            return data[field]
+        return getattr(existing, field) if existing is not None else default
+
+    status = _status_value(current("status", TaskStatus.pending))
+    scheduled = current("scheduled_date")
+    if status not in _NOT_STARTED or not isinstance(scheduled, date) or scheduled > business_today():
+        return
+    if current("is_recurring", False):
+        return
+    if existing is None:
+        data["status"] = TaskStatus.in_progress
+        return
+    date_changed = "scheduled_date" in data and data["scheduled_date"] != existing.scheduled_date
+    status_changed = "status" in data and status != _status_value(existing.status)
+    if date_changed:
+        data["status"] = TaskStatus.in_progress
+    elif status_changed:
+        data["scheduled_date"] = None
 
 
 def stamp_task_status(task: Task, previous_status: TaskStatus | str | None = None) -> None:

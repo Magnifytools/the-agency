@@ -57,3 +57,29 @@ export function taskStatusPresentation(
 export function taskStatusFilterValue(group: TaskStatusGroup) {
   return taskStatusGroups.find((item) => item.status === group)?.rawStatuses.join(",") ?? group
 }
+
+interface PlannedStartFields {
+  status: TaskStatus
+  scheduled_date?: string | null
+  is_recurring?: boolean | null
+}
+
+/**
+ * Gemelo de `task_lifecycle.apply_planned_start` (backend): Pendiente es el
+ * backlog sin fecha, así que una tarea pendiente con la Planificada de hoy o
+ * pasada pasa a En curso al guardar; y si lo que se elige es Pendiente, se le
+ * quita la fecha. Avisa ANTES de guardar de lo que hará el servidor.
+ */
+export function plannedStartNotice(
+  draft: PlannedStartFields,
+  saved: PlannedStartFields | null | undefined,
+  today: string,
+): string | null {
+  const notStarted = draft.status === "pending" || draft.status === "backlog"
+  if (!notStarted || !draft.scheduled_date || draft.scheduled_date > today || draft.is_recurring) return null
+  const startsNow = "Al guardar pasa a En curso: su fecha planificada ya ha llegado."
+  if (!saved) return startsNow
+  if (draft.scheduled_date !== (saved.scheduled_date ?? null)) return startsNow
+  if (draft.status !== saved.status) return "Al guardar se quita la fecha planificada: Pendiente es sin fecha."
+  return null
+}
