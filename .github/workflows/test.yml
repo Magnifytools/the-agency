@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps]
     timeout-minutes: 5
     outputs:
       backend: ${{ steps.f.outputs.backend }}
@@ -57,7 +57,7 @@ jobs:
   backend-test:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps]
     timeout-minutes: 30
     services:
       postgres:
@@ -95,7 +95,7 @@ jobs:
   frontend-build:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps]
     timeout-minutes: 15
     defaults:
       run:
@@ -124,7 +124,7 @@ jobs:
   lint:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -142,7 +142,7 @@ jobs:
   security-audit:
     needs: changes
     if: needs.changes.outputs.deps == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -169,7 +169,7 @@ jobs:
   container-build:
     needs: changes
     if: needs.changes.outputs.container == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -179,7 +179,7 @@ jobs:
   extension-test:
     needs: changes
     if: needs.changes.outputs.extension == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -197,7 +197,7 @@ jobs:
   mcp-server-test:
     needs: changes
     if: needs.changes.outputs.mcp == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, vps]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
